@@ -1,4 +1,4 @@
-# SAGE Lab Assistant by Shadow Loyal [SLY]
+# Lab Assistant by Shadow Loyal [SLY]
 This is a browser-based script to track status and automate actions within SAGE Labs.
 
 Current features:
