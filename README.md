@@ -54,7 +54,7 @@ The script is built as a TamperMonkey script. [TamperMonkey](https://www.tamperm
 7. Launch the game as normal
 8. Click the Lab Assistant "Configure" button
 9. For each fleet that you want Lab Assistant to help with, click the Scan checkbox and fill in the destination and starbase coordinates.
-  * Enter coordinates as two numbers separated by a comma with no bracks or prefixes or parenthesis - i.e. 10,20
+   * Enter coordinates as two numbers separated by a comma with no bracks or prefixes or parenthesis - i.e. 10,20
 11. Slick save then refresh your browser
 
 #### Regular usage
