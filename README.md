@@ -50,7 +50,7 @@ The script is built as a TamperMonkey script. [TamperMonkey](https://www.tamperm
 3. Copy the source
 4. Open Tampermonkey in your browser and click the Add Script tab (icon with a plus symbol)
 5. Paste the source into the script window and click File > Save
-6. Browse to [https://play.staratlas.com/fleet](https://labs.staratlas.com/)
+6. Browse to [https://labs.staratlas.com/](https://labs.staratlas.com/)
 7. Launch the game as normal
 8. Click the Lab Assistant "Configure" button
 9. For each fleet that you want Lab Assistant to help with, click the Scan checkbox and fill in the destination and starbase coordinates.
