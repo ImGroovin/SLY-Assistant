@@ -12,7 +12,7 @@ Current features:
   * Transfer SDUs from the fleet to the starbase
   * Refuel the fleet
   * Restock the fleet with toolkits
-  * Warp to the designated scanning zone and resume scanning
+  * Warp to the designated scanning sector and resume scanning
 
 ### SECURITY NOTICE
 Users are encouraged to build their own instance of browser-compatible resource file. Doing so ensures that you are using trusted code. Pre-built files are provided for convenience. 
