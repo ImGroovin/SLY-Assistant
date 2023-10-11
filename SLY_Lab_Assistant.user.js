@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.2.3
+// @version      0.2.4
 // @description  try to take over the world!
 // @author       SLY
 // @match        https://labs.staratlas.com/
@@ -112,6 +112,39 @@
             let txResult = await txSignAndSend(tx);
             resolve(txResult);
         });
+    }
+
+    function getFleetState(fleetAcctInfo) {
+        let remainingData = fleetAcctInfo.data.subarray(414);
+        let fleetState = 'Idle';
+        let extra = null;
+        switch(remainingData[0]) {
+            case 0:
+                fleetState = 'StarbaseLoadingBay';
+                extra = sageProgram.coder.types.decode('StarbaseLoadingBay', remainingData.subarray(1));
+                break;
+            case 1: {
+                fleetState = 'Idle';
+                let sector = sageProgram.coder.types.decode('Idle', remainingData.subarray(1));
+                extra = [sector.sector[0].toNumber(), sector.sector[1].toNumber()]
+                break;
+            }
+            case 2:
+                fleetState = 'MineAsteroid';
+                break;
+            case 3:
+                fleetState = 'MoveWarp';
+                extra = sageProgram.coder.types.decode('MoveWarp', remainingData.subarray(1));
+                break;
+            case 4:
+                fleetState = 'MoveSubwarp';
+                extra = sageProgram.coder.types.decode('MoveSubwarp', remainingData.subarray(1));
+                break;
+            case 5:
+                fleetState = 'Respawn';
+                break;
+        }
+        return [fleetState, extra];
     }
 
     function initUser() {
@@ -235,37 +268,13 @@
                 await solanaConnection.getAccountInfo(fleetRepairKitToken) || await createProgramDerivedAccount(fleetRepairKitToken, fleet.account.cargoHold, new solanaWeb3.PublicKey('tooLsNYLiVqzg8o4m3L2Uetbn62mvMWRqkog6PQeYKL'));
                 await solanaConnection.getAccountInfo(fleetFuelToken) || await createProgramDerivedAccount(fleetFuelToken, fleet.account.fuelTank, new solanaWeb3.PublicKey('fueL3hBZjLLLJHiFH9cqZoozTG3XQZ53diwFPwbzNim'));
                 let fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(fleet.account.cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
-                let currentToolCnt = fleetCurrentCargo.value.find(item => item.pubkey.toString() === fleetRepairKitToken.toString())
+                let currentToolCnt = fleetCurrentCargo.value.find(item => item.pubkey.toString() === fleetRepairKitToken.toString());
                 let fleetCurrentFuel = await solanaConnection.getParsedTokenAccountsByOwner(fleet.account.fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
-                let currentFuelCnt = fleetCurrentFuel.value.find(item => item.pubkey.toString() === fleetFuelToken.toString())
+                let currentFuelCnt = fleetCurrentFuel.value.find(item => item.pubkey.toString() === fleetFuelToken.toString());
                 let fleetAcctInfo = await solanaConnection.getAccountInfo(fleet.publicKey);
-                let remainingData = fleetAcctInfo.data.subarray(414);
-                let fleetState = 'Idle';
-                let fleetCoords = [];
-                switch(remainingData[0]) {
-                    case 0:
-                        fleetState = 'StarbaseLoadingBay';
-                        break;
-                    case 1: {
-                        fleetState = 'Idle';
-                        let sector = sageProgram.coder.types.decode('Idle', remainingData.subarray(1));
-                        fleetCoords = [sector.sector[0].toNumber(), sector.sector[1].toNumber()]
-                        break;
-                    }
-                    case 2:
-                        fleetState = 'MineAsteroid';
-                        break;
-                    case 3:
-                        fleetState = 'MoveWarp';
-                        break;
-                    case 4:
-                        fleetState = 'MoveSubwarp';
-                        break;
-                    case 5:
-                        fleetState = 'Respawn';
-                        break;
-                }
-                userFleets.push({publicKey: fleet.publicKey, label: fleetLabel.replace(/\0/g, ''), state: fleetState, startingCoords: fleetCoords, cargoHold: fleet.account.cargoHold, fuelTank: fleet.account.fuelTank, repairKitToken: fleetRepairKitToken, sduToken: fleetSduToken, fuelToken: fleetFuelToken, warpFuelConsumptionRate: fleet.account.stats.movementStats.warpFuelConsumptionRate, warpSpeed: fleet.account.stats.movementStats.warpSpeed, maxWarpDistance: fleet.account.stats.movementStats.maxWarpDistance, subwarpFuelConsumptionRate: fleet.account.stats.movementStats.subwarpFuelConsumptionRate, subwarpSpeed: fleet.account.stats.movementStats.subwarpSpeed, cargoCapacity: fleet.account.stats.cargoStats.cargoCapacity, fuelCapacity: fleet.account.stats.cargoStats.fuelCapacity, scanCooldown: fleet.account.stats.miscStats.scanCoolDown, warpCooldown: fleet.account.stats.movementStats.warpCoolDown, destCoord: fleetDest, starbaseCoord: fleetStarbase, toolCnt: currentToolCnt.account.data.parsed.info.tokenAmount.uiAmount, sduCnt: 0, fuelCnt: currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount, moveType: fleetMoveType});
+                let [fleetState, extra] = getFleetState(fleetAcctInfo);
+                let fleetCoords = fleetState == 'Idle' ? extra : [];
+                userFleets.push({publicKey: fleet.publicKey, label: fleetLabel.replace(/\0/g, ''), state: fleetState, startingCoords: fleetCoords, cargoHold: fleet.account.cargoHold, fuelTank: fleet.account.fuelTank, repairKitToken: fleetRepairKitToken, sduToken: fleetSduToken, fuelToken: fleetFuelToken, warpFuelConsumptionRate: fleet.account.stats.movementStats.warpFuelConsumptionRate, warpSpeed: fleet.account.stats.movementStats.warpSpeed, maxWarpDistance: fleet.account.stats.movementStats.maxWarpDistance, subwarpFuelConsumptionRate: fleet.account.stats.movementStats.subwarpFuelConsumptionRate, subwarpSpeed: fleet.account.stats.movementStats.subwarpSpeed, cargoCapacity: fleet.account.stats.cargoStats.cargoCapacity, fuelCapacity: fleet.account.stats.cargoStats.fuelCapacity, scanCost: fleet.account.stats.miscStats.scanRepairKitAmount, scanCooldown: fleet.account.stats.miscStats.scanCoolDown, warpCooldown: fleet.account.stats.movementStats.warpCoolDown, destCoord: fleetDest, starbaseCoord: fleetStarbase, toolCnt: currentToolCnt.account.data.parsed.info.tokenAmount.uiAmount, sduCnt: 0, fuelCnt: currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount, moveType: fleetMoveType});
             }
             resolve();
         });
@@ -368,6 +377,40 @@
             ]);
             resolve(starbasePlayer);
         });
+    }
+
+    async function getFleetCntAtCoords() {
+        let targetCoordsElem = document.querySelector('#checkFleetCntInput');
+        let targetCoords = targetCoordsElem.value;
+        let x = targetCoords.split(',').length > 1 ? targetCoords.split(',')[0].trim() : 0;
+        let y = targetCoords.split(',').length > 1 ? targetCoords.split(',')[1].trim() : 0;
+        let xBN = new BrowserAnchor.anchor.BN(x);
+        let xArr = xBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "le", 8);
+        let x58 = bs58.encode(xArr);
+        let yBN = new BrowserAnchor.anchor.BN(y);
+        let yArr = yBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "le", 8);
+        let y58 = bs58.encode(yArr);
+        userProfileAcct = await solanaConnection.getProgramAccounts(
+            sageProgramId,
+            {
+                filters: [
+                    {
+                        memcmp: {
+                            offset: 415,
+                            bytes: x58,
+                        },
+                    },
+                    {
+                        memcmp: {
+                            offset: 423,
+                            bytes: y58,
+                        },
+                    },
+                ],
+            }
+        );
+        let msgElem = document.querySelectorAll('#assist-modal-error');
+        msgElem[0].innerHTML = userProfileAcct.length + ' fleets idle at [' + x + ',' + y + ']';
     }
 
     function waitForTxConfirmation(txHash) {
@@ -949,32 +992,41 @@
         let errElem = document.querySelectorAll('#assist-modal-error');
         let errBool = false;
         for (let row of targetRows) {
+            let rowErrBool = false;
             let fleetPK = row.getAttribute('pk');
             let fleetName = row.children[0].firstChild.innerText;
             let fleetScan = row.children[1].firstChild.checked;
             let fleetDestCoord = row.children[4].firstChild.value;
             let fleetStarbaseCoord = row.children[5].firstChild.value;
-            let destX = fleetDestCoord.split(',')[0].trim();
-            let destY = fleetDestCoord.split(',')[1].trim();
-            let starbaseX = fleetStarbaseCoord.split(',')[0].trim();
-            let starbaseY = fleetStarbaseCoord.split(',')[1].trim();
+            let destX = fleetDestCoord.split(',').length > 1 ? fleetDestCoord.split(',')[0].trim() : '';
+            let destY = fleetDestCoord.split(',').length > 1 ? fleetDestCoord.split(',')[1].trim() : '';
+            let starbaseX = fleetStarbaseCoord.split(',').length > 1 ? fleetStarbaseCoord.split(',')[0].trim() : '';
+            let starbaseY = fleetStarbaseCoord.split(',').length > 1 ? fleetStarbaseCoord.split(',')[1].trim() : '';
             let userFleetIndex = userFleets.findIndex(item => {return item.publicKey == fleetPK});
             let moveType = 'warp';
             let moveDist = calculateMovementDistance([starbaseX,starbaseY], [destX,destY]);
-            if (moveDist > userFleets[userFleetIndex].maxWarpDistance / 100) {
+            if (fleetScan == true && (moveDist > userFleets[userFleetIndex].maxWarpDistance / 100)) {
                 let subwarpCost = calculateSubwarpFuelBurn(userFleets[userFleetIndex], moveDist);
                 if (subwarpCost * 2 > userFleets[userFleetIndex].fuelCapacity) {
-                    console.log('ERROR: fleet will not have enough fuel to return to starbase');
+                    console.log('ERROR: Fleet will not have enough fuel to return to starbase');
                     row.children[4].firstChild.style.border = '2px solid red';
                     row.children[5].firstChild.style.border = '2px solid red';
-                    errElem[0].innerHTML = 'ERROR: distance exceeds fuel capacity';
-                    moveType = 'error';
+                    errElem[0].innerHTML = 'ERROR: Distance exceeds fuel capacity';
                     errBool = true;
+                    rowErrBool = true;
                 } else {
                     moveType = 'subwarp';
                 }
             }
-            if (moveType != 'error') {
+            if (fleetScan == true && (destX == '' || destY == '' || starbaseX == '' || starbaseY == '')) {
+                console.log('ERROR: Invalid coordinates. Correct format: 10,20');
+                row.children[4].firstChild.style.border = '2px solid red';
+                row.children[5].firstChild.style.border = '2px solid red';
+                errElem[0].innerHTML = 'ERROR: Invalid coordinates. Correct format: 10,20';
+                errBool = true;
+                rowErrBool = true;
+            }
+            if (rowErrBool === false) {
                 await GM.setValue(fleetPK, `{\"name\": \"${fleetName}\", \"scan\": \"${fleetScan}\", \"dest\": \"${fleetDestCoord}\", \"starbase\": \"${fleetStarbaseCoord}\", \"moveType\": \"${moveType}\"}`);
                 userFleets[userFleetIndex].destCoord = fleetDestCoord;
                 userFleets[userFleetIndex].starbaseCoord = fleetStarbaseCoord;
@@ -1014,22 +1066,44 @@
             let moveTime = 1;
             let moveCost = 0;
             let warpCooldownFinished = 0;
-            if (userFleets[i].moveType == 'warp') {
-                console.log(`[${userFleets[i].label}] Warping to [${moveX},${moveY}]`);
-                moveTime = calculateWarpTime(userFleets[i], moveDist);
-                moveCost = calculateWarpFuelBurn(userFleets[i], moveDist);
-                let warpResult = await execWarp(userFleets[i], moveX, moveY);
-                warpCooldownFinished = Date.now() + userFleets[i].warpCooldown*1000 + 2000;
-            } else {
-                console.log(`[${userFleets[i].label}] Subwarping to [${moveX},${moveY}]`);
-                moveTime = calculateSubwarpTime(userFleets[i], moveDist);
-                moveCost = calculateSubwarpFuelBurn(userFleets[i], moveDist);
-                let subwarpResult = await execSubwarp(userFleets[i], moveX, moveY);
+            let fleetAcctInfo = await solanaConnection.getAccountInfo(userFleets[i].publicKey);
+            let [fleetState, extra] = getFleetState(fleetAcctInfo);
+            if (fleetState == 'Idle') {
+                if (userFleets[i].moveType == 'warp') {
+                    let fleetAcctData = sageProgram.coder.accounts.decode('Fleet', fleetAcctInfo.data);
+                    let warpCooldownExpiresAt = fleetAcctData.warpCooldownExpiresAt.toNumber() * 1000;
+                    while (Date.now() < warpCooldownExpiresAt) {
+                        console.log(`[${userFleets[i].label}] Waiting for warp cooldown`);
+                        await wait(5000);
+                    }
+                    await wait(2000);
+                    console.log(`[${userFleets[i].label}] Warping to [${moveX},${moveY}]`);
+                    moveTime = calculateWarpTime(userFleets[i], moveDist);
+                    moveCost = calculateWarpFuelBurn(userFleets[i], moveDist);
+                    let warpResult = await execWarp(userFleets[i], moveX, moveY);
+                    warpCooldownFinished = Date.now() + userFleets[i].warpCooldown*1000 + 2000;
+                } else {
+                    console.log(`[${userFleets[i].label}] Subwarping to [${moveX},${moveY}]`);
+                    moveTime = calculateSubwarpTime(userFleets[i], moveDist);
+                    moveCost = calculateSubwarpFuelBurn(userFleets[i], moveDist);
+                    let subwarpResult = await execSubwarp(userFleets[i], moveX, moveY);
+                }
             }
             console.log('Timer: ', moveTime * 1000 + 10000);
-            console.log('Move Start: ', Date.now());
-            console.log('Move Start: ', Date.now().toString());
+            console.log('Move Start: ', new Date().toString());
+            console.log('Move Finish: ', new Date(Date.now()+(moveTime * 1000 + 10000)).toString());
+            userFleets[i].state = 'Move [' + new Date(Date.now()+(moveTime * 1000 + 10000)).toLocaleTimeString() + ']';
+            updateAssistStatus(userFleets[i]);
             await wait(moveTime * 1000 + 10000);
+            fleetAcctInfo = await solanaConnection.getAccountInfo(userFleets[i].publicKey);
+            [fleetState, extra] = getFleetState(fleetAcctInfo);
+            let warpFinish = fleetState == 'MoveWarp' ? extra.warpFinish.toNumber() * 1000 : 0;
+            let subwarpFinish = fleetState == 'MoveSubwarp' ? extra.arrivalTime.toNumber() * 1000 : 0;
+            while (warpFinish > Date.now() || subwarpFinish > Date.now()) {
+                console.log(`[${userFleets[i].label}] Waiting for movement to complete`);
+                await wait(5000);
+            }
+            await wait(2000);
             console.log(`[${userFleets[i].label}] Exiting Warp/Subwarp`);
             if (userFleets[i].moveType == 'warp') {
                 await execExitWarp(userFleets[i]);
@@ -1046,8 +1120,12 @@
         let destY = parseInt(userFleets[i].destCoord.split(',')[1].trim());
         if (userFleets[i].startingCoords[0] !== destX && userFleets[i].startingCoords[1] !== destY) {
             let moveDist = calculateMovementDistance([userFleets[i].startingCoords[0],userFleets[i].startingCoords[1]], [destX,destY]);
-            let warpCooldownFinished = await handleMovement(i, moveDist, destX, destY);
-            console.log('Movement finished');
+            if (moveDist > 0) {
+                let warpCooldownFinished = await handleMovement(i, moveDist, destX, destY);
+                console.log(`[${userFleets[i].label}] Movement finished`);
+            } else {
+                console.log(`[${userFleets[i].label}] Skipping movement`);
+            }
         }
         userFleets[i].state = 'Scanning';
         updateAssistStatus(userFleets[i]);
@@ -1055,7 +1133,7 @@
         let scanResult = await execScan(userFleets[i]);
         console.log('Scan Result: ', scanResult);
         let changesSDU = scanResult ? getBalanceChange(scanResult, userFleets[i].sduToken.toString()) : {postBalance: userFleets[i].sduCnt, preBalance: userFleets[i].sduCnt};
-        let changesTool = scanResult ? getBalanceChange(scanResult, userFleets[i].repairKitToken.toString()) : {postBalance: userFleets[i].toolCnt - 10, preBalance: userFleets[i].toolCnt};
+        let changesTool = scanResult ? getBalanceChange(scanResult, userFleets[i].repairKitToken.toString()) : {postBalance: userFleets[i].toolCnt - userFleets[i].scanCost, preBalance: userFleets[i].toolCnt};
         if (changesSDU.postBalance != changesSDU.preBalance) {
             console.log(`[${userFleets[i].label}] FOUND: ${changesSDU.postBalance - changesSDU.preBalance}`);
             scanTimer = 120;
@@ -1079,8 +1157,12 @@
         let starbaseX = userFleets[i].starbaseCoord.split(',')[0].trim();
         let starbaseY = userFleets[i].starbaseCoord.split(',')[1].trim();
         let moveDist = calculateMovementDistance([starbaseX,starbaseY], [destX,destY]);
-        let warpCooldownFinished = await handleMovement(i, moveDist, starbaseX, starbaseY);
-        console.log('Movement finished');
+        if (moveDist > 0) {
+            let warpCooldownFinished = await handleMovement(i, moveDist, starbaseX, starbaseY);
+            console.log(`[${userFleets[i].label}] Movement finished`);
+        } else {
+            console.log(`[${userFleets[i].label}] Skipping movement`);
+        }
         console.log(`[${userFleets[i].label}] Docking`);
         userFleets[i].state = 'Docking';
         updateAssistStatus(userFleets[i]);
@@ -1112,14 +1194,10 @@
         updateAssistStatus(userFleets[i]);
         await execUndock(userFleets[i]);
         await wait(2000);
-        while (Date.now() < warpCooldownFinished) {
-            console.log(`[${userFleets[i].label}] Waiting for warp cooldown`);
-            await wait(5000);
-        }
         console.log(`[${userFleets[i].label}] Moving`);
         userFleets[i].state = 'Moving';
         updateAssistStatus(userFleets[i]);
-        warpCooldownFinished = await handleMovement(i, moveDist, destX, destY);
+        let warpCooldownFinished = await handleMovement(i, moveDist, destX, destY);
         userFleets[i].state = 'Idle';
         updateAssistStatus(userFleets[i]);
     }
@@ -1131,7 +1209,13 @@
                 try {
                     let fleetSavedData = await GM.getValue(userFleets[i].publicKey.toString(), '{}');
                     let fleetParsedData = JSON.parse(fleetSavedData);
-                    if (fleetParsedData.scan == 'true' && userFleets[i].toolCnt > 9 && userFleets[i].state === 'Idle') {
+                    let fleetAcctInfo = await solanaConnection.getAccountInfo(userFleets[i].publicKey);
+                    let [fleetState, extra] = getFleetState(fleetAcctInfo);
+                    let fleetCoords = fleetState == 'Idle' ? extra : [];
+                    userFleets[i].startingCoords = fleetCoords;
+                    //userFleets[i].state = fleetState;
+                    //updateAssistStatus(userFleets[i]);
+                    if (fleetParsedData.scan == 'true' && userFleets[i].toolCnt >= userFleets[i].scanCost && userFleets[i].state === 'Idle') {
                         console.log(`[${userFleets[i].label}] Scanning`);
                         handleScan(i);
                     } else if (fleetParsedData.scan == 'true' && userFleets[i].state === 'Idle') {
@@ -1167,14 +1251,14 @@
         if(document.querySelectorAll('#root > div:first-of-type > div:first-of-type > div > header > h1').length > 0 && !document.getElementById("autoScanBtn")) {
             observer.disconnect();
             let assistCSS = document.createElement('style');
-            assistCSS.innerHTML = '.assist-modal {display: none; position: fixed; z-index: 1; padding-top: 100px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);} .assist-modal-content {position: relative; display: flex; flex-direction: column; background-color: rgb(41, 41, 48); margin: auto; padding: 0; border: 1px solid #888; width: 650px; min-width: 450px; max-width: 75%; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19); -webkit-animation-name: animatetop; -webkit-animation-duration: 0.4s; animation-name: animatetop; animation-duration: 0.4s} #assist-modal-error {color: red; margin-left: 5px; margin-right: 5px; font-size: 16px;} .assist-modal-header-right {color: rgb(255, 190, 77); float: right; font-size: 20px;} .assist-btn {background-color: rgb(41, 41, 48); color: rgb(255, 190, 77); margin-left: 5px; margin-right: 5px;} .assist-modal-close:hover, .assist-modal-close:focus {font-weight: bold; text-decoration: none; cursor: pointer;} .assist-modal-header {padding: 2px 16px; background-color: rgba(255, 190, 77, 0.2); border-bottom: 2px solid rgb(255, 190, 77); color: rgb(255, 190, 77);} .assist-modal-body {padding: 2px 16px; font-size: 16px;} .assist-modal-body > table {width: 100%;} .assist-modal-body th, .assist-modal-body td {padding-left: 5px, padding-left: 5px;} #assistStatus {background-color: rgba(0,0,0,0.4); opacity: 0.75; position: fixed; top: 80px; right: 20px; z-index: 1;}';
+            assistCSS.innerHTML = '.assist-modal {display: none; position: fixed; z-index: 1; padding-top: 100px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);} .assist-modal-content {position: relative; display: flex; flex-direction: column; background-color: rgb(41, 41, 48); margin: auto; padding: 0; border: 1px solid #888; width: 650px; min-width: 450px; max-width: 75%; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19); -webkit-animation-name: animatetop; -webkit-animation-duration: 0.4s; animation-name: animatetop; animation-duration: 0.4s} #assist-modal-error {color: red; margin-left: 5px; margin-right: 5px; font-size: 16px;} .assist-modal-header-right {color: rgb(255, 190, 77); float: right; font-size: 20px;} .assist-btn {background-color: rgb(41, 41, 48); color: rgb(255, 190, 77); margin-left: 2px; margin-right: 2px;} .assist-modal-close:hover, .assist-modal-close:focus {font-weight: bold; text-decoration: none; cursor: pointer;} .assist-modal-header {padding: 2px 16px; background-color: rgba(255, 190, 77, 0.2); border-bottom: 2px solid rgb(255, 190, 77); color: rgb(255, 190, 77);} .assist-modal-body {padding: 2px 16px; font-size: 16px;} .assist-modal-body > table {width: 100%;} .assist-modal-body th, .assist-modal-body td {padding-left: 5px, padding-left: 5px;} #assistStatus {background-color: rgba(0,0,0,0.4); opacity: 0.75; position: fixed; top: 80px; right: 20px; z-index: 1;}';
             let assistModal = document.createElement('div');
             assistModal.classList.add('assist-modal');
             assistModal.id = 'assistModal';
             assistModal.style.display = 'none';
             let assistModalContent = document.createElement('div');
             assistModalContent.classList.add('assist-modal-content');
-            assistModalContent.innerHTML = '<div class="assist-modal-header"><span>SAGE Lab Assistant</span><div class="assist-modal-header-right"><button class="assist-modal-save assist-btn">Save</button><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><table><tr><td>Fleet</td><td>Scan</td><td>Mine</td><td>Resource</td><td>Target Coords</td><td>Starbase Coords</td></tr></table></div>';
+            assistModalContent.innerHTML = '<div class="assist-modal-header"><span>SAGE Lab Assistant</span><div class="assist-modal-header-right"><button class="assist-modal-save assist-btn">Save</button><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><div style="display: flex; flex-direction: row; justify-content: center;"><input id="checkFleetCntInput" type="text" placeholder="x, y" style="width: 50px;"><button id="checkFleetBtn" class="assist-btn"><span style="font-size: 14px;">Check</span></button></div><table><tr><td>Fleet</td><td>Scan</td><td>Mine</td><td>Resource</td><td>Target Coords</td><td>Starbase Coords</td></tr></table></div>';
             assistModal.append(assistModalContent);
             let assistStatus = document.createElement('div');
             assistStatus.id = 'assistStatus';
@@ -1233,6 +1317,8 @@
             assistModalSave.addEventListener('click', function(e) {saveAssistInput();});
             let assistStatusClose = document.querySelector('#assistStatus .assist-modal-close');
             assistStatusClose.addEventListener('click', function(e) {assistStatusToggle();});
+            let assistCheckFleetBtn = document.querySelector('#checkFleetBtn');
+            assistCheckFleetBtn.addEventListener('click', function(e) {getFleetCntAtCoords();});
         }
     }
     observer.observe(document, {childList: true, subtree: true});
