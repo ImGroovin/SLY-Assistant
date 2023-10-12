@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.2.4
+// @version      0.2.5
 // @description  try to take over the world!
 // @author       SLY
 // @match        https://labs.staratlas.com/
@@ -18,6 +18,7 @@
     'use strict';
 
     let enableAssistant = false;
+    let initComplete = false;
 
     const solanaConnection = new solanaWeb3.Connection('https://solana-api.syndica.io/access-token/WPoEqWQ2auQQY1zHRNGJyRBkvfOLqw58FqYucdYtmy8q9Z84MBWwqtfVf8jKhcFh/rpc', 'confirmed');
     const anchorProvider = new BrowserAnchor.anchor.AnchorProvider(solanaConnection, null, null);
@@ -42,11 +43,22 @@
     let [sageSDUTrackerAcct] = await sageProgram.account.surveyDataUnitTracker.all();
 
     let cargoProgram = new BrowserAnchor.anchor.Program(cargoIDL, cargoProgramId, anchorProvider);
+    let [cargoStatsDefinitionAcct] = await cargoProgram.account.cargoStatsDefinition.all();
+    let cargoStatsDefSeqId = cargoStatsDefinitionAcct.account.seqId;
+    let seqBN = new BrowserAnchor.anchor.BN(cargoStatsDefSeqId);
+    let seqArr = seqBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "be", 2);
+    let seq58 = bs58.encode(seqArr);
     let [sduCargoTypeAcct] = await cargoProgram.account.cargoType.all([
         {
            memcmp: {
                offset: 41,
                 bytes: new solanaWeb3.PublicKey('SDUsgfSZaDhhZ76U3ZgvtFiXsfnHbf2VrzYxjBZ5YbM').toBase58(),
+            },
+        },
+        {
+           memcmp: {
+               offset: 75,
+                bytes: seq58,
             },
         },
     ]);
@@ -57,12 +69,24 @@
                 bytes: new solanaWeb3.PublicKey('tooLsNYLiVqzg8o4m3L2Uetbn62mvMWRqkog6PQeYKL').toBase58(),
             },
         },
+        {
+           memcmp: {
+               offset: 75,
+                bytes: seq58,
+            },
+        },
     ]);
     let [fuelCargoTypeAcct] = await cargoProgram.account.cargoType.all([
         {
            memcmp: {
                offset: 41,
                 bytes: new solanaWeb3.PublicKey('fueL3hBZjLLLJHiFH9cqZoozTG3XQZ53diwFPwbzNim').toBase58(),
+            },
+        },
+        {
+           memcmp: {
+               offset: 75,
+                bytes: seq58,
             },
         },
     ]);
@@ -276,6 +300,10 @@
                 let fleetCoords = fleetState == 'Idle' ? extra : [];
                 userFleets.push({publicKey: fleet.publicKey, label: fleetLabel.replace(/\0/g, ''), state: fleetState, startingCoords: fleetCoords, cargoHold: fleet.account.cargoHold, fuelTank: fleet.account.fuelTank, repairKitToken: fleetRepairKitToken, sduToken: fleetSduToken, fuelToken: fleetFuelToken, warpFuelConsumptionRate: fleet.account.stats.movementStats.warpFuelConsumptionRate, warpSpeed: fleet.account.stats.movementStats.warpSpeed, maxWarpDistance: fleet.account.stats.movementStats.maxWarpDistance, subwarpFuelConsumptionRate: fleet.account.stats.movementStats.subwarpFuelConsumptionRate, subwarpSpeed: fleet.account.stats.movementStats.subwarpSpeed, cargoCapacity: fleet.account.stats.cargoStats.cargoCapacity, fuelCapacity: fleet.account.stats.cargoStats.fuelCapacity, scanCost: fleet.account.stats.miscStats.scanRepairKitAmount, scanCooldown: fleet.account.stats.miscStats.scanCoolDown, warpCooldown: fleet.account.stats.movementStats.warpCoolDown, destCoord: fleetDest, starbaseCoord: fleetStarbase, toolCnt: currentToolCnt.account.data.parsed.info.tokenAmount.uiAmount, sduCnt: 0, fuelCnt: currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount, moveType: fleetMoveType});
             }
+            userFleets.sort(function (a, b) {
+                return a.label.toUpperCase().localeCompare(b.label.toUpperCase());
+            });
+            initComplete = true;
             resolve();
         });
     }
@@ -390,7 +418,7 @@
         let yBN = new BrowserAnchor.anchor.BN(y);
         let yArr = yBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "le", 8);
         let y58 = bs58.encode(yArr);
-        userProfileAcct = await solanaConnection.getProgramAccounts(
+        let fleetAccts = await solanaConnection.getProgramAccounts(
             sageProgramId,
             {
                 filters: [
@@ -410,7 +438,7 @@
             }
         );
         let msgElem = document.querySelectorAll('#assist-modal-error');
-        msgElem[0].innerHTML = userProfileAcct.length + ' fleets idle at [' + x + ',' + y + ']';
+        msgElem[0].innerHTML = fleetAccts.length + ' fleets idle at [' + x + ',' + y + ']';
     }
 
     function waitForTxConfirmation(txHash) {
@@ -954,20 +982,35 @@
         fleetStarbaseCoord.value = fleetParsedData && fleetParsedData.starbase ? fleetParsedData.starbase : '';
         let fleetStarbaseCoordTd = document.createElement('td');
         fleetStarbaseCoordTd.appendChild(fleetStarbaseCoord);
+
+        let fleetSubwarpPref = document.createElement('input');
+        fleetSubwarpPref.setAttribute('type', 'checkbox');
+        fleetSubwarpPref.checked = fleetParsedData && fleetParsedData.subwarpPref == 'true' ? true : false;
+        let fleetSubwarpPrefTd = document.createElement('td');
+        fleetSubwarpPrefTd.appendChild(fleetSubwarpPref);
+
         fleetRow.appendChild(fleetLabelTd);
         fleetRow.appendChild(fleetScanTd);
         fleetRow.appendChild(fleetMineTd);
         fleetRow.appendChild(fleetMineResTd);
         fleetRow.appendChild(fleetDestCoordTd);
         fleetRow.appendChild(fleetStarbaseCoordTd);
+        fleetRow.appendChild(fleetSubwarpPrefTd);
         let targetElem = document.querySelector('#assistModal .assist-modal-body table');
         targetElem.appendChild(fleetRow);
     }
 
     function updateAssistStatus(fleet) {
         let targetRow = document.querySelectorAll('#assistStatus .assist-fleet-row[pk="' + fleet.publicKey.toString() + '"]');
+        console.log('-----DEBUG-----');
+        console.log(targetRow);
+        console.log(`TOOL: [${fleet.toolCnt}]`);
+        console.log(`SDU: [${fleet.sduCnt}]`);
+
         if (targetRow.length > 0) {
-            targetRow[0].children[1].firstChild.innerHTML = fleet.state;
+            targetRow[0].children[1].firstChild.innerHTML = fleet.toolCnt;
+            targetRow[0].children[2].firstChild.innerHTML = fleet.sduCnt;
+            targetRow[0].children[3].firstChild.innerHTML = fleet.state;
         } else {
             let fleetRow = document.createElement('tr');
             fleetRow.classList.add('assist-fleet-row');
@@ -976,11 +1019,21 @@
             fleetLabel.innerHTML = fleet.label;
             let fleetLabelTd = document.createElement('td');
             fleetLabelTd.appendChild(fleetLabel);
+            let fleetTool = document.createElement('span');
+            fleetTool.innerHTML = fleet.toolCnt;
+            let fleetToolTd = document.createElement('td');
+            fleetToolTd.appendChild(fleetTool);
+            let fleetSdu = document.createElement('span');
+            fleetSdu.innerHTML = fleet.sduCnt;
+            let fleetSduTd = document.createElement('td');
+            fleetSduTd.appendChild(fleetSdu);
             let fleetStatus = document.createElement('span');
             fleetStatus.innerHTML = fleet.state;
             let fleetStatusTd = document.createElement('td');
             fleetStatusTd.appendChild(fleetStatus);
             fleetRow.appendChild(fleetLabelTd);
+            fleetRow.appendChild(fleetToolTd);
+            fleetRow.appendChild(fleetSduTd);
             fleetRow.appendChild(fleetStatusTd);
             let targetElem = document.querySelector('#assistStatus .assist-modal-body table');
             targetElem.appendChild(fleetRow);
@@ -998,12 +1051,13 @@
             let fleetScan = row.children[1].firstChild.checked;
             let fleetDestCoord = row.children[4].firstChild.value;
             let fleetStarbaseCoord = row.children[5].firstChild.value;
+            let subwarpPref = row.children[6].firstChild.checked;
             let destX = fleetDestCoord.split(',').length > 1 ? fleetDestCoord.split(',')[0].trim() : '';
             let destY = fleetDestCoord.split(',').length > 1 ? fleetDestCoord.split(',')[1].trim() : '';
             let starbaseX = fleetStarbaseCoord.split(',').length > 1 ? fleetStarbaseCoord.split(',')[0].trim() : '';
             let starbaseY = fleetStarbaseCoord.split(',').length > 1 ? fleetStarbaseCoord.split(',')[1].trim() : '';
             let userFleetIndex = userFleets.findIndex(item => {return item.publicKey == fleetPK});
-            let moveType = 'warp';
+            let moveType = subwarpPref == true ? 'subwarp' : 'warp';
             let moveDist = calculateMovementDistance([starbaseX,starbaseY], [destX,destY]);
             if (fleetScan == true && (moveDist > userFleets[userFleetIndex].maxWarpDistance / 100)) {
                 let subwarpCost = calculateSubwarpFuelBurn(userFleets[userFleetIndex], moveDist);
@@ -1027,7 +1081,7 @@
                 rowErrBool = true;
             }
             if (rowErrBool === false) {
-                await GM.setValue(fleetPK, `{\"name\": \"${fleetName}\", \"scan\": \"${fleetScan}\", \"dest\": \"${fleetDestCoord}\", \"starbase\": \"${fleetStarbaseCoord}\", \"moveType\": \"${moveType}\"}`);
+                await GM.setValue(fleetPK, `{\"name\": \"${fleetName}\", \"scan\": \"${fleetScan}\", \"dest\": \"${fleetDestCoord}\", \"starbase\": \"${fleetStarbaseCoord}\", \"moveType\": \"${moveType}\", \"subwarpPref\": \"${subwarpPref}\"}`);
                 userFleets[userFleetIndex].destCoord = fleetDestCoord;
                 userFleets[userFleetIndex].starbaseCoord = fleetStarbaseCoord;
                 userFleets[userFleetIndex].moveType = moveType;
@@ -1072,6 +1126,8 @@
                 if (userFleets[i].moveType == 'warp') {
                     let fleetAcctData = sageProgram.coder.accounts.decode('Fleet', fleetAcctInfo.data);
                     let warpCooldownExpiresAt = fleetAcctData.warpCooldownExpiresAt.toNumber() * 1000;
+                    userFleets[i].state = 'Warp cooldown';
+                    updateAssistStatus(userFleets[i]);
                     while (Date.now() < warpCooldownExpiresAt) {
                         console.log(`[${userFleets[i].label}] Waiting for warp cooldown`);
                         await wait(5000);
@@ -1143,6 +1199,7 @@
         console.log(`[${userFleets[i].label}] Tools Remaining: ${changesTool.postBalance}`);
         userFleets[i].toolCnt = changesTool.postBalance;
         userFleets[i].sduCnt = changesSDU.postBalance;
+        updateAssistStatus(userFleets[i]);
         setTimeout(() => {
             userFleets[i].state = 'Idle';
             updateAssistStatus(userFleets[i]);
@@ -1251,21 +1308,21 @@
         if(document.querySelectorAll('#root > div:first-of-type > div:first-of-type > div > header > h1').length > 0 && !document.getElementById("autoScanBtn")) {
             observer.disconnect();
             let assistCSS = document.createElement('style');
-            assistCSS.innerHTML = '.assist-modal {display: none; position: fixed; z-index: 1; padding-top: 100px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);} .assist-modal-content {position: relative; display: flex; flex-direction: column; background-color: rgb(41, 41, 48); margin: auto; padding: 0; border: 1px solid #888; width: 650px; min-width: 450px; max-width: 75%; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19); -webkit-animation-name: animatetop; -webkit-animation-duration: 0.4s; animation-name: animatetop; animation-duration: 0.4s} #assist-modal-error {color: red; margin-left: 5px; margin-right: 5px; font-size: 16px;} .assist-modal-header-right {color: rgb(255, 190, 77); float: right; font-size: 20px;} .assist-btn {background-color: rgb(41, 41, 48); color: rgb(255, 190, 77); margin-left: 2px; margin-right: 2px;} .assist-modal-close:hover, .assist-modal-close:focus {font-weight: bold; text-decoration: none; cursor: pointer;} .assist-modal-header {padding: 2px 16px; background-color: rgba(255, 190, 77, 0.2); border-bottom: 2px solid rgb(255, 190, 77); color: rgb(255, 190, 77);} .assist-modal-body {padding: 2px 16px; font-size: 16px;} .assist-modal-body > table {width: 100%;} .assist-modal-body th, .assist-modal-body td {padding-left: 5px, padding-left: 5px;} #assistStatus {background-color: rgba(0,0,0,0.4); opacity: 0.75; position: fixed; top: 80px; right: 20px; z-index: 1;}';
+            assistCSS.innerHTML = '.assist-modal {display: none; position: fixed; z-index: 1; padding-top: 100px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);} .assist-modal-content {position: relative; display: flex; flex-direction: column; background-color: rgb(41, 41, 48); margin: auto; padding: 0; border: 1px solid #888; width: 650px; min-width: 450px; max-width: 75%; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19); -webkit-animation-name: animatetop; -webkit-animation-duration: 0.4s; animation-name: animatetop; animation-duration: 0.4s} #assist-modal-error {color: red; margin-left: 5px; margin-right: 5px; font-size: 16px;} .assist-modal-header-right {color: rgb(255, 190, 77); float: right; font-size: 20px;} .assist-btn {background-color: rgb(41, 41, 48); color: rgb(255, 190, 77); margin-left: 2px; margin-right: 2px;} .assist-modal-close:hover, .assist-modal-close:focus {font-weight: bold; text-decoration: none; cursor: pointer;} .assist-modal-header {padding: 2px 16px; background-color: rgba(255, 190, 77, 0.2); border-bottom: 2px solid rgb(255, 190, 77); color: rgb(255, 190, 77);} .assist-modal-body {padding: 2px 16px; font-size: 12px;} .assist-modal-body > table {width: 100%;} .assist-modal-body th, .assist-modal-body td {padding-left: 5px, padding-left: 5px;} #assistStatus {background-color: rgba(0,0,0,0.4); opacity: 0.75; position: fixed; top: 80px; right: 20px; z-index: 1;}';
             let assistModal = document.createElement('div');
             assistModal.classList.add('assist-modal');
             assistModal.id = 'assistModal';
             assistModal.style.display = 'none';
             let assistModalContent = document.createElement('div');
             assistModalContent.classList.add('assist-modal-content');
-            assistModalContent.innerHTML = '<div class="assist-modal-header"><span>SAGE Lab Assistant</span><div class="assist-modal-header-right"><button class="assist-modal-save assist-btn">Save</button><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><div style="display: flex; flex-direction: row; justify-content: center;"><input id="checkFleetCntInput" type="text" placeholder="x, y" style="width: 50px;"><button id="checkFleetBtn" class="assist-btn"><span style="font-size: 14px;">Check</span></button></div><table><tr><td>Fleet</td><td>Scan</td><td>Mine</td><td>Resource</td><td>Target Coords</td><td>Starbase Coords</td></tr></table></div>';
+            assistModalContent.innerHTML = '<div class="assist-modal-header"><span>SAGE Lab Assistant</span><div class="assist-modal-header-right"><button class="assist-modal-save assist-btn">Save</button><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><div style="display: flex; flex-direction: row; justify-content: center;"><input id="checkFleetCntInput" type="text" placeholder="x, y" style="width: 50px;"><button id="checkFleetBtn" class="assist-btn"><span style="font-size: 14px;">Check</span></button></div><table><tr><td>Fleet</td><td>Scan</td><td>Mine</td><td>Resource</td><td>Target</td><td>Starbase</td><td>Subwarp</td></tr></table></div>';
             assistModal.append(assistModalContent);
             let assistStatus = document.createElement('div');
             assistStatus.id = 'assistStatus';
             assistStatus.style.display = 'none';
             let assistStatusContent = document.createElement('div');
             assistStatusContent.classList.add('assist-status-content');
-            assistStatusContent.innerHTML = '<div class="assist-modal-header">Status<div class="assist-modal-header-right"><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><table><tr><td>Fleet</td><td>State</td></tr></table></div>'
+            assistStatusContent.innerHTML = '<div class="assist-modal-header">Status<div class="assist-modal-header-right"><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><table><tr><td>Fleet</td><td>Tools</td><td>SDUs</td><td>State</td></tr></table></div>'
             assistStatus.append(assistStatusContent);
             let autoContainer = document.createElement('div');
             autoContainer.style.display = 'flex';
@@ -1281,7 +1338,7 @@
             //autoButton.style.transform = 'translate(-50%, 0)';
             autoButton.addEventListener('click', function(e) {toggleAssistant();});
             let autoBtnSpan = document.createElement('span');
-            autoBtnSpan.innerText = 'Start';
+            autoBtnSpan.innerText = initComplete == true ? 'Start' : 'Wait...';
             autoBtnSpan.style.fontSize = '14px';
             autoButton.appendChild(autoBtnSpan);
             let assistConfigButton = document.createElement('button');
@@ -1324,6 +1381,8 @@
     observer.observe(document, {childList: true, subtree: true});
 
     await initUser();
+    let autoSpanRef = document.querySelector('#autoScanBtn > span');
+    autoSpanRef ? autoSpanRef.innerHTML = 'Start' : null;
     console.log('init complete');
     console.log(userFleets);
     //addModalInput(userFleets[0]);
