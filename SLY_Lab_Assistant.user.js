@@ -1002,10 +1002,6 @@
 
     function updateAssistStatus(fleet) {
         let targetRow = document.querySelectorAll('#assistStatus .assist-fleet-row[pk="' + fleet.publicKey.toString() + '"]');
-        console.log('-----DEBUG-----');
-        console.log(targetRow);
-        console.log(`TOOL: [${fleet.toolCnt}]`);
-        console.log(`SDU: [${fleet.sduCnt}]`);
 
         if (targetRow.length > 0) {
             targetRow[0].children[1].firstChild.innerHTML = fleet.toolCnt;
