@@ -3,7 +3,7 @@
 // @namespace    http://tampermonkey.net/
 // @version      0.3
 // @description  try to take over the world!
-// @author       SLY
+// @author       SLY w/ Surveillance by SkyLove512
 // @match        https://labs.staratlas.com/
 // @require      https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js
 // @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/anchor-browserified.js
@@ -1291,7 +1291,8 @@
         let fleetMineRes = document.createElement('select');
         assistResources.forEach( function(resource) {optionsStr += '<option value="' + resource + '">' + resource + '</option>';});
         fleetMineRes.innerHTML = optionsStr;
-        fleetMineRes.value = fleetParsedData && fleetParsedData.mineResource !== '' ? resourceTokens.find(r => r.token == fleetParsedData.mineResource).name : '';
+        let resourceToken = fleetParsedData && fleetParsedData.mineResource !== '' ? resourceTokens.find(r => r.token == fleetParsedData.mineResource) : '';
+        fleetMineRes.value = resourceToken && resourceToken.name ? resourceToken.name : '';
         let fleetMineResTd = document.createElement('td');
         fleetMineResTd.appendChild(fleetMineRes);
 
