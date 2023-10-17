@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.2.5
+// @version      0.3
 // @description  try to take over the world!
 // @author       SLY
 // @match        https://labs.staratlas.com/
@@ -31,6 +31,7 @@
     const cargoProgramId = new solanaWeb3.PublicKey('Cargo8a1e6NkGyrjy4BQEW4ASGKs9KSyDyUrXMfpJoiH');
     const profileFactionIDL = JSON.parse('{"version":"0.7.0","name":"profile_faction","instructions":[{"name":"chooseFaction","accounts":[{"name":"key","isMut":false,"isSigner":true,"docs":["The key with auth permissions."]},{"name":"funder","isMut":true,"isSigner":true,"docs":["The funder for the transaction."]},{"name":"profile","isMut":false,"isSigner":false,"docs":["The profile to change faction for."]},{"name":"faction","isMut":true,"isSigner":false,"docs":["The faction to change to."]},{"name":"systemProgram","isMut":false,"isSigner":false,"docs":["The system program."]}],"args":[{"name":"keyIndex","type":"u16"},{"name":"faction","type":{"defined":"Faction"}}]}],"accounts":[{"name":"ProfileFactionAccount","docs":["Stores a profiles enlisted faction on-chain."],"type":{"kind":"struct","fields":[{"name":"version","docs":["The data version of this account."],"type":"u8"},{"name":"profile","docs":["The profile this faction enlistment is for."],"type":"publicKey"},{"name":"faction","docs":["The faction of the profile."],"type":"u8"},{"name":"bump","docs":["The bump for this account."],"type":"u8"}]}}],"types":[{"name":"Faction","docs":["A faction that a player can belong to."],"type":{"kind":"enum","variants":[{"name":"Unaligned"},{"name":"MUD"},{"name":"ONI"},{"name":"Ustur"}]}}]}');
     const profileFactionProgramId = new solanaWeb3.PublicKey('pFACSRuobDmvfMKq1bAzwj27t6d2GJhSCHb1VcfnRmq');
+    const resourceTokens = [{name: 'Carbon', token: 'CARBWKWvxEuMcq3MqCxYfi7UoFVpL9c4rsQS99tw6i4X'},{name: 'Iron Ore', token: 'FeorejFjRRAfusN9Fg3WjEZ1dRCf74o6xwT5vDt3R34J'},{name: 'Diamond', token: 'DMNDKqygEN3WXKVrAD4ofkYBc4CKNRhFUbXP4VK7a944'},{name: 'Lumanite', token: 'LUMACqD5LaKjs1AeuJYToybasTXoYQ7YkxJEc4jowNj'},{name: 'Biomass', token: 'MASS9GqtJz6ABisAxcUn3FeR4phMqH1XfG6LPKJePog'},{name: 'Arco', token: 'ARCoQ9dndpg6wE2rRexzfwgJR3NoWWhpcww3xQcQLukg'},{name: 'Hydrogen', token: 'HYDR4EPHJcDPcaLYUcNCtrXUdt1PnaN4MvE655pevBYp'},{name: 'Copper Ore', token: 'CUore1tNkiubxSwDEtLc3Ybs1xfWLs8uGjyydUYZ25xc'},{name: 'Rochinol', token: 'RCH1Zhg4zcSSQK8rw2s6rDMVsgBEWa4kiv1oLFndrN5'}]
 
     let userPublicKey = null;
     let userProfileAcct = null;
@@ -90,6 +91,14 @@
             },
         },
     ]);
+    let cargoTypes = await cargoProgram.account.cargoType.all([
+        {
+           memcmp: {
+               offset: 75,
+                bytes: seq58,
+            },
+        },
+    ]);
     let [sduTokenFrom] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
         [
             new solanaWeb3.PublicKey('8bBi84Yi7vwSWXSYKDbbHmqnFqqAS41MvPkSEdzFtbsk').toBuffer(),
@@ -101,8 +110,6 @@
 
     function createProgramDerivedAccount(derived, derivedFrom1, derivedFrom2) {
         return new Promise(async resolve => {
-            // FIX: need to figure out how to initialize fleet.sduToken
-            //      look for await gr.getAccountInfo(Br) || (Rr.push(srcExports$2.createAssociatedTokenAccount(qr, Qr, !0).instructions)
             const keys = [{
                 pubkey: userPublicKey,
                 isSigner: true,
@@ -155,6 +162,7 @@
             }
             case 2:
                 fleetState = 'MineAsteroid';
+                extra = sageProgram.coder.types.decode('MineAsteroid', remainingData.subarray(1));
                 break;
             case 3:
                 fleetState = 'MoveWarp';
@@ -284,8 +292,10 @@
                 );
                 let fleetSavedData = await GM.getValue(fleet.publicKey.toString(), '{}');
                 let fleetParsedData = JSON.parse(fleetSavedData);
-                let fleetScan = fleetParsedData && fleetParsedData.scan == 'true' ? true : false;
+                //let fleetScan = fleetParsedData && fleetParsedData.scan == 'true' ? true : false;
+                //let fleetMine = fleetParsedData && fleetParsedData.mine == 'true' ? true : false;
                 let fleetDest = fleetParsedData && fleetParsedData.dest ? fleetParsedData.dest : '';
+                let fleetMineResource = fleetParsedData && fleetParsedData.mineResource ? fleetParsedData.mineResource : '';
                 let fleetStarbase = fleetParsedData && fleetParsedData.starbase ? fleetParsedData.starbase : '';
                 let fleetMoveType = fleetParsedData && fleetParsedData.moveType ? fleetParsedData.moveType : 'warp';
                 await solanaConnection.getAccountInfo(fleetSduToken) || await createProgramDerivedAccount(fleetSduToken, fleet.account.cargoHold, new solanaWeb3.PublicKey('SDUsgfSZaDhhZ76U3ZgvtFiXsfnHbf2VrzYxjBZ5YbM'));
@@ -297,8 +307,10 @@
                 let currentFuelCnt = fleetCurrentFuel.value.find(item => item.pubkey.toString() === fleetFuelToken.toString());
                 let fleetAcctInfo = await solanaConnection.getAccountInfo(fleet.publicKey);
                 let [fleetState, extra] = getFleetState(fleetAcctInfo);
+                console.log(fleetState);
+                console.log(extra);
                 let fleetCoords = fleetState == 'Idle' ? extra : [];
-                userFleets.push({publicKey: fleet.publicKey, label: fleetLabel.replace(/\0/g, ''), state: fleetState, startingCoords: fleetCoords, cargoHold: fleet.account.cargoHold, fuelTank: fleet.account.fuelTank, repairKitToken: fleetRepairKitToken, sduToken: fleetSduToken, fuelToken: fleetFuelToken, warpFuelConsumptionRate: fleet.account.stats.movementStats.warpFuelConsumptionRate, warpSpeed: fleet.account.stats.movementStats.warpSpeed, maxWarpDistance: fleet.account.stats.movementStats.maxWarpDistance, subwarpFuelConsumptionRate: fleet.account.stats.movementStats.subwarpFuelConsumptionRate, subwarpSpeed: fleet.account.stats.movementStats.subwarpSpeed, cargoCapacity: fleet.account.stats.cargoStats.cargoCapacity, fuelCapacity: fleet.account.stats.cargoStats.fuelCapacity, scanCost: fleet.account.stats.miscStats.scanRepairKitAmount, scanCooldown: fleet.account.stats.miscStats.scanCoolDown, warpCooldown: fleet.account.stats.movementStats.warpCoolDown, destCoord: fleetDest, starbaseCoord: fleetStarbase, toolCnt: currentToolCnt.account.data.parsed.info.tokenAmount.uiAmount, sduCnt: 0, fuelCnt: currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount, moveType: fleetMoveType});
+                userFleets.push({publicKey: fleet.publicKey, label: fleetLabel.replace(/\0/g, ''), state: fleetState, startingCoords: fleetCoords, cargoHold: fleet.account.cargoHold, fuelTank: fleet.account.fuelTank, ammoBank: fleet.account.ammoBank, repairKitToken: fleetRepairKitToken, sduToken: fleetSduToken, fuelToken: fleetFuelToken, warpFuelConsumptionRate: fleet.account.stats.movementStats.warpFuelConsumptionRate, warpSpeed: fleet.account.stats.movementStats.warpSpeed, maxWarpDistance: fleet.account.stats.movementStats.maxWarpDistance, subwarpFuelConsumptionRate: fleet.account.stats.movementStats.subwarpFuelConsumptionRate, subwarpSpeed: fleet.account.stats.movementStats.subwarpSpeed, cargoCapacity: fleet.account.stats.cargoStats.cargoCapacity, fuelCapacity: fleet.account.stats.cargoStats.fuelCapacity, ammoCapacity: fleet.account.stats.cargoStats.ammoCapacity, scanCost: fleet.account.stats.miscStats.scanRepairKitAmount, scanCooldown: fleet.account.stats.miscStats.scanCoolDown, warpCooldown: fleet.account.stats.movementStats.warpCoolDown, miningRate: fleet.account.stats.cargoStats.miningRate, foodConsumptionRate: fleet.account.stats.cargoStats.foodConsumptionRate, destCoord: fleetDest, starbaseCoord: fleetStarbase, toolCnt: currentToolCnt.account.data.parsed.info.tokenAmount.uiAmount, sduCnt: 0, fuelCnt: currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount, moveType: fleetMoveType, mineResource: fleetMineResource, minePlanet: null});
             }
             userFleets.sort(function (a, b) {
                 return a.label.toUpperCase().localeCompare(b.label.toUpperCase());
@@ -361,6 +373,10 @@
         return distance * (fleet.subwarpFuelConsumptionRate / 100)
     }
 
+    function calculateMiningDuration(fleet, resourceHardness, systemRichness) {
+        return resourceHardness > 0 ? Math.ceil(fleet.cargoCapacity / (((fleet.miningRate / 10000) * (systemRichness / 100)) / (resourceHardness / 100))) : 0;
+    }
+
     async function getStarbaseFromCoords(x, y) {
         return new Promise(async resolve => {
             let xBN = new BrowserAnchor.anchor.BN(x);
@@ -387,6 +403,32 @@
         });
     }
 
+    async function getPlanetsFromCoords(x, y) {
+        return new Promise(async resolve => {
+            let xBN = new BrowserAnchor.anchor.BN(x);
+            let xArr = xBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "le", 8);
+            let x58 = bs58.encode(xArr);
+            let yBN = new BrowserAnchor.anchor.BN(y);
+            let yArr = yBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "le", 8);
+            let y58 = bs58.encode(yArr);
+            let planets = await sageProgram.account.planet.all([
+                {
+                    memcmp: {
+                        offset: 105,
+                        bytes: x58
+                    }
+                },
+                {
+                    memcmp: {
+                        offset: 113,
+                        bytes: y58
+                    }
+                },
+            ]);
+            resolve(planets);
+        });
+    }
+
     async function getStarbasePlayer(userProfile, starbase) {
         return new Promise(async resolve => {
             let [starbasePlayer] = await sageProgram.account.starbasePlayer.all([
@@ -408,37 +450,77 @@
     }
 
     async function getFleetCntAtCoords() {
+        let gridSizeElem = document.querySelector('#fleetGridSelect');
+        let gridSize = gridSizeElem.value;
         let targetCoordsElem = document.querySelector('#checkFleetCntInput');
         let targetCoords = targetCoordsElem.value;
-        let x = targetCoords.split(',').length > 1 ? targetCoords.split(',')[0].trim() : 0;
-        let y = targetCoords.split(',').length > 1 ? targetCoords.split(',')[1].trim() : 0;
-        let xBN = new BrowserAnchor.anchor.BN(x);
-        let xArr = xBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "le", 8);
-        let x58 = bs58.encode(xArr);
-        let yBN = new BrowserAnchor.anchor.BN(y);
-        let yArr = yBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "le", 8);
-        let y58 = bs58.encode(yArr);
-        let fleetAccts = await solanaConnection.getProgramAccounts(
-            sageProgramId,
-            {
-                filters: [
-                    {
-                        memcmp: {
-                            offset: 415,
-                            bytes: x58,
-                        },
-                    },
-                    {
-                        memcmp: {
-                            offset: 423,
-                            bytes: y58,
-                        },
-                    },
-                ],
+        let fleetGrid = document.querySelector('#fleetGrid');
+        let loadingMessage = document.querySelector('#loadingMessage');
+        if (!targetCoords || targetCoords.trim() === '') {
+            loadingMessage.innerText = 'Please enter target coordinates for grid center.';
+            loadingMessage.style.display = 'block';
+            fleetGrid.style.display = 'none';
+            return;// Stop further processing since input is empty or idle
+        }
+        let [x, y] = targetCoords.split(',').map(coord => parseInt(coord.trim()));
+
+        fleetGrid.innerHTML = ''; // Clear previous results
+
+        try {
+            loadingMessage.innerText = 'Loading...';
+            loadingMessage.style.display = 'block';
+            fleetGrid.style.display = 'none';
+
+            for (let i = 0; i < gridSize; i++) {
+                let row = fleetGrid.insertRow();
+                for (let j = 0; j < gridSize; j++) {
+                    let coordX = x + j - Math.floor(gridSize / 2);// Adjusted for column-first population
+                    let coordY = y + (gridSize-1) - i - Math.floor(gridSize / 2);// Adjusted for descending y value
+
+                    let xBN = new BrowserAnchor.anchor.BN(coordX);
+                    let xArr = xBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, 'le', 8);
+                    let x58 = bs58.encode(xArr);
+
+                    let yBN = new BrowserAnchor.anchor.BN(coordY);
+                    let yArr = yBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, 'le', 8);
+                    let y58 = bs58.encode(yArr);
+
+                    let fleetAccts = await solanaConnection.getProgramAccounts(sageProgramId, {
+                        filters: [
+                            { memcmp: { offset: 415, bytes: x58 } },
+                            { memcmp: { offset: 423, bytes: y58 } },
+                        ],
+                    });
+
+                    let cell = row.insertCell(j);
+                    // Create a div to hold the content for formatting
+                    let contentDiv = document.createElement('div');
+                    contentDiv.style.textAlign = 'center';
+
+                    // Set the content of the div (coordinates and fleet count)
+                    contentDiv.innerHTML = `<div>[${coordX},${coordY}]</div><div>${fleetAccts.length}</div>`;
+
+                    // Apply background color
+                    cell.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+
+                    // Apply border style
+                    cell.style.border = '2px solid rgb(255, 190, 77)';
+                    cell.style.borderRadius = '8px';
+                    cell.style.padding = '9px'; // Adjust padding to maintain inner content space
+
+                    // Append the content div to the cell
+                    cell.appendChild(contentDiv);
+                }
             }
-        );
-        let msgElem = document.querySelectorAll('#assist-modal-error');
-        msgElem[0].innerHTML = fleetAccts.length + ' fleets idle at [' + x + ',' + y + ']';
+
+            loadingMessage.style.display = 'none';
+            fleetGrid.style.display = 'block';
+            //resultDiv.appendChild(fleetGrid);
+
+        } catch (error) {
+            console.error('Error fetching fleet information:', error);
+            loadingMessage.innerText = 'Error fetching fleet information';
+        }
     }
 
     function waitForTxConfirmation(txHash) {
@@ -475,7 +557,11 @@
             let tx = new solanaWeb3.Transaction();
             console.log('---INSTRUCTION---');
             console.log(ix);
-            tx.add(ix.instruction);
+            if (ix.constructor === Array) {
+                ix.forEach(item => tx.add(item.instruction))
+            } else {
+                tx.add(ix.instruction);
+            }
             let latestBH = await solanaConnection.getLatestBlockhash('confirmed');
             tx.recentBlockhash = latestBH.blockhash;
             tx.lastValidBlockHeight = latestBH.lastValidBlockHeight;
@@ -494,14 +580,18 @@
             let confirmation = await waitForTxConfirmation(txHash);
             console.log('---CONFIRMATION---');
             console.log(confirmation);
-            let txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1})
-            if (!txResult) {
-                console.log('-----------------Transaction failed.-----------------');
-                if (confirmation.name == 'TransactionExpiredBlockheightExceededError') {
-                    console.log('RETRY');
-                    txResult = await txSignAndSend(ix);
+            let txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
+            if (confirmation.name == 'TransactionExpiredBlockheightExceededError' && !txResult) {
+                console.log('-----RETRY-----');
+                txResult = await txSignAndSend(ix);
+            }
+            if (!confirmation.name) {
+                while (!txResult) {
+                    await wait(2000);
+                    txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
                 }
             }
+            console.log('txResult: ', txResult);
             resolve(txResult);
         });
     }
@@ -714,10 +804,10 @@
         });
     }
 
-    async function execDock(fleet) {
+    async function execDock(fleet, dockCoords) {
         return new Promise(async resolve => {
-            let starbaseX = fleet.starbaseCoord.split(',')[0].trim();
-            let starbaseY = fleet.starbaseCoord.split(',')[1].trim();
+            let starbaseX = dockCoords.split(',')[0].trim();
+            let starbaseY = dockCoords.split(',')[1].trim();
             let starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
             let starbasePlayer = await getStarbasePlayer(userProfileAcct,starbase.publicKey);
             let tx = { instruction: await sageProgram.methods.idleToLoadingBay({keyIndex: 0}).accountsStrict({
@@ -743,10 +833,10 @@
         });
     }
 
-    async function execUndock(fleet) {
+    async function execUndock(fleet, dockCoords) {
         return new Promise(async resolve => {
-            let starbaseX = fleet.starbaseCoord.split(',')[0].trim();
-            let starbaseY = fleet.starbaseCoord.split(',')[1].trim();
+            let starbaseX = dockCoords.split(',')[0].trim();
+            let starbaseY = dockCoords.split(',')[1].trim();
             let starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
             let starbasePlayer = await getStarbasePlayer(userProfileAcct,starbase.publicKey);
             let tx = { instruction: await sageProgram.methods.loadingBayToIdle({keyIndex: 0}).accountsStrict({
@@ -776,10 +866,10 @@
         });
     }
 
-    async function execCargoFromFleetToStarbase(fleet, amount) {
+    async function execCargoFromFleetToStarbase(fleet, fleetCargoPod, tokenMint, dockCoords, amount) {
         return new Promise(async resolve => {
-            let starbaseX = fleet.starbaseCoord.split(',')[0].trim();
-            let starbaseY = fleet.starbaseCoord.split(',')[1].trim();
+            let starbaseX = dockCoords.split(',')[0].trim();
+            let starbaseY = dockCoords.split(',')[1].trim();
             let starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
             let starbasePlayer = await getStarbasePlayer(userProfileAcct,starbase.publicKey);
             let starbasePlayerCargoHolds = await cargoProgram.account.cargoPod.all([
@@ -795,11 +885,20 @@
                 [
                     starbasePlayerCargoHold.publicKey.toBuffer(),
                     new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').toBuffer(),
-                    new solanaWeb3.PublicKey('SDUsgfSZaDhhZ76U3ZgvtFiXsfnHbf2VrzYxjBZ5YbM').toBuffer()
+                    new solanaWeb3.PublicKey(tokenMint).toBuffer()
                 ],
                 new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
             );
-            await solanaConnection.getAccountInfo(starbaseCargoToken) || await createProgramDerivedAccount(starbaseCargoToken, starbasePlayerCargoHold.publicKey, new solanaWeb3.PublicKey('SDUsgfSZaDhhZ76U3ZgvtFiXsfnHbf2VrzYxjBZ5YbM'));
+            let [fleetResourceToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+                [
+                    fleetCargoPod.toBuffer(),
+                    new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').toBuffer(),
+                    new solanaWeb3.PublicKey(tokenMint).toBuffer()
+                ],
+                new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
+            );
+            let resourceCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == tokenMint);
+            await solanaConnection.getAccountInfo(starbaseCargoToken) || await createProgramDerivedAccount(starbaseCargoToken, starbasePlayerCargoHold.publicKey, new solanaWeb3.PublicKey(tokenMint));
             let tx = { instruction: await sageProgram.methods.withdrawCargoFromFleet({ amount: new BrowserAnchor.anchor.BN(amount), keyIndex: 0 }).accountsStrict({
                 gameAccountsFleetAndOwner: {
                     gameFleetAndOwner: {
@@ -817,13 +916,13 @@
                     starbase: starbase.publicKey,
                     starbasePlayer: starbasePlayer.publicKey
                 },
-                cargoPodFrom: fleet.cargoHold,
+                cargoPodFrom: fleetCargoPod, // fleet.cargoHold,
                 cargoPodTo: starbasePlayerCargoHold.publicKey,
-                cargoType: sduCargoTypeAcct.publicKey,
+                cargoType: resourceCargoTypeAcct.publicKey,
                 cargoStatsDefinition: sageGameAcct.account.cargo.statsDefinition,
-                tokenFrom: fleet.sduToken,
+                tokenFrom: fleetResourceToken,
                 tokenTo: starbaseCargoToken,
-                tokenMint: 'SDUsgfSZaDhhZ76U3ZgvtFiXsfnHbf2VrzYxjBZ5YbM',
+                tokenMint: tokenMint,
                 fundsTo: userPublicKey,
                 cargoProgram: cargoProgramId,
                 tokenProgram: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'
@@ -837,11 +936,11 @@
         });
     }
 
-    async function execCargoFromStarbaseToFleet(fleet, cargoPodTo, tokenTo, tokenMint, cargoType, amount) {
+    async function execCargoFromStarbaseToFleet(fleet, cargoPodTo, tokenTo, tokenMint, cargoType, dockCoords, amount) {
         return new Promise(async resolve => {
             await solanaConnection.getAccountInfo(tokenTo) || await createProgramDerivedAccount(tokenTo, cargoPodTo, new solanaWeb3.PublicKey(tokenMint));
-            let starbaseX = fleet.starbaseCoord.split(',')[0].trim();
-            let starbaseY = fleet.starbaseCoord.split(',')[1].trim();
+            let starbaseX = dockCoords.split(',')[0].trim();
+            let starbaseY = dockCoords.split(',')[1].trim();
             let starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
             let starbasePlayer = await getStarbasePlayer(userProfileAcct,starbase.publicKey);
             let starbasePlayerCargoHolds = await cargoProgram.account.cargoPod.all([
@@ -853,16 +952,25 @@
                 },
             ]);
             let starbasePlayerCargoHold = null;
+            let mostFound = 0;
             for (let cargoHold of starbasePlayerCargoHolds) {
                 if (cargoHold.account && cargoHold.account.openTokenAccounts > 0) {
                     let cargoHoldTokens = await solanaConnection.getParsedTokenAccountsByOwner(cargoHold.publicKey, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
                     let cargoHoldFound = cargoHoldTokens.value.find(item => item.account.data.parsed.info.mint === tokenMint && item.account.data.parsed.info.tokenAmount.uiAmount >= amount);
                     if (cargoHoldFound) {
                         starbasePlayerCargoHold = cargoHold;
+                        mostFound = cargoHoldFound.account.data.parsed.info.tokenAmount.uiAmount;
                         break;
+                    } else {
+                        let cargoHoldFound = cargoHoldTokens.value.find(item => item.account.data.parsed.info.mint === tokenMint && item.account.data.parsed.info.tokenAmount.uiAmount >= mostFound);
+                        if (cargoHoldFound) {
+                            starbasePlayerCargoHold = cargoHold;
+                            mostFound = cargoHoldFound.account.data.parsed.info.tokenAmount.uiAmount;
+                        }
                     }
                 }
             }
+            amount = amount > mostFound ? mostFound : amount;
             let [starbaseCargoToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
                 [
                     starbasePlayerCargoHold.publicKey.toBuffer(),
@@ -940,34 +1048,253 @@
         });
     }
 
+    async function execStartMining(fleet, mineItem, sageResource, planet) {
+        return new Promise(async resolve => {
+            let resourceToken = fleet.mineResource;
+            let targetX = fleet.destCoord.split(',')[0].trim();
+            let targetY = fleet.destCoord.split(',')[1].trim();
+            let starbase = await getStarbaseFromCoords(targetX, targetY);
+            let starbasePlayer = await getStarbasePlayer(userProfileAcct,starbase.publicKey);
+            let tx = { instruction: await sageProgram.methods.startMiningAsteroid({keyIndex: 0}).accountsStrict({
+                gameAccountsFleetAndOwner: {
+                    gameFleetAndOwner: {
+                        fleetAndOwner: {
+                            fleet: fleet.publicKey,
+                            owningProfile: userProfileAcct,
+                            owningProfileFaction: userProfileFactionAcct.publicKey,
+                            key: userPublicKey
+                        },
+                        gameId: sageGameAcct.publicKey
+                    },
+                    gameState: sageGameAcct.account.gameState
+                },
+                starbaseAndStarbasePlayer: {
+                    starbase: starbase.publicKey,
+                    starbasePlayer: starbasePlayer.publicKey
+                },
+                mineItem : mineItem.publicKey,
+                resource: sageResource.publicKey,
+                planet: planet.publicKey,
+            }).instruction()}
+            let txResult = await txSignAndSend(tx);
+        });
+    }
+
+    async function execStopMining(fleet, sageResource, sageResourceAcctInfo, mineItem, resourceToken) {
+        return new Promise(async resolve => {
+            let planet = sageResourceAcctInfo.location;
+            let targetX = fleet.destCoord.split(',')[0].trim();
+            let targetY = fleet.destCoord.split(',')[1].trim();
+            let starbase = await getStarbaseFromCoords(targetX, targetY);
+            let starbasePlayer = await getStarbasePlayer(userProfileAcct,starbase.publicKey);
+
+            let [planetResourceToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+                [
+                    mineItem.toBuffer(),
+                    new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').toBuffer(),
+                    resourceToken.toBuffer()
+                ],
+                new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
+            );
+            let [fleetResourceToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+                [
+                    fleet.cargoHold.toBuffer(),
+                    new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').toBuffer(),
+                   resourceToken.toBuffer()
+                ],
+                new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
+            );
+            let [fleetFoodToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+                [
+                    fleet.cargoHold.toBuffer(),
+                    new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').toBuffer(),
+                    sageGameAcct.account.mints.food.toBuffer()
+                ],
+                new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
+            );
+            let [fleetAmmoToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+                [
+                    fleet.ammoBank.toBuffer(),
+                    new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').toBuffer(),
+                    sageGameAcct.account.mints.ammo.toBuffer()
+                ],
+                new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
+            );
+            await solanaConnection.getAccountInfo(fleetResourceToken) || await createProgramDerivedAccount(fleetResourceToken, fleet.cargoHold, resourceToken);
+            let foodCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.food);
+            let ammoCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.ammo);
+            let resourceCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == resourceToken.toString());
+            let tx1 = { instruction: await sageProgram.methods.fleetStateHandler().accountsStrict({
+                fleet: fleet.publicKey
+            }).remainingAccounts([
+                {
+                    pubkey: userProfileFactionAcct.publicKey,
+                    isSigner: false,
+                    isWritable: false
+                },
+                {
+                    pubkey: fleet.cargoHold,
+                    isSigner: false,
+                    isWritable: true
+                },
+                {
+                    pubkey: fleet.ammoBank,
+                    isSigner: false,
+                    isWritable: true
+                },
+                {
+                    pubkey: mineItem,
+                    isSigner: false,
+                    isWritable: false
+                },
+                {
+                    pubkey: sageResource, //Account5
+                    isSigner: false,
+                    isWritable: true
+                },
+                {
+                    pubkey: planet,
+                    isSigner: false,
+                    isWritable: true
+                },
+                {
+                    pubkey: starbase.publicKey,
+                    isSigner: false,
+                    isWritable: false
+                },
+                {
+                    pubkey: fleetFoodToken, //foodTokenFrom
+                    isSigner: false,
+                    isWritable: true
+                },
+                {
+                    pubkey: fleetAmmoToken, //ammoTokenFrom
+                    isSigner: false,
+                    isWritable: true
+                },
+                {
+                    pubkey: planetResourceToken, //resourceTokenFrom
+                    isSigner: false,
+                    isWritable: true
+                },
+                {
+                    pubkey: fleetResourceToken, //resourceTokenTo
+                    isSigner: false,
+                    isWritable: true
+                },
+                {
+                    pubkey: sageGameAcct.account.mints.food,
+                    isSigner: false,
+                    isWritable: true
+                },
+                {
+                    pubkey: sageGameAcct.account.mints.ammo,
+                    isSigner: false,
+                    isWritable: true
+                },
+                {
+                    pubkey: foodCargoTypeAcct.publicKey,
+                    isSigner: false,
+                    isWritable: false
+                },
+                {
+                    pubkey: ammoCargoTypeAcct.publicKey,
+                    isSigner: false,
+                    isWritable: false
+                },
+                {
+                    pubkey: resourceCargoTypeAcct.publicKey,
+                    isSigner: false,
+                    isWritable: false
+                },
+                {
+                    pubkey: sageGameAcct.account.cargo.statsDefinition,
+                    isSigner: false,
+                    isWritable: false
+                },
+                {
+                    pubkey: sageGameAcct.publicKey,
+                    isSigner: false,
+                    isWritable: false
+                },
+                {
+                    pubkey: new solanaWeb3.PublicKey('Cargo8a1e6NkGyrjy4BQEW4ASGKs9KSyDyUrXMfpJoiH'),
+                    isSigner: false,
+                    isWritable: false
+                },
+                {
+                    pubkey: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'),
+                    isSigner: false,
+                    isWritable: false
+                },
+            ]).instruction()}
+
+            let tx2 = { instruction: await sageProgram.methods.stopMiningAsteroid({keyIndex: 0}).accountsStrict({
+                gameAccountsFleetAndOwner: {
+                    gameFleetAndOwner: {
+                        fleetAndOwner: {
+                            fleet: fleet.publicKey,
+                            owningProfile: userProfileAcct,
+                            owningProfileFaction: userProfileFactionAcct.publicKey,
+                            key: userPublicKey
+                        },
+                        gameId: sageGameAcct.publicKey
+                    },
+                    gameState: sageGameAcct.account.gameState
+                },
+                resource: sageResource,
+                planet: planet,
+                fuelTank : fleet.fuelTank,
+                cargoType: fuelCargoTypeAcct.publicKey,
+                cargoStatsDefinition: sageGameAcct.account.cargo.statsDefinition,
+                tokenFrom: fleet.fuelToken,
+                tokenMint: sageGameAcct.account.mints.fuel,
+                cargoProgram: new solanaWeb3.PublicKey('Cargo8a1e6NkGyrjy4BQEW4ASGKs9KSyDyUrXMfpJoiH'),
+                tokenProgram: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'),
+            }).instruction()}
+            let txResult = await txSignAndSend([tx1,tx2]);
+            console.log('---STOP MINE---');
+            console.log(txResult);
+            resolve(txResult);
+        });
+    }
+
     async function addAssistInput(fleet) {
         let fleetSavedData = await GM.getValue(fleet.publicKey.toString(), '{}');
         let fleetParsedData = JSON.parse(fleetSavedData);
         let fleetRow = document.createElement('tr');
         fleetRow.classList.add('assist-fleet-row');
         fleetRow.setAttribute('pk', fleet.publicKey.toString());
+
         let fleetLabel = document.createElement('span');
         fleetLabel.innerHTML = fleet.label;
         let fleetLabelTd = document.createElement('td');
         fleetLabelTd.appendChild(fleetLabel);
-        let fleetScan = document.createElement('input');
-        fleetScan.setAttribute('type', 'checkbox');
-        fleetScan.checked = fleetParsedData && fleetParsedData.scan == 'true' ? true : false;
-        let fleetScanTd = document.createElement('td');
-        fleetScanTd.appendChild(fleetScan);
-        let fleetMine = document.createElement('input');
-        fleetMine.setAttribute('type', 'checkbox');
-        fleetMine.setAttribute('disabled', '');
-        let fleetMineTd = document.createElement('td');
-        fleetMineTd.appendChild(fleetMine);
-        let fleetMineRes = document.createElement('select');
-        let assistResources = ['Hydrogen','Biomass','Carbon','Iron Ore','Copper Ore','Lumanite','Rochinol','Diamond','Arcos']
+
+        let assistAssignments = ['','Scan','Mine','Transport'];
+        let assignmentOptionsStr = '';
+        let fleetAssignment = document.createElement('select');
+        assistAssignments.forEach( function(assignment) {assignmentOptionsStr += '<option value="' + assignment + '">' + assignment + '</option>';});
+        fleetAssignment.innerHTML = assignmentOptionsStr;
+        fleetAssignment.value = fleetParsedData && fleetParsedData.assignment ? fleetParsedData.assignment : '';
+        let fleetAssignmentTd = document.createElement('td');
+        fleetAssignmentTd.appendChild(fleetAssignment);
+
+        let fleetResupply = document.createElement('input');
+        fleetResupply.setAttribute('type', 'checkbox');
+        fleetResupply.checked = fleetParsedData && fleetParsedData.resupply == 'true' ? true : false;
+        let fleetResupplyTd = document.createElement('td');
+        fleetResupplyTd.appendChild(fleetResupply);
+
+        let assistResources = ['','Arco','Biomass','Carbon','Copper Ore','Diamond','Hydrogen','Iron Ore','Lumanite','Rochinol']
         let optionsStr = '';
+        let fleetMineRes = document.createElement('select');
         assistResources.forEach( function(resource) {optionsStr += '<option value="' + resource + '">' + resource + '</option>';});
         fleetMineRes.innerHTML = optionsStr;
-        fleetMineRes.setAttribute('disabled', '');
+        fleetMineRes.value = fleetParsedData && fleetParsedData.mineResource !== '' ? resourceTokens.find(r => r.token == fleetParsedData.mineResource).name : '';
         let fleetMineResTd = document.createElement('td');
         fleetMineResTd.appendChild(fleetMineRes);
+
         let fleetDestCoord = document.createElement('input');
         fleetDestCoord.setAttribute('type', 'text');
         fleetDestCoord.placeholder = 'x, y';
@@ -975,6 +1302,7 @@
         fleetDestCoord.value = fleetParsedData && fleetParsedData.dest ? fleetParsedData.dest : '';
         let fleetDestCoordTd = document.createElement('td');
         fleetDestCoordTd.appendChild(fleetDestCoord);
+
         let fleetStarbaseCoord = document.createElement('input');
         fleetStarbaseCoord.setAttribute('type', 'text');
         fleetStarbaseCoord.placeholder = 'x, y';
@@ -990,8 +1318,8 @@
         fleetSubwarpPrefTd.appendChild(fleetSubwarpPref);
 
         fleetRow.appendChild(fleetLabelTd);
-        fleetRow.appendChild(fleetScanTd);
-        fleetRow.appendChild(fleetMineTd);
+        fleetRow.appendChild(fleetAssignmentTd);
+        fleetRow.appendChild(fleetResupplyTd);
         fleetRow.appendChild(fleetMineResTd);
         fleetRow.appendChild(fleetDestCoordTd);
         fleetRow.appendChild(fleetStarbaseCoordTd);
@@ -1044,7 +1372,12 @@
             let rowErrBool = false;
             let fleetPK = row.getAttribute('pk');
             let fleetName = row.children[0].firstChild.innerText;
-            let fleetScan = row.children[1].firstChild.checked;
+            //let fleetScan = row.children[1].firstChild.checked;
+            //let fleetMine = row.children[2].firstChild.checked;
+            let fleetAssignment = row.children[1].firstChild.value;
+            let fleetResupply = row.children[2].firstChild.checked;
+            let fleetMineResource = row.children[3].firstChild.value;
+            fleetMineResource = fleetMineResource !== '' ? resourceTokens.find(r => r.name == fleetMineResource).token : '';
             let fleetDestCoord = row.children[4].firstChild.value;
             let fleetStarbaseCoord = row.children[5].firstChild.value;
             let subwarpPref = row.children[6].firstChild.checked;
@@ -1055,7 +1388,7 @@
             let userFleetIndex = userFleets.findIndex(item => {return item.publicKey == fleetPK});
             let moveType = subwarpPref == true ? 'subwarp' : 'warp';
             let moveDist = calculateMovementDistance([starbaseX,starbaseY], [destX,destY]);
-            if (fleetScan == true && (moveDist > userFleets[userFleetIndex].maxWarpDistance / 100)) {
+            if (fleetAssignment !== '' && (moveDist > userFleets[userFleetIndex].maxWarpDistance / 100)) {
                 let subwarpCost = calculateSubwarpFuelBurn(userFleets[userFleetIndex], moveDist);
                 if (subwarpCost * 2 > userFleets[userFleetIndex].fuelCapacity) {
                     console.log('ERROR: Fleet will not have enough fuel to return to starbase');
@@ -1068,16 +1401,9 @@
                     moveType = 'subwarp';
                 }
             }
-            if (fleetScan == true && (destX == '' || destY == '' || starbaseX == '' || starbaseY == '')) {
-                console.log('ERROR: Invalid coordinates. Correct format: 10,20');
-                row.children[4].firstChild.style.border = '2px solid red';
-                row.children[5].firstChild.style.border = '2px solid red';
-                errElem[0].innerHTML = 'ERROR: Invalid coordinates. Correct format: 10,20';
-                errBool = true;
-                rowErrBool = true;
-            }
             if (rowErrBool === false) {
-                await GM.setValue(fleetPK, `{\"name\": \"${fleetName}\", \"scan\": \"${fleetScan}\", \"dest\": \"${fleetDestCoord}\", \"starbase\": \"${fleetStarbaseCoord}\", \"moveType\": \"${moveType}\", \"subwarpPref\": \"${subwarpPref}\"}`);
+                await GM.setValue(fleetPK, `{\"name\": \"${fleetName}\", \"assignment\": \"${fleetAssignment}\", \"resupply\": \"${fleetResupply}\", \"mineResource\": \"${fleetMineResource}\", \"dest\": \"${fleetDestCoord}\", \"starbase\": \"${fleetStarbaseCoord}\", \"moveType\": \"${moveType}\", \"subwarpPref\": \"${subwarpPref}\"}`);
+                userFleets[userFleetIndex].mineResource = fleetMineResource;
                 userFleets[userFleetIndex].destCoord = fleetDestCoord;
                 userFleets[userFleetIndex].starbaseCoord = fleetStarbaseCoord;
                 userFleets[userFleetIndex].moveType = moveType;
@@ -1111,6 +1437,15 @@
         }
     }
 
+    function assistCheckToggle() {
+        let targetElem = document.querySelector('#assistCheck');
+        if (targetElem.style.display === 'none') {
+            targetElem.style.display = 'block';
+        } else {
+            targetElem.style.display = 'none';
+        }
+    }
+
     async function handleMovement(i, moveDist, moveX, moveY) {
         return new Promise(async resolve => {
             let moveTime = 1;
@@ -1133,17 +1468,16 @@
                     moveTime = calculateWarpTime(userFleets[i], moveDist);
                     moveCost = calculateWarpFuelBurn(userFleets[i], moveDist);
                     let warpResult = await execWarp(userFleets[i], moveX, moveY);
+                    console.log('Warp Result: ', warpResult);
                     warpCooldownFinished = Date.now() + userFleets[i].warpCooldown*1000 + 2000;
                 } else {
                     console.log(`[${userFleets[i].label}] Subwarping to [${moveX},${moveY}]`);
                     moveTime = calculateSubwarpTime(userFleets[i], moveDist);
                     moveCost = calculateSubwarpFuelBurn(userFleets[i], moveDist);
                     let subwarpResult = await execSubwarp(userFleets[i], moveX, moveY);
+                    console.log('Subwarp Result: ', subwarpResult);
                 }
             }
-            console.log('Timer: ', moveTime * 1000 + 10000);
-            console.log('Move Start: ', new Date().toString());
-            console.log('Move Finish: ', new Date(Date.now()+(moveTime * 1000 + 10000)).toString());
             userFleets[i].state = 'Move [' + new Date(Date.now()+(moveTime * 1000 + 10000)).toLocaleTimeString() + ']';
             updateAssistStatus(userFleets[i]);
             await wait(moveTime * 1000 + 10000);
@@ -1151,13 +1485,14 @@
             [fleetState, extra] = getFleetState(fleetAcctInfo);
             let warpFinish = fleetState == 'MoveWarp' ? extra.warpFinish.toNumber() * 1000 : 0;
             let subwarpFinish = fleetState == 'MoveSubwarp' ? extra.arrivalTime.toNumber() * 1000 : 0;
-            while (warpFinish > Date.now() || subwarpFinish > Date.now()) {
-                console.log(`[${userFleets[i].label}] Waiting for movement to complete`);
-                await wait(5000);
+            let endTime = warpFinish > subwarpFinish ? warpFinish : subwarpFinish;
+            while (endTime > Date.now()) {
+                userFleets[i].state = 'Move [' + new Date(endTime).toLocaleTimeString() + ']';
+                await wait(10000);
             }
             await wait(2000);
             console.log(`[${userFleets[i].label}] Exiting Warp/Subwarp`);
-            if (userFleets[i].moveType == 'warp') {
+            if (userFleets[i].moveType == 'warp' || fleetState == 'MoveWarp') {
                 await execExitWarp(userFleets[i]);
             } else {
                 await execExitSubwarp(userFleets[i]);
@@ -1219,7 +1554,7 @@
         console.log(`[${userFleets[i].label}] Docking`);
         userFleets[i].state = 'Docking';
         updateAssistStatus(userFleets[i]);
-        await execDock(userFleets[i]);
+        await execDock(userFleets[i], userFleets[i].starbaseCoord);
         await wait(2000);
         console.log(`[${userFleets[i].label}] Unloading`);
         userFleets[i].state = 'Unloading';
@@ -1227,7 +1562,7 @@
         let fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
         let currentSduCnt = fleetCurrentCargo.value.find(item => item.pubkey.toString() === userFleets[i].sduToken.toString())
         if (currentSduCnt.account.data.parsed.info.tokenAmount.uiAmount > 0) {
-            await execCargoFromFleetToStarbase(userFleets[i], currentSduCnt.account.data.parsed.info.tokenAmount.uiAmount);
+            await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, 'SDUsgfSZaDhhZ76U3ZgvtFiXsfnHbf2VrzYxjBZ5YbM', userFleets[i].starbaseCoord, currentSduCnt.account.data.parsed.info.tokenAmount.uiAmount);
             userFleets[i].sduCnt = 0;
             await wait(2000);
         }
@@ -1237,15 +1572,15 @@
         let currentToolCnt = fleetCurrentCargo.value.find(item => item.pubkey.toString() === userFleets[i].repairKitToken.toString())
         let fleetCurrentFuel = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
         let currentFuelCnt = fleetCurrentFuel.value.find(item => item.pubkey.toString() === userFleets[i].fuelToken.toString())
-        await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, userFleets[i].repairKitToken, 'tooLsNYLiVqzg8o4m3L2Uetbn62mvMWRqkog6PQeYKL', repairKitCargoTypeAcct, userFleets[i].cargoCapacity - currentToolCnt.account.data.parsed.info.tokenAmount.uiAmount);
+        await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, userFleets[i].repairKitToken, 'tooLsNYLiVqzg8o4m3L2Uetbn62mvMWRqkog6PQeYKL', repairKitCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].cargoCapacity - currentToolCnt.account.data.parsed.info.tokenAmount.uiAmount);
         userFleets[i].toolCnt = userFleets[i].cargoCapacity;
-        await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, userFleets[i].fuelToken, 'fueL3hBZjLLLJHiFH9cqZoozTG3XQZ53diwFPwbzNim', fuelCargoTypeAcct, userFleets[i].fuelCapacity - currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount);
+        await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, userFleets[i].fuelToken, 'fueL3hBZjLLLJHiFH9cqZoozTG3XQZ53diwFPwbzNim', fuelCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].fuelCapacity - currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount);
         userFleets[i].fuelCnt = userFleets[i].fuelCapacity;
         await wait(2000);
         console.log(`[${userFleets[i].label}] Undocking`);
         userFleets[i].state = 'Undocking';
         updateAssistStatus(userFleets[i]);
-        await execUndock(userFleets[i]);
+        await execUndock(userFleets[i], userFleets[i].starbaseCoord);
         await wait(2000);
         console.log(`[${userFleets[i].label}] Moving`);
         userFleets[i].state = 'Moving';
@@ -1253,6 +1588,272 @@
         let warpCooldownFinished = await handleMovement(i, moveDist, destX, destY);
         userFleets[i].state = 'Idle';
         updateAssistStatus(userFleets[i]);
+    }
+
+    async function handleMining(i, fleetState, fleetCoords, fleetMining) {
+        let destX = userFleets[i].destCoord.split(',')[0].trim();
+        let destY = userFleets[i].destCoord.split(',')[1].trim();
+        let [mineItem] = await sageProgram.account.mineItem.all([
+            {
+                memcmp: {
+                    offset: 105,
+                    bytes: userFleets[i].mineResource,
+                },
+            },
+        ]);
+        let resourceHardness = mineItem.account.resourceHardness;
+        let planets = await getPlanetsFromCoords(destX, destY);
+        let sageResource = null;
+        let planet = null;
+        for (let planetCheck of planets) {
+            let resourceCheck = await sageProgram.account.resource.all([
+                {
+                    memcmp: {
+                        offset: 41,
+                        bytes: planetCheck.publicKey,
+                    },
+                },
+                {
+                    memcmp: {
+                        offset: 73,
+                        bytes: mineItem.publicKey,
+                    },
+                },
+            ]);
+            if (sageResource === null && resourceCheck.length > 0) {
+                [sageResource] = resourceCheck;
+                planet = planetCheck
+            }
+        }
+        let systemRichness = sageResource.account.systemRichness;
+        let miningDuration = calculateMiningDuration(userFleets[i], resourceHardness, systemRichness);
+        let foodForDuration = Math.ceil(miningDuration * (userFleets[i].foodConsumptionRate / 10000));
+
+        if (fleetState === 'Idle') {
+            execStartMining(userFleets[i], mineItem, sageResource, planet);
+            console.log(`[${userFleets[i].label}] Mining`);
+            userFleets[i].state = 'Mine [' + new Date(Date.now()+(miningDuration * 1000)).toLocaleTimeString() + ']';
+        } else if (fleetState === 'MineAsteroid') {
+            let mineEnd = (fleetMining.start.toNumber() + miningDuration) * 1000;
+            console.log('Start: ', fleetMining.start.toNumber());
+            console.log('Duration: ', miningDuration);
+            console.log('End: ', new Date(mineEnd).toString());
+            let sageResourceAcctInfo = await sageProgram.account.resource.fetch(fleetMining.resource);
+            let mineItem = await sageProgram.account.mineItem.fetch(sageResourceAcctInfo.mineItem);
+            if (Date.now() > mineEnd) {
+                await execStopMining(userFleets[i], fleetMining.resource, sageResourceAcctInfo, sageResourceAcctInfo.mineItem, mineItem.mint);
+                await wait(2000);
+                console.log(`[${userFleets[i].label}] Docking`);
+                userFleets[i].state = 'Docking';
+                updateAssistStatus(userFleets[i]);
+                await execDock(userFleets[i], userFleets[i].starbaseCoord);
+                await wait(2000);
+                console.log(`[${userFleets[i].label}] Unloading`);
+                userFleets[i].state = 'Unloading';
+                updateAssistStatus(userFleets[i]);
+                let fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+                let currentResource = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === userFleets[i].mineResource);
+                await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, userFleets[i].mineResource, userFleets[i].starbaseCoord, currentResource.account.data.parsed.info.tokenAmount.uiAmount);
+                await wait(2000);
+                console.log(`[${userFleets[i].label}] Loading`);
+                userFleets[i].state = 'Loading';
+                updateAssistStatus(userFleets[i]);
+                let currentFood = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.food.toString());
+                let fleetCurrentFuelTank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+                let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
+                let fleetCurrentAmmoBank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].ammoBank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+                let currentAmmo = fleetCurrentAmmoBank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.ammo.toString());
+                if (currentFuel.account.data.parsed.info.tokenAmount.uiAmount < userFleets[i].fuelCapacity/2) {
+                    await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, currentFuel.pubkey, sageGameAcct.account.mints.fuel.toString(), fuelCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].fuelCapacity - currentFuel.account.data.parsed.info.tokenAmount.uiAmount);
+                    await wait(2000);
+                }
+                if (currentAmmo.account.data.parsed.info.tokenAmount.uiAmount < userFleets[i].ammoCapacity/2) {
+                    let ammoCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.ammo);
+                    await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].ammoBank, currentAmmo.pubkey, sageGameAcct.account.mints.ammo.toString(), ammoCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].ammoCapacity - currentAmmo.account.data.parsed.info.tokenAmount.uiAmount);
+                    await wait(2000);
+                }
+                let foodCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.food);
+                if (foodForDuration > currentFood.account.data.parsed.info.tokenAmount.uiAmount) {
+                    await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, currentFood.pubkey, sageGameAcct.account.mints.food.toString(), foodCargoTypeAcct, userFleets[i].starbaseCoord, foodForDuration - currentFood.account.data.parsed.info.tokenAmount.uiAmount);
+                    await wait(2000);
+                }
+                console.log(`[${userFleets[i].label}] Undocking`);
+                userFleets[i].state = 'Undocking';
+                updateAssistStatus(userFleets[i]);
+                await execUndock(userFleets[i], userFleets[i].starbaseCoord);
+                await wait(2000);
+                console.log(`[${userFleets[i].label}] Idle`);
+                userFleets[i].state = 'Idle';
+            }
+        }
+
+        let startMine = Date.now();
+        let endMine = startMine + miningDuration * 1000;
+    }
+
+    async function handleTransport(i, fleetState, fleetCoords, fleetResupply) {
+        let destX = userFleets[i].destCoord.split(',')[0].trim();
+        let destY = userFleets[i].destCoord.split(',')[1].trim();
+        let starbaseX = userFleets[i].starbaseCoord.split(',')[0].trim();
+        let starbaseY = userFleets[i].starbaseCoord.split(',')[1].trim();
+        let moveDist = calculateMovementDistance([starbaseX,starbaseY], [destX,destY]);
+
+        // fleet PDA
+        let [fleetResourceToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+            [
+                userFleets[i].cargoHold.toBuffer(),
+                new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').toBuffer(),
+                new solanaWeb3.PublicKey(userFleets[i].mineResource).toBuffer()
+            ],
+            new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
+        );
+        let [fleetFoodToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+            [
+                userFleets[i].cargoHold.toBuffer(),
+                new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').toBuffer(),
+                sageGameAcct.account.mints.food.toBuffer()
+            ],
+            new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
+        );
+        let [fleetAmmoToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+            [
+                userFleets[i].ammoBank.toBuffer(),
+                new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').toBuffer(),
+                sageGameAcct.account.mints.ammo.toBuffer()
+            ],
+            new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
+        );
+        let [fleetCargoAmmoToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+            [
+                userFleets[i].cargoHold.toBuffer(),
+                new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').toBuffer(),
+                sageGameAcct.account.mints.ammo.toBuffer()
+            ],
+            new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
+        );
+        let [fleetFuelToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+            [
+                userFleets[i].fuelTank.toBuffer(),
+                new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').toBuffer(),
+                new solanaWeb3.PublicKey('fueL3hBZjLLLJHiFH9cqZoozTG3XQZ53diwFPwbzNim').toBuffer()
+            ],
+            new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
+        );
+
+        if (fleetState === 'Idle') {
+            let fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+            if (fleetCoords[0] == starbaseX && fleetCoords[1] == starbaseY) { // Fleet at starbase?
+                console.log(`[${userFleets[i].label}] Docking`);
+                userFleets[i].state = 'Docking';
+                updateAssistStatus(userFleets[i]);
+                await execDock(userFleets[i], userFleets[i].starbaseCoord);
+                await wait(2000);
+                if (userFleets[i].mineResource !== '') {
+                    console.log(`[${userFleets[i].label}] Unloading ${userFleets[i].mineResource}`);
+                    userFleets[i].state = 'Unloading';
+                    updateAssistStatus(userFleets[i]);
+                    let currentResource = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === userFleets[i].mineResource);
+                    if (currentResource && currentResource.account.data.parsed.info.tokenAmount.uiAmount > 0) {
+                        await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, userFleets[i].mineResource, userFleets[i].starbaseCoord, currentResource.account.data.parsed.info.tokenAmount.uiAmount);
+                        await wait(2000);
+                    }
+                }
+                if (fleetResupply == 'true') {
+                    // Load food, fuel, ammo
+                    let currentFood = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.food.toString());
+                    let fleetCurrentFuelTank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+                    let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
+                    let fleetCurrentAmmoBank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].ammoBank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+                    let currentAmmo = fleetCurrentAmmoBank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.ammo.toString());
+                    let fleetFuelAcct = currentFuel ? currentFuel.pubkey : fleetFuelToken;
+                    let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
+                    if (currentFuelCnt < userFleets[i].fuelCapacity) {
+                        await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, fleetFuelAcct, sageGameAcct.account.mints.fuel.toString(), fuelCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].fuelCapacity - currentFuelCnt);
+                        await wait(2000);
+                    }
+                    let ammoCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.ammo);
+                    let fleetAmmoAcct = currentAmmo ? currentAmmo.pubkey : fleetAmmoToken;
+                    let currentAmmoCnt = currentAmmo ? currentAmmo.account.data.parsed.info.tokenAmount.uiAmount : 0;
+                    if (currentAmmoCnt < userFleets[i].ammoCapacity) {
+                        await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].ammoBank, fleetAmmoAcct, sageGameAcct.account.mints.ammo.toString(), ammoCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].ammoCapacity - currentAmmoCnt);
+                        await wait(2000);
+                    }
+                    currentAmmo = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.ammo.toString());
+                    let fleetCargoAmmoAcct = currentAmmo ? currentAmmo.pubkey : fleetCargoAmmoToken;
+                    let cargoAmmoAmt = Math.ceil(userFleets[i].cargoCapacity * 0.9);
+                    await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetCargoAmmoAcct, sageGameAcct.account.mints.ammo.toString(), ammoCargoTypeAcct, userFleets[i].starbaseCoord, cargoAmmoAmt);
+                    await wait(2000);
+                    let foodCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.food);
+                    let fleetFoodAcct = currentFood ? currentFood.pubkey : fleetFoodToken;
+                    await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetFoodAcct, sageGameAcct.account.mints.food.toString(), foodCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].cargoCapacity - cargoAmmoAmt);
+                    await wait(2000);
+                }
+                console.log(`[${userFleets[i].label}] Undocking`);
+                userFleets[i].state = 'Undocking';
+                updateAssistStatus(userFleets[i]);
+                await execUndock(userFleets[i], userFleets[i].starbaseCoord);
+                await wait(2000);
+                userFleets[i].state = 'Moving';
+                updateAssistStatus(userFleets[i]);
+                let warpCooldownFinished = await handleMovement(i, moveDist, destX, destY);
+            }
+            if (fleetCoords[0] == destX && fleetCoords[1] == destY) {
+                console.log(`[${userFleets[i].label}] Docking`);
+                userFleets[i].state = 'Docking';
+                updateAssistStatus(userFleets[i]);
+                await execDock(userFleets[i], userFleets[i].destCoord);
+                await wait(2000);
+                if (fleetResupply == 'true') {
+                    // Unload food, fuel, ammo
+                    console.log(`[${userFleets[i].label}] Unloading ${sageGameAcct.account.mints.ammo.toString()}`);
+                    userFleets[i].state = 'Unloading';
+                    updateAssistStatus(userFleets[i]);
+                    let currentAmmo = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.ammo.toString());
+                    if (currentAmmo && currentAmmo.account.data.parsed.info.tokenAmount.uiAmount > 0) {
+                        await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, sageGameAcct.account.mints.ammo.toString(), userFleets[i].destCoord, currentAmmo.account.data.parsed.info.tokenAmount.uiAmount);
+                        await wait(2000);
+                    }
+                    let fleetCurrentAmmoBank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].ammoBank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+                    currentAmmo = fleetCurrentAmmoBank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.ammo.toString());
+                    if (currentAmmo && currentAmmo.account.data.parsed.info.tokenAmount.uiAmount > 0) {
+                        await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].ammoBank, sageGameAcct.account.mints.ammo.toString(), userFleets[i].destCoord, currentAmmo.account.data.parsed.info.tokenAmount.uiAmount);
+                        await wait(2000);
+                    }
+                    let currentFood = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.food.toString());
+                    if (currentFood && currentFood.account.data.parsed.info.tokenAmount.uiAmount > 0) {
+                        await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, sageGameAcct.account.mints.food.toString(), userFleets[i].destCoord, currentFood.account.data.parsed.info.tokenAmount.uiAmount);
+                        await wait(2000);
+                    }
+                    let fleetCurrentFuelTank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+                    let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
+                    let subwarpCost = calculateSubwarpFuelBurn(userFleets[i], moveDist);
+                    let extraFuel = currentFuel.account.data.parsed.info.tokenAmount.uiAmount - Math.ceil(subwarpCost) * 2;
+                    console.log('Current Fuel: ', currentFuel);
+                    console.log('Subwarp Cost: ', subwarpCost);
+                    console.log('Extra Fuel: ', extraFuel);
+                    if (currentFuel && extraFuel > 0) {
+                        await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].fuelTank, sageGameAcct.account.mints.fuel.toString(), userFleets[i].destCoord, extraFuel);
+                        await wait(2000);
+                    }
+                }
+                if (userFleets[i].mineResource !== '') {
+                    // Load mineResource
+                    let resourceCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == userFleets[i].mineResource);
+                    let currentResource = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === userFleets[i].mineResource);
+                    let fleetResourceAcct = currentResource ? currentResource.pubkey : fleetResourceToken;
+                    await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetResourceAcct, userFleets[i].mineResource, resourceCargoTypeAcct, userFleets[i].destCoord, userFleets[i].cargoCapacity);
+                    await wait(2000);
+                }
+                console.log(`[${userFleets[i].label}] Undocking`);
+                userFleets[i].state = 'Undocking';
+                updateAssistStatus(userFleets[i]);
+                await execUndock(userFleets[i], userFleets[i].destCoord);
+                await wait(2000);
+                userFleets[i].state = 'Moving';
+                updateAssistStatus(userFleets[i]);
+                let warpCooldownFinished = await handleMovement(i, moveDist, starbaseX, starbaseY);
+            }
+        }
     }
 
     let iterCnt = 1;
@@ -1265,15 +1866,23 @@
                     let fleetAcctInfo = await solanaConnection.getAccountInfo(userFleets[i].publicKey);
                     let [fleetState, extra] = getFleetState(fleetAcctInfo);
                     let fleetCoords = fleetState == 'Idle' ? extra : [];
+                    let fleetMining = fleetState == 'MineAsteroid' ? extra : [];
                     userFleets[i].startingCoords = fleetCoords;
-                    //userFleets[i].state = fleetState;
-                    //updateAssistStatus(userFleets[i]);
-                    if (fleetParsedData.scan == 'true' && userFleets[i].toolCnt >= userFleets[i].scanCost && userFleets[i].state === 'Idle') {
+                    if (userFleets[i].state == 'MoveWarp' || userFleets[i].state == 'MoveSubwarp') {
+                        handleMovement(i, null, null, null);
+                    }
+                    if (fleetParsedData.assignment == 'Scan' && userFleets[i].toolCnt >= userFleets[i].scanCost && userFleets[i].state === 'Idle') {
                         console.log(`[${userFleets[i].label}] Scanning`);
                         handleScan(i);
-                    } else if (fleetParsedData.scan == 'true' && userFleets[i].state === 'Idle') {
+                    } else if (fleetParsedData.assignment == 'Scan' && userFleets[i].state === 'Idle') {
                         console.log(`[${userFleets[i].label}] Resupplying`);
                         handleResupply(i);
+                    } else if (fleetParsedData.assignment == 'Mine') {
+                        console.log(`[${userFleets[i].label}] Mining`);
+                        handleMining(i, fleetState, fleetCoords, fleetMining);
+                    } else if (fleetParsedData.assignment == 'Transport') {
+                        console.log(`[${userFleets[i].label}] Transporting`);
+                        handleTransport(i, fleetState, fleetCoords, fleetParsedData.resupply);
                     }
                 } catch (err) {
                     console.log('ERROR: ', err);
@@ -1281,7 +1890,7 @@
                 await wait(1000);
                 updateAssistStatus(userFleets[i]);
             }
-            console.log('Iter: ', iterCnt);
+            //console.log('Iter: ', iterCnt);
             setTimeout(startAssistant, 62000);
             iterCnt++;
         };
@@ -1299,27 +1908,66 @@
         }
     }
 
+    function makeDraggable(elem) {
+        const elemHeader = elem.querySelector('.assist-modal-header');
+        let originalX, originalY, elementX, elementY;
+        function dragElem(e)
+        {
+            elementY = elementY + e.clientY - originalY;
+            elementX = elementX + e.clientX - originalX;
+            originalY = e.clientY;
+            originalX = e.clientX;
+            elem.style.top = elementY + "px";
+            elem.style.left = elementX + "px";
+            elem.style.right = 'auto';
+            elem.style.bottom = 'auto';
+        }
+        elemHeader.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            originalX = e.clientX;
+            originalY = e.clientY;
+            elementX = elem.offsetLeft;
+            elementY = elem.offsetTop;
+
+            window.addEventListener('mousemove', dragElem, false);
+
+            window.addEventListener('mouseup', () => {
+                window.removeEventListener('mousemove', dragElem, false);
+            }, false);
+
+        }, false);
+    }
+
     let observer = new MutationObserver(waitForLabs);
     function waitForLabs(mutations, observer){
         if(document.querySelectorAll('#root > div:first-of-type > div:first-of-type > div > header > h1').length > 0 && !document.getElementById("autoScanBtn")) {
             observer.disconnect();
             let assistCSS = document.createElement('style');
-            assistCSS.innerHTML = '.assist-modal {display: none; position: fixed; z-index: 1; padding-top: 100px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);} .assist-modal-content {position: relative; display: flex; flex-direction: column; background-color: rgb(41, 41, 48); margin: auto; padding: 0; border: 1px solid #888; width: 650px; min-width: 450px; max-width: 75%; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19); -webkit-animation-name: animatetop; -webkit-animation-duration: 0.4s; animation-name: animatetop; animation-duration: 0.4s} #assist-modal-error {color: red; margin-left: 5px; margin-right: 5px; font-size: 16px;} .assist-modal-header-right {color: rgb(255, 190, 77); float: right; font-size: 20px;} .assist-btn {background-color: rgb(41, 41, 48); color: rgb(255, 190, 77); margin-left: 2px; margin-right: 2px;} .assist-modal-close:hover, .assist-modal-close:focus {font-weight: bold; text-decoration: none; cursor: pointer;} .assist-modal-header {padding: 2px 16px; background-color: rgba(255, 190, 77, 0.2); border-bottom: 2px solid rgb(255, 190, 77); color: rgb(255, 190, 77);} .assist-modal-body {padding: 2px 16px; font-size: 12px;} .assist-modal-body > table {width: 100%;} .assist-modal-body th, .assist-modal-body td {padding-left: 5px, padding-left: 5px;} #assistStatus {background-color: rgba(0,0,0,0.4); opacity: 0.75; position: fixed; top: 80px; right: 20px; z-index: 1;}';
+            assistCSS.innerHTML = '.assist-modal {display: none; position: fixed; z-index: 2; padding-top: 100px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);} .assist-modal-content {position: relative; display: flex; flex-direction: column; background-color: rgb(41, 41, 48); margin: auto; padding: 0; border: 1px solid #888; width: 650px; min-width: 450px; max-width: 75%; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19); -webkit-animation-name: animatetop; -webkit-animation-duration: 0.4s; animation-name: animatetop; animation-duration: 0.4s;} #assist-modal-error {color: red; margin-left: 5px; margin-right: 5px; font-size: 16px;} .assist-modal-header-right {color: rgb(255, 190, 77); float: right; font-size: 20px;} .assist-btn {background-color: rgb(41, 41, 48); color: rgb(255, 190, 77); margin-left: 2px; margin-right: 2px;} .assist-btn:hover {background-color: rgba(255, 190, 77, 0.2);} .assist-modal-close:hover, .assist-modal-close:focus {font-weight: bold; text-decoration: none; cursor: pointer;} .assist-modal-save {color: rgb(255, 190, 77); padding: 5px 5px; margin-right: 5px; text-decoration: none; background-color: rgb(41, 41, 48); border: none; cursor: pointer;} .assist-modal-save:hover { background-color: rgba(255, 190, 77, 0.2); } .assist-modal-header {padding: 2px 16px; background-color: rgba(255, 190, 77, 0.2); border-bottom: 2px solid rgb(255, 190, 77); color: rgb(255, 190, 77);} .assist-modal-body {padding: 2px 16px; font-size: 12px;} .assist-modal-body > table {width: 100%;} .assist-modal-body th, .assist-modal-body td {padding-right: 5px, padding-left: 5px;} #assistStatus {background-color: rgba(0,0,0,0.4); opacity: 0.75; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1;} #assistCheck {background-color: rgba(0,0,0,0.75); backdrop-filter: blur(10px); position: absolute; margin: auto; left: 0; right: 0; top: 100px; width: 650px; min-width: 450px; max-width: 75%; z-index: 1;} .dropdown { position: absolute; display: none; margin-top: 25px; margin-left: 152px; background-color: rgb(41, 41, 48); min-width: 120px; box-shadow: 0 8px 16px 0 rgba(0, 0, 0, 0.2); z-index: 2; } .dropdown.show { display: block; } .assist-btn-alt { color: rgb(255, 190, 77); padding: 12px 16px; text-decoration: none; display: block; background-color: rgb(41, 41, 48); border: none; cursor: pointer; } .assist-btn-alt:hover { background-color: rgba(255, 190, 77, 0.2); } #checkresults { padding: 5px; margin-top: 20px; border: 1px solid grey; border-radius: 8px;} .dropdown button {width: 100%; text-align: left;}';
             let assistModal = document.createElement('div');
             assistModal.classList.add('assist-modal');
             assistModal.id = 'assistModal';
             assistModal.style.display = 'none';
             let assistModalContent = document.createElement('div');
             assistModalContent.classList.add('assist-modal-content');
-            assistModalContent.innerHTML = '<div class="assist-modal-header"><span>SAGE Lab Assistant</span><div class="assist-modal-header-right"><button class="assist-modal-save assist-btn">Save</button><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><div style="display: flex; flex-direction: row; justify-content: center;"><input id="checkFleetCntInput" type="text" placeholder="x, y" style="width: 50px;"><button id="checkFleetBtn" class="assist-btn"><span style="font-size: 14px;">Check</span></button></div><table><tr><td>Fleet</td><td>Scan</td><td>Mine</td><td>Resource</td><td>Target</td><td>Starbase</td><td>Subwarp</td></tr></table></div>';
+            assistModalContent.innerHTML = '<div class="assist-modal-header"><span>SAGE Lab Assistant</span><div class="assist-modal-header-right"><button class="assist-modal-save">Save</button><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><table><tr><td>Fleet</td><td>Assignment</td><td>Resupply</td><td>Resource</td><td>Target</td><td>Starbase</td><td>Subwarp</td></tr></table></div>';
             assistModal.append(assistModalContent);
             let assistStatus = document.createElement('div');
             assistStatus.id = 'assistStatus';
             assistStatus.style.display = 'none';
             let assistStatusContent = document.createElement('div');
             assistStatusContent.classList.add('assist-status-content');
-            assistStatusContent.innerHTML = '<div class="assist-modal-header">Status<div class="assist-modal-header-right"><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><table><tr><td>Fleet</td><td>Tools</td><td>SDUs</td><td>State</td></tr></table></div>'
+            assistStatusContent.innerHTML = '<div class="assist-modal-header" style="cursor: move;">Status<div class="assist-modal-header-right"><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><table><tr><td>Fleet</td><td>Tools</td><td>SDUs</td><td>State</td></tr></table></div>'
             assistStatus.append(assistStatusContent);
+
+            let assistCheck = document.createElement('div')
+			assistCheck.id = 'assistCheck'
+			assistCheck.style.display = 'none'
+			let assistCheckContent = document.createElement('div')
+			//assistCheckContent.classList.add('assist-check-content');
+			assistCheckContent.innerHTML = '<div class="assist-modal-header" style="cursor: move;">Fleet Surveillance<div class="assist-modal-header-right"><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><div style="display: flex; flex-direction: row; justify-content: center;"><select id="fleetGridSelect"><option value="3">3x3</option><option value="5">5x5</option><option value="7">7x7</option></select><input id="checkFleetCntInput" type="text" placeholder="x, y" style="width: 50px;"><button id="checkFleetBtn" class="assist-btn"><span style="font-size: 14px;">Check</span></button></div><div style="display: flex; justify-content: center;"><div id="loadingMessage" style="display: none;">Loading...</div><table id="fleetGrid" class="fleet-grid" style="display: none;"></table></div></div>';
+			assistCheck.append(assistCheckContent)
+
             let autoContainer = document.createElement('div');
             autoContainer.style.display = 'flex';
             autoContainer.style.flexDirection = 'row';
@@ -1337,17 +1985,40 @@
             autoBtnSpan.innerText = initComplete == true ? 'Start' : 'Wait...';
             autoBtnSpan.style.fontSize = '14px';
             autoButton.appendChild(autoBtnSpan);
+
+            let dropdown = document.createElement('div');
+            dropdown.classList.add('dropdown');
+            let dropdownBtn = document.createElement('button');
+            dropdownBtn.classList.add('assist-btn');
+            dropdownBtn.innerText = 'Tools';
+            dropdownBtn.addEventListener('click', function () {
+                dropdown.classList.toggle('show');
+            })
+            dropdown.addEventListener('click', function() {
+                dropdown.classList.remove('show');
+            });
+
             let assistConfigButton = document.createElement('button');
             assistConfigButton.id = 'assistConfigBtn';
-            assistConfigButton.classList.add('assist-btn');
+            assistConfigButton.classList.add('assist-btn','assist-btn-alt');
             assistConfigButton.addEventListener('click', function(e) {assistModalToggle();});
             let assistConfigSpan = document.createElement('span');
             assistConfigSpan.innerText = 'Config';
             assistConfigSpan.style.fontSize = '14px';
             assistConfigButton.appendChild(assistConfigSpan);
+
+            let assistCheckButton = document.createElement('button');
+            assistCheckButton.id = 'assistCheckBtn';
+            assistCheckButton.classList.add('assist-btn','assist-btn-alt');
+            assistCheckButton.addEventListener('click', function(e) {assistCheckToggle();});
+            let assistCheckSpan = document.createElement('span');
+            assistCheckSpan.innerText = 'Surveillance';
+            assistCheckSpan.style.fontSize = '14px';
+            assistCheckButton.appendChild(assistCheckSpan);
+
             let assistStatusButton = document.createElement('button');
             assistStatusButton.id = 'assistStatusBtn';
-            assistStatusButton.classList.add('assist-btn');
+            assistStatusButton.classList.add('assist-btn','assist-btn-alt');
             assistStatusButton.addEventListener('click', function(e) {assistStatusToggle();});
             let assistStatusSpan = document.createElement('span');
             assistStatusSpan.innerText = 'Status';
@@ -1355,8 +2026,13 @@
             assistStatusButton.appendChild(assistStatusSpan);
             autoContainer.appendChild(autoTitle);
             autoContainer.appendChild(autoButton);
-            autoContainer.appendChild(assistConfigButton);
-            autoContainer.appendChild(assistStatusButton);
+            autoContainer.appendChild(dropdownBtn);
+			autoContainer.appendChild(dropdown);
+
+            dropdown.appendChild(assistStatusButton);
+            dropdown.appendChild(assistCheckButton);
+            dropdown.appendChild(assistConfigButton);
+
             let targetElem = document.querySelector('#root > div:first-of-type > div:first-of-type > div > header > h1');
             targetElem.style.fontSize = '18px';
             //targetElem.insertBefore(autoContainer, targetElem.firstElementChild);
@@ -1364,14 +2040,20 @@
             targetElem.append(autoContainer);
             targetElem.append(assistModal);
             targetElem.append(assistStatus);
+            targetElem.append(assistCheck);
             let assistModalClose = document.querySelector('#assistModal .assist-modal-close');
             assistModalClose.addEventListener('click', function(e) {assistModalToggle();});
             let assistModalSave = document.querySelector('#assistModal .assist-modal-save');
             assistModalSave.addEventListener('click', function(e) {saveAssistInput();});
             let assistStatusClose = document.querySelector('#assistStatus .assist-modal-close');
             assistStatusClose.addEventListener('click', function(e) {assistStatusToggle();});
+            let assistCheckClose = document.querySelector('#assistCheck .assist-modal-close');
+            assistCheckClose.addEventListener('click', function(e) {assistCheckToggle();});
             let assistCheckFleetBtn = document.querySelector('#checkFleetBtn');
             assistCheckFleetBtn.addEventListener('click', function(e) {getFleetCntAtCoords();});
+
+            makeDraggable(assistCheck);
+            makeDraggable(assistStatus);
         }
     }
     observer.observe(document, {childList: true, subtree: true});
@@ -1380,10 +2062,6 @@
     let autoSpanRef = document.querySelector('#autoScanBtn > span');
     autoSpanRef ? autoSpanRef.innerHTML = 'Start' : null;
     console.log('init complete');
-    console.log(userFleets);
-    //addModalInput(userFleets[0]);
-    //execScan(userFleets[0]);
-    //execWarp(userFleets[0]);
-    //execExitWarp(userFleets[0]);
+    console.log('Fleets: ', userFleets);
 
 })();
