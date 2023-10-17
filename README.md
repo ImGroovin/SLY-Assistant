@@ -7,12 +7,15 @@ Current features:
   * Utilizes your fleet's specific scan timer
   * Utilizes a 2 min timer if an SDU is discovered
   * Does not interfere with other user activity
-* Automated resupply [WIP]
+* Automated resupply
   * When the fleet has less than 10 tools, it will return to the designated starbase
   * Transfer SDUs from the fleet to the starbase
   * Refuel the fleet
   * Restock the fleet with toolkits
   * Warp to the designated scanning sector and resume scanning
+* Automated mining [WIP]
+* Automated transportation [WIP]
+* Surveillance courtesy of SkyLove512
 
 ### SECURITY NOTICE
 Users are encouraged to build their own instance of browser-compatible resource file. Doing so ensures that you are using trusted code. Pre-built files are provided for convenience. 
