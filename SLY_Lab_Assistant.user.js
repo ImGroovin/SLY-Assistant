@@ -1519,7 +1519,12 @@
     async function handleScan(i) {
         let destX = parseInt(userFleets[i].destCoord.split(',')[0].trim());
         let destY = parseInt(userFleets[i].destCoord.split(',')[1].trim());
-        if (userFleets[i].startingCoords[0] !== destX && userFleets[i].startingCoords[1] !== destY) {
+        console.log('-----DEBUG-----');
+        console.log('userFleets[i].startingCoords[0]: ', userFleets[i].startingCoords[0]);
+        console.log('destX: ', destX);
+        console.log('userFleets[i].startingCoords[1]: ', userFleets[i].startingCoords[1]);
+        console.log('destY: ', destY);
+        if (userFleets[i].startingCoords[0] !== destX || userFleets[i].startingCoords[1] !== destY) {
             let moveDist = calculateMovementDistance([userFleets[i].startingCoords[0],userFleets[i].startingCoords[1]], [destX,destY]);
             if (moveDist > 0) {
                 let warpCooldownFinished = await handleMovement(i, moveDist, destX, destY);
