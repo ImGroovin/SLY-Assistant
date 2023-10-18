@@ -49,7 +49,7 @@ The script is built as a TamperMonkey script. [TamperMonkey](https://www.tamperm
 
 #### Setup
 1. Install TamperMonkey
-2. Select the SAGE_Lab_Assistant.user.js file in this repo. View the file and click the "Raw" button to view its source.
+2. Select the SLY_Lab_Assistant.user.js file in this repo. View the file and click the "Raw" button to view its source.
 3. Copy the source
 4. Open Tampermonkey in your browser and click the Add Script tab (icon with a plus symbol)
 5. Paste the source into the script window and click File > Save
@@ -59,6 +59,14 @@ The script is built as a TamperMonkey script. [TamperMonkey](https://www.tamperm
 9. For each fleet that you want Lab Assistant to help with, click the Scan checkbox and fill in the destination and starbase coordinates.
    * Enter coordinates as two numbers separated by a comma with no bracks or prefixes or parenthesis - i.e. 10,20
 11. Slick save then refresh your browser
+
+#### Troubleshooting
+1. It's best to do everything once manually. If you form a new fleet for mining, do one round of manual loading, mining, and unloading.
+   * SAGE involves *a lot* of token accounts. One manual round ensures that these token accounts get properly initialized.
+   * Ideally Lab Assistant will handle this, but as it's still a WIP this is the most likely area to still have some bugs.
+2. If you're not sure if something worked, check the blockchain for errors.
+3. If you're pretty sure something broke, check the browser console for errors.
+4. Visit SLY's discord or reach out to justgroove.
 
 #### Regular usage
 1. Launch the game as usual
