@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.3
+// @version      0.3.1
 // @description  try to take over the world!
 // @author       SLY w/ Surveillance by SkyLove512
 // @match        https://labs.staratlas.com/
@@ -951,7 +951,7 @@
                     },
                 },
             ]);
-            let starbasePlayerCargoHold = null;
+            let starbasePlayerCargoHold = starbasePlayerCargoHolds[0];
             let mostFound = 0;
             for (let cargoHold of starbasePlayerCargoHolds) {
                 if (cargoHold.account && cargoHold.account.openTokenAccounts > 0) {
@@ -1120,6 +1120,14 @@
                 ],
                 new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
             );
+            let fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(fleet.cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+            let currentFood = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.food.toString());
+            let fleetFoodAcct = currentFood ? currentFood.pubkey : fleetFoodToken;
+
+            let fleetCurrentAmmoBank = await solanaConnection.getParsedTokenAccountsByOwner(fleet.ammoBank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+            let currentAmmo = fleetCurrentAmmoBank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.ammo.toString());
+            let fleetAmmoAcct = currentAmmo ? currentAmmo.pubkey : fleetAmmoToken;
+
             await solanaConnection.getAccountInfo(fleetResourceToken) || await createProgramDerivedAccount(fleetResourceToken, fleet.cargoHold, resourceToken);
             let foodCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.food);
             let ammoCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.ammo);
@@ -1163,12 +1171,12 @@
                     isWritable: false
                 },
                 {
-                    pubkey: fleetFoodToken, //foodTokenFrom
+                    pubkey: fleetFoodAcct, //foodTokenFrom
                     isSigner: false,
                     isWritable: true
                 },
                 {
-                    pubkey: fleetAmmoToken, //ammoTokenFrom
+                    pubkey: fleetAmmoAcct, //ammoTokenFrom
                     isSigner: false,
                     isWritable: true
                 },
@@ -1282,9 +1290,14 @@
 
         let fleetResupply = document.createElement('input');
         fleetResupply.setAttribute('type', 'checkbox');
+        if (fleetAssignment.value !== 'Transport') fleetResupply.setAttribute('disabled', '');
         fleetResupply.checked = fleetParsedData && fleetParsedData.resupply == 'true' ? true : false;
         let fleetResupplyTd = document.createElement('td');
         fleetResupplyTd.appendChild(fleetResupply);
+        fleetAssignment.onchange = function() {
+            console.log('CHANGED');
+            fleetAssignment.value == 'Transport' ? fleetResupply.removeAttribute('disabled') : fleetResupply.setAttribute('disabled', '');
+        };
 
         let assistResources = ['','Arco','Biomass','Carbon','Copper Ore','Diamond','Hydrogen','Iron Ore','Lumanite','Rochinol']
         let optionsStr = '';
@@ -1630,6 +1643,48 @@
         let miningDuration = calculateMiningDuration(userFleets[i], resourceHardness, systemRichness);
         let foodForDuration = Math.ceil(miningDuration * (userFleets[i].foodConsumptionRate / 10000));
 
+        // fleet PDA
+        let [fleetResourceToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+            [
+                userFleets[i].cargoHold.toBuffer(),
+                new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').toBuffer(),
+                new solanaWeb3.PublicKey(userFleets[i].mineResource).toBuffer()
+            ],
+            new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
+        );
+        let [fleetFoodToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+            [
+                userFleets[i].cargoHold.toBuffer(),
+                new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').toBuffer(),
+                sageGameAcct.account.mints.food.toBuffer()
+            ],
+            new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
+        );
+        let [fleetAmmoToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+            [
+                userFleets[i].ammoBank.toBuffer(),
+                new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').toBuffer(),
+                sageGameAcct.account.mints.ammo.toBuffer()
+            ],
+            new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
+        );
+        let [fleetCargoAmmoToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+            [
+                userFleets[i].cargoHold.toBuffer(),
+                new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').toBuffer(),
+                sageGameAcct.account.mints.ammo.toBuffer()
+            ],
+            new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
+        );
+        let [fleetFuelToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+            [
+                userFleets[i].fuelTank.toBuffer(),
+                new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').toBuffer(),
+                new solanaWeb3.PublicKey('fueL3hBZjLLLJHiFH9cqZoozTG3XQZ53diwFPwbzNim').toBuffer()
+            ],
+            new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
+        );
+
         if (fleetState === 'Idle') {
             execStartMining(userFleets[i], mineItem, sageResource, planet);
             console.log(`[${userFleets[i].label}] Mining`);
@@ -1664,18 +1719,24 @@
                 let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
                 let fleetCurrentAmmoBank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].ammoBank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
                 let currentAmmo = fleetCurrentAmmoBank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.ammo.toString());
-                if (currentFuel.account.data.parsed.info.tokenAmount.uiAmount < userFleets[i].fuelCapacity/2) {
-                    await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, currentFuel.pubkey, sageGameAcct.account.mints.fuel.toString(), fuelCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].fuelCapacity - currentFuel.account.data.parsed.info.tokenAmount.uiAmount);
+                let fleetFuelAcct = currentFuel ? currentFuel.pubkey : fleetFuelToken;
+                let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
+                if (currentFuelCnt < userFleets[i].fuelCapacity/2) {
+                    await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, fleetFuelAcct, sageGameAcct.account.mints.fuel.toString(), fuelCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].fuelCapacity - currentFuelCnt);
                     await wait(2000);
                 }
-                if (currentAmmo.account.data.parsed.info.tokenAmount.uiAmount < userFleets[i].ammoCapacity/2) {
+                let fleetAmmoAcct = currentAmmo ? currentAmmo.pubkey : fleetAmmoToken;
+                let currentAmmoCnt = currentAmmo ? currentAmmo.account.data.parsed.info.tokenAmount.uiAmount : 0;
+                if (currentAmmoCnt < userFleets[i].ammoCapacity/2) {
                     let ammoCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.ammo);
-                    await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].ammoBank, currentAmmo.pubkey, sageGameAcct.account.mints.ammo.toString(), ammoCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].ammoCapacity - currentAmmo.account.data.parsed.info.tokenAmount.uiAmount);
+                    await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].ammoBank, fleetAmmoAcct, sageGameAcct.account.mints.ammo.toString(), ammoCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].ammoCapacity - currentAmmoCnt);
                     await wait(2000);
                 }
                 let foodCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.food);
-                if (foodForDuration > currentFood.account.data.parsed.info.tokenAmount.uiAmount) {
-                    await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, currentFood.pubkey, sageGameAcct.account.mints.food.toString(), foodCargoTypeAcct, userFleets[i].starbaseCoord, foodForDuration - currentFood.account.data.parsed.info.tokenAmount.uiAmount);
+                let fleetFoodAcct = currentFood ? currentFood.pubkey : fleetFoodToken;
+                let currentFoodCnt = currentFood ? currentFood.account.data.parsed.info.tokenAmount.uiAmount : 0;
+                if (foodForDuration > currentFoodCnt) {
+                    await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetFoodAcct, sageGameAcct.account.mints.food.toString(), foodCargoTypeAcct, userFleets[i].starbaseCoord, foodForDuration - currentFoodCnt);
                     await wait(2000);
                 }
                 console.log(`[${userFleets[i].label}] Undocking`);
