@@ -2163,7 +2163,7 @@
                         let currentRes2 = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === resource2);
                         let fleetRes2Acct = currentRes2 ? currentRes2.pubkey : fleetResource2Token;
                         let res2CargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == resource2);
-                        let res2Amt = Math.ceil(cargoSpace * (resource2Perc / 100));
+                        let res2Amt = Math.ceil((userFleets[i].cargoCapacity - cargoCnt) * (resource2Perc / 100));
                         if (res2Amt > 0) {
                             cargoSpace -= res2Amt;
                             let resp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetRes2Acct, resource2, res2CargoTypeAcct, userFleets[i].starbaseCoord, res2Amt);
@@ -2188,7 +2188,7 @@
                         let currentRes3 = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === resource3);
                         let fleetRes3Acct = currentRes3 ? currentRes3.pubkey : fleetResource3Token;
                         let res3CargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == resource3);
-                        let res3Amt = Math.ceil(cargoSpace * (resource3Perc / 100));
+                        let res3Amt = Math.ceil((userFleets[i].cargoCapacity - cargoCnt) * (resource3Perc / 100));
                         if (res3Amt > 0) {
                             cargoSpace -= res3Amt;
                             let resp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetRes3Acct, resource3, res3CargoTypeAcct, userFleets[i].starbaseCoord, res3Amt);
@@ -2213,7 +2213,7 @@
                         let currentRes4 = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === resource4);
                         let fleetRes4Acct = currentRes4 ? currentRes4.pubkey : fleetResource4Token;
                         let res4CargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == resource4);
-                        let res4Amt = Math.ceil(cargoSpace * (resource4Perc / 100));
+                        let res4Amt = Math.ceil((userFleets[i].cargoCapacity - cargoCnt) * (resource4Perc / 100));
                         if (res4Amt > 0) {
                             cargoSpace -= res4Amt;
                             let resp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetRes4Acct, resource4, res4CargoTypeAcct, userFleets[i].starbaseCoord, res4Amt);
