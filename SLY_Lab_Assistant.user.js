@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.3.2
+// @version      0.3.3
 // @description  try to take over the world!
 // @author       SLY w/ Surveillance by SkyLove512
 // @match        https://labs.staratlas.com/
@@ -148,7 +148,7 @@
 
     function getFleetState(fleetAcctInfo) {
         let remainingData = fleetAcctInfo.data.subarray(414);
-        let fleetState = 'Idle';
+        let fleetState = 'Unknown';
         let extra = null;
         switch(remainingData[0]) {
             case 0:
@@ -311,8 +311,8 @@
                 let [fleetState, extra] = getFleetState(fleetAcctInfo);
                 console.log(fleetState);
                 console.log(extra);
-                let fleetCoords = fleetState == 'Idle' ? extra : [];
-                userFleets.push({publicKey: fleet.publicKey, label: fleetLabel.replace(/\0/g, ''), state: fleetState, moveTarget: fleetMoveTarget, startingCoords: fleetCoords, cargoHold: fleet.account.cargoHold, fuelTank: fleet.account.fuelTank, ammoBank: fleet.account.ammoBank, repairKitToken: fleetRepairKitToken, sduToken: fleetSduToken, fuelToken: fleetFuelToken, warpFuelConsumptionRate: fleet.account.stats.movementStats.warpFuelConsumptionRate, warpSpeed: fleet.account.stats.movementStats.warpSpeed, maxWarpDistance: fleet.account.stats.movementStats.maxWarpDistance, subwarpFuelConsumptionRate: fleet.account.stats.movementStats.subwarpFuelConsumptionRate, subwarpSpeed: fleet.account.stats.movementStats.subwarpSpeed, cargoCapacity: fleet.account.stats.cargoStats.cargoCapacity, fuelCapacity: fleet.account.stats.cargoStats.fuelCapacity, ammoCapacity: fleet.account.stats.cargoStats.ammoCapacity, scanCost: fleet.account.stats.miscStats.scanRepairKitAmount, scanCooldown: fleet.account.stats.miscStats.scanCoolDown, warpCooldown: fleet.account.stats.movementStats.warpCoolDown, miningRate: fleet.account.stats.cargoStats.miningRate, foodConsumptionRate: fleet.account.stats.cargoStats.foodConsumptionRate, destCoord: fleetDest, starbaseCoord: fleetStarbase, toolCnt: currentToolCnt.account.data.parsed.info.tokenAmount.uiAmount, sduCnt: 0, fuelCnt: currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount, moveType: fleetMoveType, mineResource: fleetMineResource, minePlanet: null});
+                let fleetCoords = fleetState == 'Idle'  && extra ? extra : [];
+                userFleets.push({publicKey: fleet.publicKey, label: fleetLabel.replace(/\0/g, ''), state: fleetState, moveTarget: fleetMoveTarget, startingCoords: fleetCoords, cargoHold: fleet.account.cargoHold, fuelTank: fleet.account.fuelTank, ammoBank: fleet.account.ammoBank, repairKitToken: fleetRepairKitToken, sduToken: fleetSduToken, fuelToken: fleetFuelToken, warpFuelConsumptionRate: fleet.account.stats.movementStats.warpFuelConsumptionRate, warpSpeed: fleet.account.stats.movementStats.warpSpeed, maxWarpDistance: fleet.account.stats.movementStats.maxWarpDistance, subwarpFuelConsumptionRate: fleet.account.stats.movementStats.subwarpFuelConsumptionRate, subwarpSpeed: fleet.account.stats.movementStats.subwarpSpeed, cargoCapacity: fleet.account.stats.cargoStats.cargoCapacity, fuelCapacity: fleet.account.stats.cargoStats.fuelCapacity, ammoCapacity: fleet.account.stats.cargoStats.ammoCapacity, scanCost: fleet.account.stats.miscStats.scanRepairKitAmount, scanCooldown: fleet.account.stats.miscStats.scanCoolDown, warpCooldown: fleet.account.stats.movementStats.warpCoolDown, miningRate: fleet.account.stats.cargoStats.miningRate, foodConsumptionRate: fleet.account.stats.cargoStats.foodConsumptionRate, ammoConsumptionRate: fleet.account.stats.cargoStats.ammoConsumptionRate, destCoord: fleetDest, starbaseCoord: fleetStarbase, toolCnt: currentToolCnt.account.data.parsed.info.tokenAmount.uiAmount, sduCnt: 0, fuelCnt: currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount, moveType: fleetMoveType, mineResource: fleetMineResource, minePlanet: null});
             }
             userFleets.sort(function (a, b) {
                 return a.label.toUpperCase().localeCompare(b.label.toUpperCase());
@@ -1725,11 +1725,16 @@
             }
             await wait(2000);
             console.log(`[${userFleets[i].label}] Exiting Warp/Subwarp`);
-            if (userFleets[i].moveType == 'warp' || fleetState == 'MoveWarp') {
+            if (fleetState == 'MoveWarp') {
                 await execExitWarp(userFleets[i]);
+                console.log(`[${userFleets[i].label}] Idle`);
+                userFleets[i].state = 'Idle';
             } else if (fleetState == 'MoveSubwarp'){
                 await execExitSubwarp(userFleets[i]);
+                console.log(`[${userFleets[i].label}] Idle`);
+                userFleets[i].state = 'Idle';
             }
+            updateAssistStatus(userFleets[i]);
             await wait(2000);
             resolve(warpCooldownFinished);
         });
@@ -1738,11 +1743,6 @@
     async function handleScan(i) {
         let destX = userFleets[i].destCoord.split(',')[0].trim();
         let destY = userFleets[i].destCoord.split(',')[1].trim();
-        console.log('-----DEBUG-----');
-        console.log('userFleets[i].startingCoords[0]: ', userFleets[i].startingCoords[0]);
-        console.log('destX: ', destX);
-        console.log('userFleets[i].startingCoords[1]: ', userFleets[i].startingCoords[1]);
-        console.log('destY: ', destY);
         if (userFleets[i].startingCoords[0] !== destX || userFleets[i].startingCoords[1] !== destY) {
             let moveDist = calculateMovementDistance([userFleets[i].startingCoords[0],userFleets[i].startingCoords[1]], [destX,destY]);
             if (moveDist > 0) {
@@ -1866,6 +1866,7 @@
         let systemRichness = sageResource.account.systemRichness;
         let miningDuration = calculateMiningDuration(userFleets[i], resourceHardness, systemRichness);
         let foodForDuration = Math.ceil(miningDuration * (userFleets[i].foodConsumptionRate / 10000));
+        let ammoForDuration = Math.ceil(miningDuration * (userFleets[i].ammoConsumptionRate / 10000));
 
         // fleet PDA
         let [fleetResourceToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
@@ -1952,8 +1953,10 @@
                 console.log(`[${userFleets[i].label}] Unloading`);
                 userFleets[i].state = 'Unloading';
                 updateAssistStatus(userFleets[i]);
-                await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, userFleets[i].mineResource, userFleets[i].starbaseCoord, currentResource.account.data.parsed.info.tokenAmount.uiAmount);
-                await wait(2000);
+                if (currentResource && currentResource.account.data.parsed.info.tokenAmount.uiAmount > 0) {
+                    await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, userFleets[i].mineResource, userFleets[i].starbaseCoord, currentResource.account.data.parsed.info.tokenAmount.uiAmount);
+                    await wait(2000);
+                }
                 console.log(`[${userFleets[i].label}] Loading`);
                 userFleets[i].state = 'Loading';
                 updateAssistStatus(userFleets[i]);
@@ -1965,7 +1968,7 @@
                     }
                     await wait(2000);
                 }
-                if (currentAmmoCnt < userFleets[i].ammoCapacity/2) {
+                if (currentAmmoCnt < ammoForDuration) {
                     let ammoCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.ammo);
                     let ammoResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].ammoBank, fleetAmmoAcct, sageGameAcct.account.mints.ammo.toString(), ammoCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].ammoCapacity - currentAmmoCnt);
                     if (ammoResp && ammoResp.name == 'NotEnoughResource') {
@@ -2102,6 +2105,7 @@
                     let cargoFuelAmt = calculateSubwarpFuelBurn(userFleets[i], moveDist);
                     if (cargoSpace > cargoFuelAmt) {
                         cargoSpace -= cargoFuelAmt;
+                        cargoCnt += cargoFuelAmt;
                         let fuelResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetCargoFuelAcct, sageGameAcct.account.mints.fuel.toString(), fuelCargoTypeAcct, userFleets[i].starbaseCoord, cargoFuelAmt);
                         if (fuelResp && fuelResp.name == 'NotEnoughResource') {
                             console.log(`[${userFleets[i].label}] ERROR: Not enough fuel`);
@@ -2138,10 +2142,11 @@
                         let currentRes1 = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === resource1);
                         let fleetRes1Acct = currentRes1 ? currentRes1.pubkey : fleetResource1Token;
                         let res1CargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == resource1);
-                        let res1Amt = Math.ceil(cargoSpace * (resource1Perc / 100));
-                        if (res1Amt > 0) {
-                            cargoSpace -= res1Amt;
-                            let resp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetRes1Acct, resource1, res1CargoTypeAcct, userFleets[i].starbaseCoord, res1Amt);
+                        let res1Amt = Math.ceil((userFleets[i].cargoCapacity - cargoCnt) * (resource1Perc / 100));
+                        let res1Max = Math.min(cargoSpace, res1Amt);
+                        if (res1Max > 0) {
+                            cargoSpace -= res1Max;
+                            let resp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetRes1Acct, resource1, res1CargoTypeAcct, userFleets[i].starbaseCoord, res1Max);
                             if (resp && resp.name == 'NotEnoughResource') {
                                 let resShort = resourceTokens.concat(r4Tokens).find(r => r.token == resource1).name;
                                 console.log(`[${userFleets[i].label}] ERROR: Not enough ${resShort}`);
@@ -2164,9 +2169,10 @@
                         let fleetRes2Acct = currentRes2 ? currentRes2.pubkey : fleetResource2Token;
                         let res2CargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == resource2);
                         let res2Amt = Math.ceil((userFleets[i].cargoCapacity - cargoCnt) * (resource2Perc / 100));
-                        if (res2Amt > 0) {
-                            cargoSpace -= res2Amt;
-                            let resp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetRes2Acct, resource2, res2CargoTypeAcct, userFleets[i].starbaseCoord, res2Amt);
+                        let res2Max = Math.min(cargoSpace, res2Amt);
+                        if (res2Max > 0) {
+                            cargoSpace -= res2Max;
+                            let resp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetRes2Acct, resource2, res2CargoTypeAcct, userFleets[i].starbaseCoord, res2Max);
                             if (resp && resp.name == 'NotEnoughResource') {
                                 let resShort = resourceTokens.concat(r4Tokens).find(r => r.token == resource2).name;
                                 console.log(`[${userFleets[i].label}] ERROR: Not enough ${resShort}`);
@@ -2189,9 +2195,10 @@
                         let fleetRes3Acct = currentRes3 ? currentRes3.pubkey : fleetResource3Token;
                         let res3CargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == resource3);
                         let res3Amt = Math.ceil((userFleets[i].cargoCapacity - cargoCnt) * (resource3Perc / 100));
-                        if (res3Amt > 0) {
-                            cargoSpace -= res3Amt;
-                            let resp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetRes3Acct, resource3, res3CargoTypeAcct, userFleets[i].starbaseCoord, res3Amt);
+                        let res3Max = Math.min(cargoSpace, res3Amt);
+                        if (res3Max > 0) {
+                            cargoSpace -= res3Max;
+                            let resp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetRes3Acct, resource3, res3CargoTypeAcct, userFleets[i].starbaseCoord, res3Max);
                             if (resp && resp.name == 'NotEnoughResource') {
                                 let resShort = resourceTokens.concat(r4Tokens).find(r => r.token == resource3).name;
                                 console.log(`[${userFleets[i].label}] ERROR: Not enough ${resShort}`);
@@ -2214,9 +2221,10 @@
                         let fleetRes4Acct = currentRes4 ? currentRes4.pubkey : fleetResource4Token;
                         let res4CargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == resource4);
                         let res4Amt = Math.ceil((userFleets[i].cargoCapacity - cargoCnt) * (resource4Perc / 100));
-                        if (res4Amt > 0) {
-                            cargoSpace -= res4Amt;
-                            let resp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetRes4Acct, resource4, res4CargoTypeAcct, userFleets[i].starbaseCoord, res4Amt);
+                        let res4Max = Math.min(cargoSpace, res4Amt);
+                        if (res4Max > 0) {
+                            cargoSpace -= res4Max;
+                            let resp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetRes4Acct, resource4, res4CargoTypeAcct, userFleets[i].starbaseCoord, res4Max);
                             if (resp && resp.name == 'NotEnoughResource') {
                                 let resShort = resourceTokens.concat(r4Tokens).find(r => r.token == resource4).name;
                                 console.log(`[${userFleets[i].label}] ERROR: Not enough ${resShort}`);
@@ -2326,7 +2334,9 @@
                     let resourceCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == userFleets[i].mineResource);
                     let currentResource = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === userFleets[i].mineResource);
                     let fleetResourceAcct = currentResource ? currentResource.pubkey : fleetResourceToken;
-                    let resourceResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetResourceAcct, userFleets[i].mineResource, resourceCargoTypeAcct, userFleets[i].destCoord, userFleets[i].cargoCapacity);
+                    let cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
+                    let cargoSpace = userFleets[i].cargoCapacity - cargoCnt;
+                    let resourceResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetResourceAcct, userFleets[i].mineResource, resourceCargoTypeAcct, userFleets[i].destCoord, cargoSpace);
                     if (resourceResp && resourceResp.name == 'NotEnoughResource') {
                         let resShort = resourceTokens.concat(r4Tokens).find(r => r.token == userFleets[i].mineResource).name;
                         console.log(`[${userFleets[i].label}] ERROR: Not enough ${resShort}`);
