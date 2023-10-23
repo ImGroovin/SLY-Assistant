@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.3.4
+// @version      0.3.4 hotfix 1
 // @description  try to take over the world!
 // @author       SLY w/ Surveillance by SkyLove512
 // @match        https://labs.staratlas.com/
@@ -1737,8 +1737,8 @@
             fleetAcctInfo = await solanaConnection.getAccountInfo(userFleets[i].publicKey);
             [fleetState, extra] = getFleetState(fleetAcctInfo);
             if (fleetState == 'Idle' && extra) {
-                let targetX = userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[0].trim() : '';
-                let targetY = userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[1].trim() : '';
+                let targetX = userFleets[i].moveTarget != '' && userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[0].trim() : '';
+                let targetY = userFleets[i].moveTarget != '' && userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[1].trim() : '';
                 if (extra[0] == targetX && extra[1] == targetY) {
                     userFleets[i].moveTarget = [];
                     let fleetSavedData = await GM.getValue(userFleets[i].publicKey.toString(), '{}');
@@ -2013,7 +2013,7 @@
             console.log('Start: ', fleetMining.start.toNumber());
             console.log('Duration: ', miningDuration);
             console.log('End: ', new Date(mineEnd).toString());
-            userFleets[i].state = 'Mine [' + new Date(Date.now()+(miningDuration * 1000)).toLocaleTimeString() + ']';
+            userFleets[i].state = 'Mine [' + new Date(mineEnd).toLocaleTimeString() + ']';
             updateAssistStatus(userFleets[i]);
             let sageResourceAcctInfo = await sageProgram.account.resource.fetch(fleetMining.resource);
             let mineItem = await sageProgram.account.mineItem.fetch(sageResourceAcctInfo.mineItem);
@@ -2070,14 +2070,6 @@
                 userFleets[i].cargoHold.toBuffer(),
                 new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').toBuffer(),
                 sageGameAcct.account.mints.fuel.toBuffer()
-            ],
-            new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
-        );
-        let [fleetResourceToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
-            [
-                userFleets[i].cargoHold.toBuffer(),
-                new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').toBuffer(),
-                new solanaWeb3.PublicKey(userFleets[i].mineResource).toBuffer()
             ],
             new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
         );
@@ -2356,6 +2348,14 @@
                 }
                 if (userFleets[i].mineResource !== '' && errorResource.length == 0) {
                     // Load mineResource
+                    let [fleetResourceToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+                        [
+                            userFleets[i].cargoHold.toBuffer(),
+                            new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').toBuffer(),
+                            new solanaWeb3.PublicKey(userFleets[i].mineResource).toBuffer()
+                        ],
+                        new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
+                    );
                     fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
                     let resourceCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == userFleets[i].mineResource);
                     let currentResource = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === userFleets[i].mineResource);
