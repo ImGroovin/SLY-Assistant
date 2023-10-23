@@ -1656,59 +1656,61 @@
             let fleetAcctInfo = await solanaConnection.getAccountInfo(userFleets[i].publicKey);
             let [fleetState, extra] = getFleetState(fleetAcctInfo);
             if (fleetState == 'Idle' && extra) {
-                let warpCost = calculateWarpFuelBurn(userFleets[i], moveDist);
-                let subwarpCost = calculateSubwarpFuelBurn(userFleets[i], moveDist);
-                let fleetCurrentFuelTank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
-                let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
-                let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
+                if (extra[0] !== moveX || extra[1] !== moveY) {
+                    let warpCost = calculateWarpFuelBurn(userFleets[i], moveDist);
+                    let subwarpCost = calculateSubwarpFuelBurn(userFleets[i], moveDist);
+                    let fleetCurrentFuelTank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+                    let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
+                    let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
 
-                let fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
-                let currentCargoFuel = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
-                let currentCargoFuelCnt = currentCargoFuel ? currentCargoFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
-                if (userFleets[i].moveType == 'warp' && (currentFuelCnt + currentCargoFuelCnt) >= warpCost) {
-                    let fleetAcctData = sageProgram.coder.accounts.decode('Fleet', fleetAcctInfo.data);
-                    let warpCooldownExpiresAt = fleetAcctData.warpCooldownExpiresAt.toNumber() * 1000;
-                    while (Date.now() < warpCooldownExpiresAt) {
-                        console.log(`[${userFleets[i].label}] Waiting for warp cooldown`);
-                        userFleets[i].state = 'Warp cooldown';
-                        updateAssistStatus(userFleets[i]);
-                        await wait(5000);
+                    let fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+                    let currentCargoFuel = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
+                    let currentCargoFuelCnt = currentCargoFuel ? currentCargoFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
+                    if (userFleets[i].moveType == 'warp' && (currentFuelCnt + currentCargoFuelCnt) >= warpCost) {
+                        let fleetAcctData = sageProgram.coder.accounts.decode('Fleet', fleetAcctInfo.data);
+                        let warpCooldownExpiresAt = fleetAcctData.warpCooldownExpiresAt.toNumber() * 1000;
+                        while (Date.now() < warpCooldownExpiresAt) {
+                            console.log(`[${userFleets[i].label}] Waiting for warp cooldown`);
+                            userFleets[i].state = 'Warp cooldown';
+                            updateAssistStatus(userFleets[i]);
+                            await wait(5000);
+                        }
+                        await wait(2000);
+                        if (moveDist > userFleets[i].maxWarpDistance / 100) {
+                            let warpCnt = userFleets[i].maxWarpDistance > 0 ? moveDist / (userFleets[i].maxWarpDistance / 100) : 1;
+                            let distXRaw = (moveX - extra[0]) / warpCnt;
+                            let distYRaw = (moveY - extra[1]) / warpCnt;
+                            let distX = distXRaw > 0 ? Math.floor(distXRaw) : Math.ceil(distXRaw);
+                            let distY = distYRaw > 0 ? Math.floor(distYRaw) : Math.ceil(distYRaw);
+                            moveX = extra[0] + distX;
+                            moveY = extra[1] + distY;
+                            let fleetSavedData = await GM.getValue(userFleets[i].publicKey.toString(), '{}');
+                            let fleetParsedData = JSON.parse(fleetSavedData);
+                            let fleetPK = userFleets[i].publicKey.toString();
+                            fleetParsedData.moveTarget = userFleets[i].moveTarget;
+                            await GM.setValue(fleetPK, JSON.stringify(fleetParsedData));
+                            moveDist = calculateMovementDistance(extra, [moveX,moveY]);
+                        }
+                        console.log(`[${userFleets[i].label}] Warping to [${moveX},${moveY}]`);
+                        moveTime = calculateWarpTime(userFleets[i], moveDist);
+                        //moveCost = calculateWarpFuelBurn(userFleets[i], moveDist);
+                        userFleets[i].state = 'Warp [' + new Date(Date.now()+(moveTime * 1000 + 10000)).toLocaleTimeString() + ']';
+                        let warpResult = await execWarp(userFleets[i], moveX, moveY);
+                        console.log('Warp Result: ', warpResult);
+                        warpCooldownFinished = Date.now() + userFleets[i].warpCooldown*1000 + 2000;
+                    } else if (currentFuelCnt + currentCargoFuelCnt >= subwarpCost) {
+                        console.log(`[${userFleets[i].label}] Subwarping to [${moveX},${moveY}]`);
+                        moveTime = calculateSubwarpTime(userFleets[i], moveDist);
+                        //moveCost = calculateSubwarpFuelBurn(userFleets[i], moveDist);
+                        userFleets[i].state = 'Subwarp [' + new Date(Date.now()+(moveTime * 1000 + 10000)).toLocaleTimeString() + ']';
+                        let subwarpResult = await execSubwarp(userFleets[i], moveX, moveY);
+                        console.log('Subwarp Result: ', subwarpResult);
+                    } else {
+                        console.log(`[${userFleets[i].label}] Unable to move, lack of fuel`);
+                        userFleets[i].state = 'ERROR: Not enough fuel';
                     }
-                    await wait(2000);
-                    if (moveDist > userFleets[i].maxWarpDistance / 100) {
-                        let warpCnt = userFleets[i].maxWarpDistance > 0 ? moveDist / (userFleets[i].maxWarpDistance / 100) : 1;
-                        let distXRaw = (moveX - extra[0]) / warpCnt;
-                        let distYRaw = (moveY - extra[1]) / warpCnt;
-                        let distX = distXRaw > 0 ? Math.floor(distXRaw) : Math.ceil(distXRaw);
-                        let distY = distYRaw > 0 ? Math.floor(distYRaw) : Math.ceil(distYRaw);
-                        moveX = extra[0] + distX;
-                        moveY = extra[1] + distY;
-                        let fleetSavedData = await GM.getValue(userFleets[i].publicKey.toString(), '{}');
-                        let fleetParsedData = JSON.parse(fleetSavedData);
-                        let fleetPK = userFleets[i].publicKey.toString();
-                        fleetParsedData.moveTarget = userFleets[i].moveTarget;
-                        await GM.setValue(fleetPK, JSON.stringify(fleetParsedData));
-                        moveDist = calculateMovementDistance(extra, [moveX,moveY]);
-                    }
-                    console.log(`[${userFleets[i].label}] Warping to [${moveX},${moveY}]`);
-                    moveTime = calculateWarpTime(userFleets[i], moveDist);
-                    //moveCost = calculateWarpFuelBurn(userFleets[i], moveDist);
-                    userFleets[i].state = 'Warp [' + new Date(Date.now()+(moveTime * 1000 + 10000)).toLocaleTimeString() + ']';
-                    let warpResult = await execWarp(userFleets[i], moveX, moveY);
-                    console.log('Warp Result: ', warpResult);
-                    warpCooldownFinished = Date.now() + userFleets[i].warpCooldown*1000 + 2000;
-                } else if (currentFuelCnt + currentCargoFuelCnt >= subwarpCost) {
-                    console.log(`[${userFleets[i].label}] Subwarping to [${moveX},${moveY}]`);
-                    moveTime = calculateSubwarpTime(userFleets[i], moveDist);
-                    //moveCost = calculateSubwarpFuelBurn(userFleets[i], moveDist);
-                    userFleets[i].state = 'Subwarp [' + new Date(Date.now()+(moveTime * 1000 + 10000)).toLocaleTimeString() + ']';
-                    let subwarpResult = await execSubwarp(userFleets[i], moveX, moveY);
-                    console.log('Subwarp Result: ', subwarpResult);
-                } else {
-                    console.log(`[${userFleets[i].label}] Unable to move, lack of fuel`);
-                    userFleets[i].state = 'ERROR: Not enough fuel';
+                    updateAssistStatus(userFleets[i]);
                 }
-                updateAssistStatus(userFleets[i]);
             }
             await wait(moveTime * 1000);
             fleetAcctInfo = await solanaConnection.getAccountInfo(userFleets[i].publicKey);
