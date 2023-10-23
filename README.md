@@ -44,6 +44,10 @@ bs58
 browserify node_modules/bs58/index.js -o bs58.bundle.js --standalone bs58
 ```
 
+### Known Bugs
+* You must manually load at least one item onto a Starbase before the script can interact with that Starbase
+* Scanning does not support multi-jump warping. The distance between the Target and Starbase must be within 1 warp *or* you must select the Subwarp config option.
+
 ### Usage
 The script is built as a TamperMonkey script. [TamperMonkey](https://www.tampermonkey.net/) is a userscript manager available for free as a browser extension.
 
