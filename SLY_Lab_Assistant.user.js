@@ -1666,7 +1666,7 @@
             let warpCooldownFinished = 0;
             let fleetAcctInfo = await solanaConnection.getAccountInfo(userFleets[i].publicKey);
             let [fleetState, extra] = getFleetState(fleetAcctInfo);
-            if (fleetState == 'Idle' && extra && moveDist && moveX !== null && moveX !== '' && moveY != null && moveY !== '') {
+            if (fleetState == 'Idle' && extra.length > 1 && moveDist && moveX !== null && moveX !== '' && moveY != null && moveY !== '') {
                 if (extra[0] !== moveX || extra[1] !== moveY) {
                     let warpCost = calculateWarpFuelBurn(userFleets[i], moveDist);
                     let subwarpCost = calculateSubwarpFuelBurn(userFleets[i], moveDist);
