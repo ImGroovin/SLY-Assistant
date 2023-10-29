@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.3.5
+// @version      0.3.5 hotfix 1
 // @description  try to take over the world!
 // @author       SLY w/ Surveillance by SkyLove512
 // @match        https://labs.staratlas.com/
@@ -1666,7 +1666,7 @@
             let warpCooldownFinished = 0;
             let fleetAcctInfo = await solanaConnection.getAccountInfo(userFleets[i].publicKey);
             let [fleetState, extra] = getFleetState(fleetAcctInfo);
-            if (fleetState == 'Idle' && extra && moveDist && moveX !== null && moveY != null) {
+            if (fleetState == 'Idle' && extra && moveDist && moveX !== null && moveX !== '' && moveY != null && moveY !== '') {
                 if (extra[0] !== moveX || extra[1] !== moveY) {
                     let warpCost = calculateWarpFuelBurn(userFleets[i], moveDist);
                     let subwarpCost = calculateSubwarpFuelBurn(userFleets[i], moveDist);
