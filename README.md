@@ -1,3 +1,5 @@
+![SLY Lab Assistant](https://github.com/ImGroovin/Lab-Assistant/blob/main/SLY_Lab_Assistant-banner.png)
+
 # Lab Assistant by Shadow Loyal [SLY]
 This is a browser-based script to track status and automate actions within SAGE Labs.
 
