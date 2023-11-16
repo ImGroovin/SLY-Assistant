@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.3.6
+// @version      0.3.6.1
 // @description  try to take over the world!
 // @author       SLY w/ Surveillance by SkyLove512
 // @match        https://labs.staratlas.com/
@@ -1129,6 +1129,7 @@
                 planet: planet.publicKey,
             }).instruction()}
             let txResult = await txSignAndSend(tx);
+            resolve(txResult);
         });
     }
 
@@ -2061,6 +2062,7 @@
     async function handleScan(i, fleetCoords, destCoords) {
         let fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
         let cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
+        let currentToolCnt = fleetCurrentCargo.value.find(item => item.pubkey.toString() === userFleets[i].repairKitToken.toString());
         let readyToScan = true;
 
         if (userFleets[i].scanCost == 0) {
@@ -2068,7 +2070,7 @@
                 readyToScan = false;
             }
         } else {
-            if (userFleets[i].toolCnt < userFleets[i].scanCost) {
+            if (currentToolCnt < userFleets[i].scanCost) {
                 readyToScan = false;
             }
         }
@@ -2174,7 +2176,7 @@
             updateAssistStatus(userFleets[i]);
             let fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
             let currentSduCnt = fleetCurrentCargo.value.find(item => item.pubkey.toString() === userFleets[i].sduToken.toString())
-            if (currentSduCnt.account.data.parsed.info.tokenAmount.uiAmount > 0) {
+            if (currentSduCnt && currentSduCnt.account.data.parsed.info.tokenAmount.uiAmount > 0) {
                 await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, 'SDUsgfSZaDhhZ76U3ZgvtFiXsfnHbf2VrzYxjBZ5YbM', userFleets[i].starbaseCoord, currentSduCnt.account.data.parsed.info.tokenAmount.uiAmount);
                 userFleets[i].sduCnt = 0;
                 await wait(2000);
@@ -2324,18 +2326,49 @@
         let foodForDuration = Math.ceil(miningDuration * (userFleets[i].foodConsumptionRate / 10000));
         let ammoForDuration = Math.ceil(miningDuration * (userFleets[i].ammoConsumptionRate / 10000));
         ammoForDuration = Math.min(userFleets[i].ammoCapacity, ammoForDuration);
+        //let fuelNeeded = userFleets[i].planetExitFuelAmount;
+
+        let distToTarget = calculateMovementDistance(fleetCoords, [destX,destY]);
+        let distReturn = calculateMovementDistance([destX,destY], [starbaseX,starbaseY]);
         let fuelNeeded = userFleets[i].planetExitFuelAmount;
+        let warpCost = calculateWarpFuelBurn(userFleets[i], distToTarget) + calculateWarpFuelBurn(userFleets[i], distReturn) + userFleets[i].planetExitFuelAmount;
+        let halfWarpCost = calculateWarpFuelBurn(userFleets[i], distToTarget) + calculateSubwarpFuelBurn(userFleets[i], distReturn) + userFleets[i].planetExitFuelAmount;
+        let subwarpCost = calculateSubwarpFuelBurn(userFleets[i], distToTarget) + calculateSubwarpFuelBurn(userFleets[i], distReturn) + userFleets[i].planetExitFuelAmount;
+        if (userFleets[i].moveType == 'warp') {
+            fuelNeeded = userFleets[i].fuelCapacity < warpCost ? userFleets[i].fuelCapacity < halfWarpCost ? subwarpCost : halfWarpCost : warpCost;
+        } else {
+            fuelNeeded = subwarpCost;
+        }
+
+        async function handleMineMovement() {
+            if (userFleets[i].moveTarget && userFleets[i].moveTarget !== '') {
+                let targetX = userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[0].trim() : '';
+                let targetY = userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[1].trim() : '';
+                let moveDist = calculateMovementDistance(fleetCoords, [targetX,targetY]);
+                if (moveDist > 0) {
+                    let warpCooldownFinished = await handleMovement(i, moveDist, targetX, targetY);
+                } else {
+                    console.log(`[${userFleets[i].label}] Idle`);
+                    userFleets[i].state = 'Idle';
+                    updateAssistStatus(userFleets[i]);
+                }
+            } else {
+                console.log(`[${userFleets[i].label}] Mining - ERROR: Fleet must start at Target or Starbase`);
+                userFleets[i].state = 'ERROR: Fleet must start at Target or Starbase';
+                updateAssistStatus(userFleets[i]);
+            }
+        }
 
         if (fleetState === 'Idle') {
             console.log(`[${userFleets[i].label}] Mining Status Check`);
             let errorResource = [];
-            let readyToMine = true;
+            let needSupplies = false;
 
-            if (currentFuelCnt < userFleets[i].fuelCapacity || currentAmmoCnt < ammoForDuration || currentFoodCnt < foodForDuration || cargoCnt > userFleets[i].cargoCapacity * 0.8) {
-                readyToMine = false;
+            if (currentFuelCnt < fuelNeeded || currentAmmoCnt < ammoForDuration || currentFoodCnt < foodForDuration) { // || cargoCnt > userFleets[i].cargoCapacity * 0.8) {
+                needSupplies = true;
             }
 
-            if (!readyToMine) {
+            if (needSupplies) {
                 if (fleetCoords[0] == starbaseX && fleetCoords[1] == starbaseY) {
                     console.log(`[${userFleets[i].label}] Docking`);
                     userFleets[i].state = 'Docking';
@@ -2389,41 +2422,24 @@
                         userFleets[i].state = `ERROR: Not enough ${errorResource.toString()}`;
                     } else {
                         console.log(`[${userFleets[i].label}] Undocking`);
-                        userFleets[i].state = 'Undocking';
                         await execUndock(userFleets[i], userFleets[i].starbaseCoord);
+                        userFleets[i].state = 'Idle';
                     }
                     updateAssistStatus(userFleets[i]);
-                    await wait(2000);
-                    userFleets[i].moveTarget = userFleets[i].destCoord;
-                }
-            }
-            if (fleetCoords[0] == destX && fleetCoords[1] == destY) {
-                if (currentFuelCnt > fuelNeeded * 2 && currentFoodCnt >= foodForDuration && currentAmmoCnt >= ammoForDuration && cargoCnt < userFleets[i].cargoCapacity - 100) {
-                    await execStartMining(userFleets[i], mineItem, sageResource, planet);
-                    console.log(`[${userFleets[i].label}] Mining Start`);
-                    userFleets[i].state = 'Mine [' + new Date(Date.now()+(miningDuration * 1000)).toLocaleTimeString() + ']';
-                    updateAssistStatus(userFleets[i]);
+                    //await wait(2000);
+                    //userFleets[i].moveTarget = userFleets[i].destCoord;
                 } else {
                     userFleets[i].moveTarget = userFleets[i].starbaseCoord;
+                    handleMineMovement();
                 }
-            }
-            if (userFleets[i].state.slice(0, 4) !== 'Mine') {
-                if (userFleets[i].moveTarget && userFleets[i].moveTarget !== '') {
-                    let targetX = userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[0].trim() : '';
-                    let targetY = userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[1].trim() : '';
-                    let moveDist = calculateMovementDistance(fleetCoords, [targetX,targetY]);
-                    if (moveDist > 0) {
-                        let warpCooldownFinished = await handleMovement(i, moveDist, targetX, targetY);
-                    } else {
-                        console.log(`[${userFleets[i].label}] Idle`);
-                        userFleets[i].state = 'Idle';
-                        updateAssistStatus(userFleets[i]);
-                    }
-                } else {
-                    console.log(`[${userFleets[i].label}] Mining - ERROR: Fleet must start at Target or Starbase`);
-                    userFleets[i].state = 'ERROR: Fleet must start at Target or Starbase';
-                    updateAssistStatus(userFleets[i]);
-                }
+            } else if (fleetCoords[0] == destX && fleetCoords[1] == destY) {
+                await execStartMining(userFleets[i], mineItem, sageResource, planet);
+                console.log(`[${userFleets[i].label}] Mining Start`);
+                userFleets[i].state = 'Mine [' + new Date(Date.now()+(miningDuration * 1000)).toLocaleTimeString() + ']';
+                updateAssistStatus(userFleets[i]);
+            } else {
+                userFleets[i].moveTarget = userFleets[i].destCoord;
+                handleMineMovement();
             }
         } else if (userFleets[i].state.slice(0, 4) === 'Mine') {
             let mineEnd = (fleetMining.start.toNumber() + miningDuration) * 1000;
@@ -2438,10 +2454,8 @@
                 userFleets[i].state = 'Idle';
                 updateAssistStatus(userFleets[i]);
             }
-            userFleets[i].moveTarget = userFleets[i].starbaseCoord;
+            //userFleets[i].moveTarget = userFleets[i].starbaseCoord;
         }
-        //let startMine = Date.now();
-        //let endMine = startMine + miningDuration * 1000;
     }
 
     async function handleTransport(i, fleetState, fleetCoords, fleetResupply) {
