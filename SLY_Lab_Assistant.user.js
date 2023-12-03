@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Lab Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.3.8.0
+// @version      0.4.0
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
 // @match        https://labs.staratlas.com/
