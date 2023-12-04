@@ -2841,19 +2841,14 @@
 	async function startAssistant() {
 			if (enableAssistant) {
 					for (let i=0, n=userFleets.length; i < n; i++) {
-							if(userFleets[i].busy) {
-									console.log(`[${userFleets[i].label}] Busy`);
-									continue;
-							}
+							const moving = userFleets[i].state.includes('Move [') || userFleets[i].state.includes('Subwarp [');
+							const scanning = userFleets[i].state.includes('Scanning');
+							const onTarget = userFleets[i].lastScanCoord == userFleets[i].destCoord;
+							const waitingForScan = userFleets[i].scanEnd && (Date.now() <= userFleets[i].scanEnd);
+							if(userFleets[i].busy) { console.log(`[${userFleets[i].label}] Busy`); continue; };
 							if(userFleets[i].resupplying) continue;
-
-							//In a move op, skip
-							if(userFleets[i].state.includes('Move [')) continue;
-							if(userFleets[i].state.includes('Subwarp [')) continue;
-							if(userFleets[i].state.includes('Scanning') && 
-								 (userFleets[i].lastScanCoord == userFleets[i].destCoord) &&
-							   userFleets[i].scanEnd && (Date.now() <= userFleets[i].scanEnd)
-								) continue;
+							if(moving) continue;
+							if(scanning && onTarget && waitingForScan) continue;
 
 							try {
 									let fleetSavedData = await GM.getValue(userFleets[i].publicKey.toString(), '{}');
