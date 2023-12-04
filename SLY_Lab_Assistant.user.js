@@ -681,12 +681,19 @@
 
         const ws = wsMonitor(connection, txHash);
         const http = httpMonitor(connection, txHash, txn, lastValidBlockHeight);
-        return await Promise.race([ws, http]);
+
+        try {
+            return await Promise.race([ws, http]);
+        } catch (error) {
+            return { txHash, confirmation: error };
+        }
     }
 
     function txSignAndSend(ix) {
         return new Promise(async resolve => {
             let tx = new solanaWeb3.Transaction();
+            const { blockhash, lastValidBlockHeight } = await solanaConnection.getLatestBlockhash('confirmed');
+
             console.log('---INSTRUCTION---');
             console.log(ix);
             if (ix.constructor === Array) {
@@ -694,18 +701,20 @@
             } else {
                 tx.add(ix.instruction);
             }
-            let { blockhash, lastValidBlockHeight } = await solanaConnection.getLatestBlockhash('confirmed');
+
             tx.recentBlockhash = blockhash;
             tx.lastValidBlockHeight = lastValidBlockHeight;
             tx.feePayer = userPublicKey;
             tx.signer = userPublicKey;
+            
             let txSigned = null;
             if (typeof solflare === 'undefined') {
                 txSigned = await solana.signAllTransactions([tx]);
             } else {
                 txSigned = await solflare.signAllTransactions([tx]);
             }
-            let txSerialized = txSigned[0].serialize();
+            
+            const txSerialized = txSigned[0].serialize();
             let txHash, confirmation;
             if (ludicrousMode) {
                 ({ txHash, confirmation} = await sendLudicrousTransaction(txSerialized, lastValidBlockHeight, solanaConnection));
@@ -715,19 +724,15 @@
                 console.log(txHash);
                 confirmation = await waitForTxConfirmation(txHash, blockhash, lastValidBlockHeight);
             }
+            
             console.log('---CONFIRMATION---');
             console.log(confirmation);
-            let txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
-            if (confirmation.name == 'TransactionExpiredBlockheightExceededError' && !txResult) {
+            if ((confirmation.name == 'TransactionExpiredBlockheightExceededError' || confirmation.name == 'LudicrousTimoutError')) {
                 console.log('-----RETRY-----');
-                txResult = await txSignAndSend(ix);
+                return txSignAndSend(ix);
             }
-            if (!confirmation.name) {
-                while (!txResult) {
-                    await wait(2000);
-                    txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
-                }
-            }
+            
+            const txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
             console.log('txResult: ', txResult);
             resolve(txResult);
         });
