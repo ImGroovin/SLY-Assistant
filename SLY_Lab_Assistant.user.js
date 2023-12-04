@@ -654,7 +654,12 @@
 
 			const ws = wsMonitor(connection, txHash);
 			const http = httpMonitor(connection, txHash, txn, lastValidBlockHeight);
-			return await Promise.race([ws, http]);
+			
+			try {
+				return await Promise.race([ws, http]);
+			} catch (error) {
+					return { txHash, confirmation: error };
+			}
 	}
 
 	function txSignAndSend(ix, fleet, opName) {
@@ -2772,6 +2777,23 @@
 													await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].fuelTank, sageGameAcct.account.mints.fuel.toString(), userFleets[i].destCoord, resFuelMax);
 													await wait(2000);
 											}
+									} 
+									//Pickup enough fuel to return to base
+									else if(extraFuel < 0) {
+										const fuelToPickup = extraFuel * -1;
+
+										console.log(`[${userFleets[i].label}] Refueling`);
+										userFleets[i].state = 'Refueling';
+										updateAssistStatus(userFleets[i]);
+										let fleetCurrentFuelTank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+										let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
+										let fleetFuelAcct = currentFuel ? currentFuel.pubkey : fleetFuelToken;
+										let fuelResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, fleetFuelAcct, sageGameAcct.account.mints.fuel.toString(), fuelCargoTypeAcct, userFleets[i].starbaseCoord, fuelToPickup);
+										if (fuelResp && fuelResp.name == 'NotEnoughResource') {
+												console.log(`[${userFleets[i].label}] ERROR: Not enough fuel`);
+												errorResource.push('fuel');
+										}
+										await wait(2000);
 									}
 
 									if (extraAmmo > 0) {
