@@ -618,41 +618,6 @@
             resolve(response);
         });
     }
-
-    function getRedirectsTo(xhr) {
-        if (xhr.status < 400 && xhr.status >= 300) {
-            return xhr.getResponseHeader("Location");
-        }
-        if (xhr.responseURL && xhr.responseURL != url) {
-            return xhr.responseURL;
-        }
-    
-        return null;
-    }
-    
-    function getRedirectUrl(url, redirectCount) {
-        redirectCount = redirectCount || 0;
-    
-        if (redirectCount > 10) {
-            throw new Error("Redirected too many times.");
-        }
-    
-        return new Promise(function (resolve) {
-            var xhr = new XMLHttpRequest();
-    
-            xhr.onload = function () {
-                resolve(getRedirectsTo(xhr));
-            };
-    
-            xhr.open('HEAD', url, true);
-            xhr.send();
-        })
-        .then(function (redirectsTo) {
-            return redirectsTo
-                ? getRedirectUrl(redirectsTo, redirectCount + 1)
-                : url;
-        });
-    }
     
     function httpMonitor(connection, txHash, txn, lastValidBlockHeight, count = 1) {
         return new Promise(async (resolve, reject) => {
@@ -724,12 +689,12 @@
 
         const { id, ws } = wsMonitor(connection, txHash);
         const http = httpMonitor(connection, txHash, txn, lastValidBlockHeight);
-        
+
         return Promise.any([ws, http]).then((result) => {
             if (id) connection.removeSignatureListener(id);
             return result;
-        }, (error) => { 
-            return { txHash, confirmation: error } 
+        }, (error) => {
+            return { txHash, confirmation: error };
         });
     }
 
