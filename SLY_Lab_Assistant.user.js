@@ -712,12 +712,15 @@
               confirmation = await waitForTxConfirmation(txHash, blockhash, lastValidBlockHeight, fleetName);
           }					
 					console.log(`[${fleetName}] <${opName}> CONFIRM ${Date.now() - opStart}ms`);
-					//console.log(confirmation);
 					let txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
-					if (confirmation.name == 'TransactionExpiredBlockheightExceededError' && !txResult) {
+
+					//Bad confirmation
+					if((confirmation.name == 'LudicrousTimoutError') || (!txResult && confirmation.name == 'TransactionExpiredBlockheightExceededError')) {
 							console.log(`[${fleetName}] <${opName}> RETRY`);
 							txResult = await txSignAndSend(ix, fleet, opName);
 					}
+
+					//Good confirmation
 					if (!confirmation.name) {
 							while (!txResult) {
 									await wait(2000);
@@ -2942,7 +2945,7 @@
 							const scanning = userFleets[i].state.includes('Scanning');
 							const onTarget = userFleets[i].lastScanCoord == userFleets[i].destCoord;
 							const waitingForScan = userFleets[i].scanEnd && (Date.now() <= userFleets[i].scanEnd);
-							if(userFleets[i].busy) { console.log(`[${userFleets[i].label}] Busy`); continue; };
+							if(userFleets[i].busy) continue;
 							if(userFleets[i].resupplying) continue;
 							if(moving) continue;
 							if(scanning && onTarget && waitingForScan) continue;
