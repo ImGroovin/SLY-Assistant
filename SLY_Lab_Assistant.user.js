@@ -121,7 +121,7 @@
 	function TimeToStr(date) { return date.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" }); }
 	function BoolToStr(bool) { return bool ? 'Y' : 'N' };
 
-	function createProgramDerivedAccount(derived, derivedFrom1, derivedFrom2) {
+	function createProgramDerivedAccount(derived, derivedFrom1, derivedFrom2, fleet) {
 			return new Promise(async resolve => {
 					const keys = [{
 							pubkey: userPublicKey,
@@ -153,7 +153,7 @@
 							programId: 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',
 							data: []
 					})}
-					let txResult = await txSignAndSend(tx, undefined, 'createProgramDerivedAccount');
+					let txResult = await txSignAndSend(tx, fleet, 'createProgramDerivedAccount');
 					resolve(txResult);
 			});
 	}
@@ -585,14 +585,15 @@
 						response = confirmation;
 					} catch (err) {
 							//console.log('ERROR: ', err);
-							console.log(`[${fleetName}] ${err.name}`);
+							//console.log(`[${fleetName}] ${err.name}`);
+							console.log(`[${fleetName}]`, err);
 							response = err;
 					}
 					resolve(response);
 			});
 	}
 	
-  function httpMonitor(connection, txHash, txn, lastValidBlockHeight, count = 0) {
+  function httpMonitor(connection, txHash, txn, lastValidBlockHeight, count = 0, fleetName = undefined) {
 		return new Promise(async (resolve, reject) => {
 				try {
 						let { blockHeight } = await connection.getEpochInfo({ commitment: 'confirmed' });
@@ -604,56 +605,56 @@
 						const signatureStatus = await connection.getSignatureStatus(txHash);
 
 						if (signatureStatus.err) {
-								console.log('HTTP error for', txHash, signatureStatus);
+								console.log(`[${fleetName}] HTTP error for`, txHash, signatureStatus);
 								reject(signatureStatus);
 						} else if (signatureStatus.value === null) {
 								count++;
-								//console.log('HTTP not confirmed', txHash, signatureStatus);
+								console.log(`[${fleetName}] HTTP not confirmed`, txHash, signatureStatus);
 								await wait(lastMinAverageBlockSpeed * graceBlockWindow);
 								if (count % 7 == 0) {
-										console.log('---RESENDTXN---');
+										console.log(`[${fleetName}] ---RESENDTXN---`);
 										txHash = await connection.sendRawTransaction(txn, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
 								}
 								if (count < 30) return httpMonitor(connection, txHash, txn, lastValidBlockHeight, count);
 								reject({ name: 'LudicrousTimoutError', err: `Timed out for ${txHash}` });
 						} else {
-								//console.log('HTTP confirmed', txHash, signatureStatus);
+								console.log(`[${fleetName}] HTTP confirmed`, txHash, signatureStatus);
 								resolve({txHash, confirmation: signatureStatus});
 						}
 				} catch (error) {
-						console.log(`HTTP connection error: ${txHash}`, error);
+						console.log(`[${fleetName}] HTTP connection error: ${txHash}`, error);
 						reject(error);
 				}
 		});
 	}
 
-	function wsMonitor(connection, txHash) {
+	function wsMonitor(connection, txHash, fleetName) {
 			return new Promise(async (resolve, reject) => {
 					try {
-							//console.log('Set up WS connection', txHash);
+							console.log(`[${fleetName}] Set up WS connection`, txHash);
 							connection.onSignature(txHash, (result) => {
 									if (result.err) {
 											reject(result);
 									} else {
-											//console.log('WS confirmed', txHash, result);
+											console.log(`[${fleetName}] WS confirmed`, txHash, result);
 											resolve({txHash, confirmation: result});
 									}
 							},
 							connection.commitment);
 					} catch (error) {
-							console.log('WS error in setup', txHash, error);
+							console.log(`[${fleetName}] WS error in setup`, txHash, error);
 							reject(error);
 					}
 			});
 	}
 
-	async function sendLudicrousTransaction(txn, lastValidBlockHeight, connection) {
-			//console.log('---SENDTXN---');
+	async function sendLudicrousTransaction(txn, lastValidBlockHeight, connection, fleetName) {
+			console.log(`[${fleetName}] ---SENDTXN---`);
 			let txHash = await connection.sendRawTransaction(txn, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
-			//console.log(txHash);
+			console.log(`[${fleetName}]`, txHash);
 
-			const ws = wsMonitor(connection, txHash);
-			const http = httpMonitor(connection, txHash, txn, lastValidBlockHeight);
+			const ws = wsMonitor(connection, txHash, fleetName);
+			const http = httpMonitor(connection, txHash, txn, lastValidBlockHeight, fleetName);
 			
 			try {
 				return await Promise.race([ws, http]);
@@ -689,7 +690,7 @@
 					let opStart = Date.now();
           let txHash, confirmation;
           if (ludicrousMode) {
-              ({ txHash, confirmation} = await sendLudicrousTransaction(txSerialized, lastValidBlockHeight, solanaConnection));
+              ({ txHash, confirmation} = await sendLudicrousTransaction(txSerialized, lastValidBlockHeight, solanaConnection, fleetName));
           } else {
               txHash = await solanaConnection.sendRawTransaction(txSerialized, {skipPreflight: true, preflightCommitment: 'confirmed'});
               //console.log('---TXHASH---');
@@ -988,7 +989,7 @@
 					let currentResource = fleetCurrentPod.value.find(item => item.account.data.parsed.info.mint === tokenMint);
 					let fleetResourceAcct = currentResource ? currentResource.pubkey : fleetResourceToken;
 					let resourceCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == tokenMint);
-					await solanaConnection.getAccountInfo(starbaseCargoToken) || await createProgramDerivedAccount(starbaseCargoToken, starbasePlayerCargoHold.publicKey, new solanaWeb3.PublicKey(tokenMint));
+					await solanaConnection.getAccountInfo(starbaseCargoToken) || await createProgramDerivedAccount(starbaseCargoToken, starbasePlayerCargoHold.publicKey, new solanaWeb3.PublicKey(tokenMint), fleet);
 					let tx = { instruction: await sageProgram.methods.withdrawCargoFromFleet({ amount: new BrowserAnchor.anchor.BN(amount), keyIndex: 0 }).accountsStrict({
 							gameAccountsFleetAndOwner: {
 									gameFleetAndOwner: {
@@ -1028,7 +1029,7 @@
 
 	async function execCargoFromStarbaseToFleet(fleet, cargoPodTo, tokenTo, tokenMint, cargoType, dockCoords, amount) {
 			return new Promise(async resolve => {
-					await solanaConnection.getAccountInfo(tokenTo) || await createProgramDerivedAccount(tokenTo, cargoPodTo, new solanaWeb3.PublicKey(tokenMint));
+					await solanaConnection.getAccountInfo(tokenTo) || await createProgramDerivedAccount(tokenTo, cargoPodTo, new solanaWeb3.PublicKey(tokenMint), fleet);
 					let starbaseX = dockCoords.split(',')[0].trim();
 					let starbaseY = dockCoords.split(',')[1].trim();
 					let starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
@@ -1069,7 +1070,7 @@
 							],
 							new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
 					);
-					await solanaConnection.getAccountInfo(starbaseCargoToken) || await createProgramDerivedAccount(starbaseCargoToken, starbasePlayerCargoHold.publicKey, new solanaWeb3.PublicKey(tokenMint));
+					await solanaConnection.getAccountInfo(starbaseCargoToken) || await createProgramDerivedAccount(starbaseCargoToken, starbasePlayerCargoHold.publicKey, new solanaWeb3.PublicKey(tokenMint), fleet);
 					let tx = { instruction: await sageProgram.methods.depositCargoToFleet({ amount: new BrowserAnchor.anchor.BN(amount), keyIndex: 0 }).accountsStrict({
 							gameAccountsFleetAndOwner: {
 									gameFleetAndOwner: {
@@ -1132,9 +1133,9 @@
 							],
 							new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
 					);
-					await solanaConnection.getAccountInfo(fleetSduToken) || await createProgramDerivedAccount(fleetSduToken, fleet.cargoHold, new solanaWeb3.PublicKey('SDUsgfSZaDhhZ76U3ZgvtFiXsfnHbf2VrzYxjBZ5YbM'));
-					await solanaConnection.getAccountInfo(fleetRepairKitToken) || await createProgramDerivedAccount(fleetRepairKitToken, fleet.cargoHold, new solanaWeb3.PublicKey('tooLsNYLiVqzg8o4m3L2Uetbn62mvMWRqkog6PQeYKL'));
-					await solanaConnection.getAccountInfo(fleetFuelToken) || await createProgramDerivedAccount(fleetFuelToken, fleet.fuelTank, new solanaWeb3.PublicKey('fueL3hBZjLLLJHiFH9cqZoozTG3XQZ53diwFPwbzNim'));
+					await solanaConnection.getAccountInfo(fleetSduToken) || await createProgramDerivedAccount(fleetSduToken, fleet.cargoHold, new solanaWeb3.PublicKey('SDUsgfSZaDhhZ76U3ZgvtFiXsfnHbf2VrzYxjBZ5YbM'), fleet);
+					await solanaConnection.getAccountInfo(fleetRepairKitToken) || await createProgramDerivedAccount(fleetRepairKitToken, fleet.cargoHold, new solanaWeb3.PublicKey('tooLsNYLiVqzg8o4m3L2Uetbn62mvMWRqkog6PQeYKL'), fleet);
+					await solanaConnection.getAccountInfo(fleetFuelToken) || await createProgramDerivedAccount(fleetFuelToken, fleet.fuelTank, new solanaWeb3.PublicKey('fueL3hBZjLLLJHiFH9cqZoozTG3XQZ53diwFPwbzNim')), fleet;
 					var userFleetIndex = userFleets.findIndex(item => {return item.publicKey === fleet.publicKey});
 					userFleets[userFleetIndex].sduToken = fleetSduToken;
 					userFleets[userFleetIndex].repairKitToken = fleetRepairKitToken;
@@ -1224,7 +1225,7 @@
 					let currentAmmo = fleetCurrentAmmoBank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.ammo.toString());
 					let fleetAmmoAcct = currentAmmo ? currentAmmo.pubkey : fleetAmmoToken;
 
-					await solanaConnection.getAccountInfo(fleetResourceToken) || await createProgramDerivedAccount(fleetResourceToken, fleet.cargoHold, resourceToken);
+					await solanaConnection.getAccountInfo(fleetResourceToken) || await createProgramDerivedAccount(fleetResourceToken, fleet.cargoHold, resourceToken, fleet);
 					let foodCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.food);
 					let ammoCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.ammo);
 					let resourceCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == resourceToken.toString());
@@ -3168,6 +3169,7 @@
 			}
 	}
 	observer.observe(document, {childList: true, subtree: true});
+	waitForLabs(null, null);
 
 	await initUser();
 	let autoSpanRef = document.querySelector('#autoScanBtn > span');
