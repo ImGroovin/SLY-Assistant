@@ -615,7 +615,7 @@
 										console.log(`[${fleetName}] ---RESENDTXN---`);
 										txHash = await connection.sendRawTransaction(txn, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
 								}
-								if (count < 30) return httpMonitor(connection, txHash, txn, lastValidBlockHeight, count);
+								if (count < 30) return httpMonitor(connection, txHash, txn, lastValidBlockHeight, count, fleetName);
 								reject({ name: 'LudicrousTimoutError', err: `Timed out for ${txHash}` });
 						} else {
 								console.log(`[${fleetName}] HTTP confirmed`, txHash, signatureStatus);
@@ -654,7 +654,7 @@
 			console.log(`[${fleetName}]`, txHash);
 
 			const ws = wsMonitor(connection, txHash, fleetName);
-			const http = httpMonitor(connection, txHash, txn, lastValidBlockHeight, fleetName);
+			const http = httpMonitor(connection, txHash, txn, lastValidBlockHeight, 0, fleetName);
 			
 			try {
 				return await Promise.race([ws, http]);
