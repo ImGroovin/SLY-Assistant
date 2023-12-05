@@ -632,7 +632,7 @@
 								resolve({txHash, confirmation: signatureStatus});
 						}
 				} catch (error) {
-						console.log(`[${fleetName}] HTTP connection error: ${txHash}`, error);
+						//console.log(`[${fleetName}] HTTP connection error: ${txHash}`, error);
 						reject(error);
 				}
 		});
@@ -672,6 +672,7 @@
 				return await Promise.race([http]);
 				//return await Promise.race([ws]);
 			} catch (error) {
+					console.log(`[${fleetName}] ${txHash}`, error);
 					return { txHash, confirmation: error };
 			}
 	}
@@ -711,7 +712,7 @@
               //console.log('---TXHASH---', txHash);
               confirmation = await waitForTxConfirmation(txHash, blockhash, lastValidBlockHeight, fleetName);
           }					
-					console.log(`[${fleetName}] <${opName}> CONFIRM ${Date.now() - opStart}ms`);
+					console.log(`[${fleetName}] <${opName}> ${confirmation.err ? 'CONFIRM-BAD' : 'CONFIRM-GOOD'} ${Date.now() - opStart}ms`, confirmation);
 					let txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
 
 					//Bad confirmation
@@ -720,13 +721,23 @@
 							txResult = await txSignAndSend(ix, fleet, opName);
 					}
 
-					//Good confirmation
+					//Good confirmation - fetch fully confirmed tx
 					if (!confirmation.name) {
+							let tryCount = 0;
 							while (!txResult) {
-									await wait(2000);
-									txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
+								if(tryCount > 9) break;
+
+								console.log(`[${fleetName}] RE-FETCHING TXRESULT`, txHash);
+								await wait(2000);
+								txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
+
+								tryCount++;
 							}
+
+							//Something went wrong, start again
+							if(!txResult) txResult = await txSignAndSend(ix, fleet, opName);
 					}
+
 					//console.log('txResult: ', txResult);
 					if(fleet) fleet.busy = false;
 					resolve(txResult);
