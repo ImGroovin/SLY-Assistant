@@ -619,15 +619,11 @@
         });
     }
     
-    function httpMonitor(connection, txHash, txn, lastValidBlockHeight, count = 1) {
+    function httpMonitor(connection, txHash, txn, lastValidBlockHeight, lastMinAverageBlockSpeed, count = 1) {
         return new Promise(async (resolve, reject) => {
             try {
                 let { blockHeight } = await connection.getEpochInfo({ commitment: 'confirmed' });
-                if (blockHeight >= lastValidBlockHeight) return reject({ name: 'LudicrousTimoutError', err: `Timed out for ${txHash}` });
-
-                const recentPerformanceSamples = await connection.getRecentPerformanceSamples(1);
-                const { samplePeriodSecs, numSlots } = recentPerformanceSamples[0];
-                const lastMinAverageBlockSpeed = Math.floor(samplePeriodSecs * 1000 / numSlots);
+                if (blockHeight >= lastValidBlockHeight) reject({ name: 'LudicrousTimoutError', err: `Timed out for ${txHash}` });
                 const signatureStatus = await connection.getSignatureStatus(txHash);
 
                 if (signatureStatus.err) {
@@ -639,19 +635,20 @@
                     resolve({ count });
                 } else {
                     console.log('HTTP confirmed', txHash, signatureStatus);
-                    resolve({txHash, confirmation: signatureStatus});
+                    resolve({type: 'http', txHash, confirmation: signatureStatus});
                 }
             } catch (error) {
                 console.log(`HTTP connection error: ${txHash}`, error);
                 reject(error);
             }
         }).then(async (result) => {
-            if (result.txHash) return result;
-            if (result.count % 7 == 0) {
+            const { count, type, txHash, confirmation } = { ...result };
+            if (type) return { type, txHash, confirmation };
+            if (count % 7 == 0) {
                 console.log('---RESENDTXN---');
                 await connection.sendRawTransaction(txn, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
             }
-            if (result.count < 30) return httpMonitor(connection, txHash, txn, lastValidBlockHeight, ++count);
+            if (count < 30) return httpMonitor(connection, txHash, txn, lastValidBlockHeight, ++count);
             return { name: 'LudicrousTimoutError', err: `Timed out for ${txHash}` };
         }, (error) => {
             return error;
@@ -664,12 +661,11 @@
             try {
                 console.log('Set up WS connection', txHash);
                 id = connection.onSignature(txHash, (result) => {
-                    id = undefined;
                     if (result.err) {
                         reject(result);
                     } else {
                         console.log('WS confirmed', txHash, result);
-                        resolve({txHash, confirmation: result});
+                        resolve({type: 'ws', txHash, confirmation: result});
                     }
                 },
                 connection.commitment);
@@ -687,19 +683,24 @@
         let txHash = await connection.sendRawTransaction(txn, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
         console.log(txHash);
 
+        const recentPerformanceSamples = await connection.getRecentPerformanceSamples(1);
+        const { samplePeriodSecs, numSlots } = recentPerformanceSamples[0];
+        const lastMinAverageBlockSpeed = Math.floor(samplePeriodSecs * 1000 / numSlots);
+
         const { id, ws } = wsMonitor(connection, txHash);
-        const http = httpMonitor(connection, txHash, txn, lastValidBlockHeight);
+        const http = httpMonitor(connection, txHash, txn, lastValidBlockHeight, lastMinAverageBlockSpeed);
 
         return Promise.any([ws, http]).then((result) => {
-            if (id) connection.removeSignatureListener(id);
-            return result;
+            const { type, txHash, confirmation } = result;
+            if (type == 'http') connection.removeSignatureListener(id);
+            return { txHash, confirmation };
         }, (error) => {
             return { txHash, confirmation: error };
         });
     }
 
     function txSignAndSend(ix) {
-        return new Promise(async resolve => {
+        return new Promise(async (resolve, reject) => {
             let tx = new solanaWeb3.Transaction();
             const { blockhash, lastValidBlockHeight } = await solanaConnection.getLatestBlockhash('confirmed');
 
@@ -737,13 +738,15 @@
             console.log('---CONFIRMATION---');
             console.log(confirmation);
             if ((confirmation.name == 'TransactionExpiredBlockheightExceededError' || confirmation.name == 'LudicrousTimoutError')) {
-                console.log('-----RETRY-----');
-                return txSignAndSend(ix);
+                reject(ix);
             }
             
             const txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
             console.log('txResult: ', txResult);
             resolve(txResult);
+        }).catch(ix => {
+            console.log('-----RETRY-----');
+            return txSignAndSend(ix);
         });
     }
 
