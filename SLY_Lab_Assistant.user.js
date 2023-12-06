@@ -712,7 +712,7 @@
               //console.log('---TXHASH---', txHash);
               confirmation = await waitForTxConfirmation(txHash, blockhash, lastValidBlockHeight, fleetName);
           }					
-					console.log(`[${fleetName}] <${opName}> ${confirmation.err ? 'CONFIRM-BAD' : 'CONFIRM-GOOD'} ${Date.now() - opStart}ms`, confirmation);
+					console.log(`[${fleetName}] <${opName}> ${confirmation.err ? 'CONFIRM-BAD' : 'CONFIRM-GOOD'} ${Date.now() - opStart}ms`, txHash, confirmation);
 					let txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
 
 					//Bad confirmation
