@@ -600,26 +600,10 @@
         }
     }
 
-    function waitForTxConfirmation(txHash, blockhash, lastValidBlockHeight) {
-        return new Promise(async resolve => {
-            let response = null;
-            try {
-                let confirmation = await solanaConnection.confirmTransaction({
-                    blockhash,
-                    lastValidBlockHeight,
-                    signature: txHash
-                }, 'confirmed');
-                response = confirmation;
-            } catch (err) {
-                console.log('ERROR: ', err);
-                console.log('ERROR NAME: ', err.name);
-                response = err;
-            }
-            resolve(response);
-        });
-    }
-    
+   
     function httpMonitor(connection, txHash, txn, lastValidBlockHeight, lastMinAverageBlockSpeed, count = 1) {
+        const acceptableCommitments = [connection.commitment, 'finalized'];
+
         return new Promise(async (resolve, reject) => {
             try {
                 let { blockHeight } = await connection.getEpochInfo({ commitment: 'confirmed' });
@@ -629,11 +613,11 @@
                 if (signatureStatus.err) {
                     console.log('HTTP error for', txHash, signatureStatus);
                     reject(signatureStatus);
-                } else if (signatureStatus.value === null) {
+                } else if (signatureStatus.value === null || !acceptableCommitments.includes(signatureStatus.value.confirmationStatus)) {
                     console.log('HTTP not confirmed', txHash, signatureStatus);
                     await wait(lastMinAverageBlockSpeed * graceBlockWindow);
                     resolve({ count });
-                } else {
+                } else if (acceptableCommitments.includes(signatureStatus.value.confirmationStatus) ) {
                     console.log('HTTP confirmed', txHash, signatureStatus);
                     resolve({type: 'http', txHash, confirmation: signatureStatus});
                 }
