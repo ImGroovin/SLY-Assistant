@@ -21,8 +21,7 @@
 	let enableAssistant = false;
 	let initComplete = false;
 
-	//const solanaConnection = new solanaWeb3.Connection('https://solana-api.syndica.io/access-token/WPoEqWQ2auQQY1zHRNGJyRBkvfOLqw58FqYucdYtmy8q9Z84MBWwqtfVf8jKhcFh/rpc', 'confirmed');
-	const solanaConnection = new solanaWeb3.Connection('https://mainnet.helius-rpc.com/?api-key=b71f0567-e37e-4bbb-9ed6-29b22f053b7d', 'confirmed');
+	const solanaConnection = new solanaWeb3.Connection('https://solana-api.syndica.io/access-token/WPoEqWQ2auQQY1zHRNGJyRBkvfOLqw58FqYucdYtmy8q9Z84MBWwqtfVf8jKhcFh/rpc', 'confirmed');
 	const anchorProvider = new BrowserAnchor.anchor.AnchorProvider(solanaConnection, null, null);
   let ludicrousMode = true;
   let graceBlockWindow = 5;
