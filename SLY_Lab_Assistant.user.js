@@ -2387,6 +2387,7 @@
     }
 
     // only handles resupply
+    // @todo - need to refactor still
     async function handleResupply(fleetIndex) {
         const fleet = userFleets[fleetIndex];
         
@@ -2435,6 +2436,7 @@
         updateAssistStatus(userFleets[i]);
     }
 
+    // @todo - need to refactor still
     async function handleMining(i, fleetState, fleetCoords, fleetMining) {
         let destX = userFleets[i].destCoord.split(',')[0].trim();
         let destY = userFleets[i].destCoord.split(',')[1].trim();
@@ -2679,6 +2681,7 @@
         }
     }
 
+    // @todo - need to refactor still
     async function handleTransport(i, fleetState, fleetCoords, fleetResupply) {
         let destX = userFleets[i].destCoord.split(',')[0].trim();
         let destY = userFleets[i].destCoord.split(',')[1].trim();
@@ -3041,6 +3044,7 @@
         }
     }
 
+    // @todo - need to refactor still
     let iterCnt = 1;
     async function startAssistant() {
         if (enableAssistant) {
