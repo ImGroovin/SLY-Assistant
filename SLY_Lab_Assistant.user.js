@@ -601,28 +601,28 @@
     }
 
    
-    function httpMonitor(connection, txHash, txn, lastValidBlockHeight, lastMinAverageBlockSpeed, count = 1) {
+    function httpMonitor(connection, txHash, txn, lastValidBlockHeight, lastMinAverageBlockSpeed, count = 0) {
         const acceptableCommitments = [connection.commitment, 'finalized'];
 
         return new Promise(async (resolve, reject) => {
             try {
                 let { blockHeight } = await connection.getEpochInfo({ commitment: 'confirmed' });
-                if (blockHeight >= lastValidBlockHeight) reject({ name: 'LudicrousTimoutError', err: `Timed out for ${txHash}` });
+                if (blockHeight >= lastValidBlockHeight) return reject({ name: 'LudicrousTimoutError', err: `Timed out for ${txHash}` });
                 const signatureStatus = await connection.getSignatureStatus(txHash);
 
                 if (signatureStatus.err) {
-                    console.log('HTTP error for', txHash, signatureStatus);
+                    console.log(`HTTP error for ${txHash}`);
                     reject(signatureStatus);
                 } else if (signatureStatus.value === null || !acceptableCommitments.includes(signatureStatus.value.confirmationStatus)) {
-                    console.log('HTTP not confirmed', txHash, signatureStatus);
+                    console.log(`HTTP not confirmed - attempt ${count} - ${txHash}`)
                     await wait(lastMinAverageBlockSpeed * graceBlockWindow);
-                    resolve({ count });
+                    resolve({ count: ++count, txHash });
                 } else if (acceptableCommitments.includes(signatureStatus.value.confirmationStatus) ) {
-                    console.log('HTTP confirmed', txHash, signatureStatus);
+                    console.log(`HTTP confirmed - after ${count} attempts - ${txHash}`);
                     resolve({type: 'http', txHash, confirmation: signatureStatus});
                 }
             } catch (error) {
-                console.log(`HTTP connection error: ${txHash}`, error);
+                console.log(`HTTP connection error: ${error}`);
                 reject(error);
             }
         }).then(async (result) => {
@@ -632,7 +632,7 @@
                 console.log('---RESENDTXN---');
                 await connection.sendRawTransaction(txn, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
             }
-            if (count < 30) return httpMonitor(connection, txHash, txn, lastValidBlockHeight, ++count);
+            if (count < 30) return httpMonitor(connection, txHash, txn, lastValidBlockHeight, lastMinAverageBlockSpeed, count);
             return { name: 'LudicrousTimoutError', err: `Timed out for ${txHash}` };
         }, (error) => {
             return error;
@@ -711,7 +711,9 @@
             const txSerialized = txSigned[0].serialize();
             let txHash, confirmation;
             if (ludicrousMode) {
-                ({ txHash, confirmation} = await sendLudicrousTransaction(txSerialized, lastValidBlockHeight, solanaConnection));
+                const ludicrousResult = await sendLudicrousTransaction(txSerialized, lastValidBlockHeight, solanaConnection);
+                console.log(ludicrousResult);
+                ({ txHash, confirmation } = ludicrousResult);
             } else {
                 txHash = await solanaConnection.sendRawTransaction(txSerialized, {skipPreflight: true, preflightCommitment: 'confirmed'});
                 console.log('---TXHASH---');
