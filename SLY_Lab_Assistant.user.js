@@ -600,7 +600,6 @@
         }
     }
 
-   
     function httpMonitor(connection, txHash, txn, lastValidBlockHeight, lastMinAverageBlockSpeed, count = 0) {
         const acceptableCommitments = [connection.commitment, 'finalized'];
 
@@ -619,15 +618,15 @@
                     resolve({ count: ++count, txHash });
                 } else if (acceptableCommitments.includes(signatureStatus.value.confirmationStatus) ) {
                     console.log(`HTTP confirmed - after ${count} attempts - ${txHash}`);
-                    resolve({type: 'http', txHash, confirmation: signatureStatus});
+                    resolve({ txHash, confirmation: signatureStatus});
                 }
             } catch (error) {
                 console.log(`HTTP connection error: ${error}`);
                 reject(error);
             }
         }).then(async (result) => {
-            const { count, type, txHash, confirmation } = { ...result };
-            if (type) return { type, txHash, confirmation };
+            const { count, txHash, confirmation } = { ...result };
+            if (confirmation) return { txHash, confirmation };
             if (count % 7 == 0) {
                 console.log('---RESENDTXN---');
                 await connection.sendRawTransaction(txn, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
@@ -639,29 +638,6 @@
         });
     }
 
-    function wsMonitor(connection, txHash) {
-        let id;
-        const ws = new Promise(async(resolve, reject) => {
-            try {
-                console.log('Set up WS connection', txHash);
-                id = connection.onSignature(txHash, (result) => {
-                    if (result.err) {
-                        reject(result);
-                    } else {
-                        console.log('WS confirmed', txHash, result);
-                        resolve({type: 'ws', txHash, confirmation: result});
-                    }
-                },
-                connection.commitment);
-            } catch (error) {
-                console.log('WS error in setup', txHash, error);
-                reject(error);
-            }
-        });
-
-        return { id, ws };
-    }
-
     async function sendLudicrousTransaction(txn, lastValidBlockHeight, connection) {
         console.log('---SENDTXN---');
         let txHash = await connection.sendRawTransaction(txn, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
@@ -671,16 +647,7 @@
         const { samplePeriodSecs, numSlots } = recentPerformanceSamples[0];
         const lastMinAverageBlockSpeed = Math.floor(samplePeriodSecs * 1000 / numSlots);
 
-        const { id, ws } = wsMonitor(connection, txHash);
-        const http = httpMonitor(connection, txHash, txn, lastValidBlockHeight, lastMinAverageBlockSpeed);
-
-        return Promise.any([ws, http]).then((result) => {
-            const { type, txHash, confirmation } = result;
-            if (type == 'http') connection.removeSignatureListener(id);
-            return { txHash, confirmation };
-        }, (error) => {
-            return { txHash, confirmation: error };
-        });
+        return await httpMonitor(connection, txHash, txn, lastValidBlockHeight, lastMinAverageBlockSpeed);
     }
 
     function txSignAndSend(ix) {
@@ -711,9 +678,7 @@
             const txSerialized = txSigned[0].serialize();
             let txHash, confirmation;
             if (ludicrousMode) {
-                const ludicrousResult = await sendLudicrousTransaction(txSerialized, lastValidBlockHeight, solanaConnection);
-                console.log(ludicrousResult);
-                ({ txHash, confirmation } = ludicrousResult);
+                ({ txHash, confirmation }  = await sendLudicrousTransaction(txSerialized, lastValidBlockHeight, solanaConnection));
             } else {
                 txHash = await solanaConnection.sendRawTransaction(txSerialized, {skipPreflight: true, preflightCommitment: 'confirmed'});
                 console.log('---TXHASH---');
