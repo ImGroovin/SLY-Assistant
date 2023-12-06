@@ -699,7 +699,7 @@
 				//if (id) connection.removeSignatureListener(id);
 				return result;
 			}, (error) => { 
-				return { txHash, confirmation: error } 
+				return { txHash, confirmation: { name: 'LudicrousTimoutError', err: error } } 
 			});
 	}
 
