@@ -638,10 +638,12 @@
 	}
 
 	function wsMonitor(connection, txHash, fleetName) {
-			return new Promise(async (resolve, reject) => {
+		let id;
+		return new Promise(async (resolve, reject) => {
 					try {
 							console.log(`[${fleetName}] Set up WS connection`, txHash);
-							connection.onSignature(txHash, (result) => {
+							id = connection.onSignature(txHash, (result) => {
+									id = undefined;
 									if (result.err) {
 											console.log(`[${fleetName}] WS rejected`, txHash, result);
 											reject(result);
@@ -655,25 +657,21 @@
 							console.log(`[${fleetName}] WS error in setup`, txHash, error);
 							reject(error);
 					}
-			});
+		});
 	}
 
 	async function sendLudicrousTransaction(txn, lastValidBlockHeight, connection, fleetName) {
-			//console.log(`[${fleetName}] ---SENDTXN---`);
 			let txHash = await connection.sendRawTransaction(txn, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
-			//console.log(`[${fleetName}]`, txHash);
 
-			//const ws = wsMonitor(connection, txHash, fleetName);
+			//const { id, ws } = wsMonitor(connection, txHash, fleetName);
 			const http = httpMonitor(connection, txHash, txn, lastValidBlockHeight, 0, fleetName);
-			
-			try {
-				//return await Promise.race([ws, http]);
-				return await Promise.race([http]);
-				//return await Promise.race([ws]);
-			} catch (error) {
-					console.log(`[${fleetName}] ${txHash}`, error);
-					return { txHash, confirmation: error };
-			}
+
+			return Promise.any([http]).then((result) => {
+				//if (id) connection.removeSignatureListener(id);
+				return result;
+			}, (error) => { 
+				return { txHash, confirmation: error } 
+			});
 	}
 
 	function txSignAndSend(ix, fleet, opName) {
