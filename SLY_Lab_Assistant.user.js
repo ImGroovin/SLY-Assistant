@@ -236,6 +236,10 @@
 							}
 					}
 
+					let userProfile = foundProf.length > 1 ? await assistProfileToggle(foundProf) : foundProf[0];
+					userProfileAcct = new solanaWeb3.PublicKey(userProfile.profile);
+					userProfileKeyIdx = userProfile.idx;					
+
 					/*
 					function getUserProfileAcct(procId, roomId, sessionId) {
 							return new Promise((resolve) => {
