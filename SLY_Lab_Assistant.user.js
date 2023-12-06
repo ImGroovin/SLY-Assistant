@@ -353,7 +353,49 @@
                         break;
                     }
                 }
-                userFleets.push({publicKey: fleet.publicKey, label: fleetLabel.replace(/\0/g, ''), state: fleetState, destination: fleetMoveTarget, origin: fleetCoords, cargoHold: fleet.account.cargoHold, fuelTank: fleet.account.fuelTank, ammoBank: fleet.account.ammoBank, repairKitToken: fleetRepairKitToken, sduToken: fleetSduToken, fuelToken: fleetFuelToken, warpFuelConsumptionRate: fleet.account.stats.movementStats.warpFuelConsumptionRate, warpSpeed: fleet.account.stats.movementStats.warpSpeed, maxWarpDistance: fleet.account.stats.movementStats.maxWarpDistance, subwarpFuelConsumptionRate: fleet.account.stats.movementStats.subwarpFuelConsumptionRate, subwarpSpeed: fleet.account.stats.movementStats.subwarpSpeed, cargoCapacity: fleet.account.stats.cargoStats.cargoCapacity, fuelCapacity: fleet.account.stats.cargoStats.fuelCapacity, ammoCapacity: fleet.account.stats.cargoStats.ammoCapacity, scanCost: fleet.account.stats.miscStats.scanRepairKitAmount, scanCooldown: fleet.account.stats.miscStats.scanCoolDown, warpCooldown: fleet.account.stats.movementStats.warpCoolDown, miningRate: fleet.account.stats.cargoStats.miningRate, foodConsumptionRate: fleet.account.stats.cargoStats.foodConsumptionRate, ammoConsumptionRate: fleet.account.stats.cargoStats.ammoConsumptionRate, planetExitFuelAmount: fleet.account.stats.movementStats.planetExitFuelAmount, destCoord: fleetDest, starbaseCoord: fleetStarbase, scanBlock: fleetScanBlock, scanBlockIdx: fleetScanBlockIdx, scanEnd: 0, scanSkipCnt: 0, scanSectorStart: 0, scanMin: fleetScanMin, scanMove: fleetScanMove, toolCnt: currentToolCnt.account.data.parsed.info.tokenAmount.uiAmount, sduCnt: 0, fuelCnt: currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount, moveType: fleetMoveType, mineResource: fleetMineResource, minePlanet: null});
+                userFleets.push({
+                    publicKey: fleet.publicKey, 
+                    label: fleetLabel.replace(/\0/g, ''), 
+                    state: fleetState, 
+                    destination: fleetMoveTarget, 
+                    origin: fleetCoords, 
+                    cargoHold: fleet.account.cargoHold, 
+                    fuelTank: fleet.account.fuelTank, 
+                    ammoBank: fleet.account.ammoBank, 
+                    repairKitToken: fleetRepairKitToken, 
+                    sduToken: fleetSduToken, 
+                    fuelToken: fleetFuelToken, 
+                    warpFuelConsumptionRate: fleet.account.stats.movementStats.warpFuelConsumptionRate, 
+                    warpSpeed: fleet.account.stats.movementStats.warpSpeed, 
+                    maxWarpDistance: fleet.account.stats.movementStats.maxWarpDistance, 
+                    subwarpFuelConsumptionRate: fleet.account.stats.movementStats.subwarpFuelConsumptionRate, 
+                    subwarpSpeed: fleet.account.stats.movementStats.subwarpSpeed, 
+                    cargoCapacity: fleet.account.stats.cargoStats.cargoCapacity, 
+                    fuelCapacity: fleet.account.stats.cargoStats.fuelCapacity,
+                    ammoCapacity: fleet.account.stats.cargoStats.ammoCapacity, 
+                    scanCost: fleet.account.stats.miscStats.scanRepairKitAmount, 
+                    scanCooldown: fleet.account.stats.miscStats.scanCoolDown, 
+                    warpCooldown: fleet.account.stats.movementStats.warpCoolDown, 
+                    miningRate: fleet.account.stats.cargoStats.miningRate, 
+                    foodConsumptionRate: fleet.account.stats.cargoStats.foodConsumptionRate, 
+                    ammoConsumptionRate: fleet.account.stats.cargoStats.ammoConsumptionRate, 
+                    planetExitFuelAmount: fleet.account.stats.movementStats.planetExitFuelAmount, 
+                    destCoord: fleetDest, 
+                    starbaseCoord: fleetStarbase, 
+                    scanBlock: fleetScanBlock, 
+                    scanBlockIdx: fleetScanBlockIdx, 
+                    scanEnd: 0, 
+                    scanSkipCnt: 0, 
+                    scanSectorStart: 0, 
+                    scanMin: fleetScanMin, 
+                    scanMove: fleetScanMove, 
+                    toolCnt: currentToolCnt.account.data.parsed.info.tokenAmount.uiAmount, 
+                    sduCnt: 0, 
+                    fuelCnt: currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount, 
+                    moveType: fleetMoveType, 
+                    mineResource: fleetMineResource, 
+                    minePlanet: null
+                });
             }
             userFleets.sort(function (a, b) {
                 return a.label.toUpperCase().localeCompare(b.label.toUpperCase());
@@ -2391,29 +2433,23 @@
     async function handleResupply(fleetIndex) {
         const fleet = userFleets[fleetIndex];
         
-        console.log(`[${userFleets[i].label}] Docking`);
-        userFleets[i].state = 'Docking';
-        updateAssistStatus(userFleets[i]);
-        await execDock(userFleets[i], userFleets[i].starbaseCoord);
+        await execDock(fleet, userFleets[i].starbaseCoord);
 
-        await wait(2000);
-        console.log(`[${userFleets[i].label}] Unloading`);
-        userFleets[i].state = 'Unloading';
-        updateAssistStatus(userFleets[i]);
-        
         let fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgram});
         
+        // 1. resupply fuel
+        // 2. resupply ammo
+        // 3. resupply cargo
+
+        
+        // unloads SDUs
         let currentSduCnt = fleetCurrentCargo.value.find(item => item.pubkey.toString() === userFleets[i].sduToken.toString())
         if (currentSduCnt && currentSduCnt.account.data.parsed.info.tokenAmount.uiAmount > 0) {
             await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, 'SDUsgfSZaDhhZ76U3ZgvtFiXsfnHbf2VrzYxjBZ5YbM', userFleets[i].starbaseCoord, currentSduCnt.account.data.parsed.info.tokenAmount.uiAmount);
             userFleets[i].sduCnt = 0;
-            await wait(2000);
         }
         
-        console.log(`[${userFleets[i].label}] Loading`);
-        userFleets[i].state = 'Loading';
-        updateAssistStatus(userFleets[i]);
-        
+        // loads toolkit
         let currentToolCnt = fleetCurrentCargo.value.find(item => item.pubkey.toString() === userFleets[i].repairKitToken.toString())
         let fleetCurrentFuel = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: tokenProgram});
         let currentFuelCnt = fleetCurrentFuel.value.find(item => item.pubkey.toString() === userFleets[i].fuelToken.toString())
@@ -2421,20 +2457,16 @@
             await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, userFleets[i].repairKitToken, 'tooLsNYLiVqzg8o4m3L2Uetbn62mvMWRqkog6PQeYKL', repairKitCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].cargoCapacity - currentToolCnt.account.data.parsed.info.tokenAmount.uiAmount);
         }
         
+        // loads fuel
         fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgram});
         let currentTool = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === 'tooLsNYLiVqzg8o4m3L2Uetbn62mvMWRqkog6PQeYKL');
         userFleets[i].toolCnt = currentTool ? currentTool.account.data.parsed.info.tokenAmount.uiAmount : 0;
         await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, userFleets[i].fuelToken, 'fueL3hBZjLLLJHiFH9cqZoozTG3XQZ53diwFPwbzNim', fuelCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].fuelCapacity - currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount);
         userFleets[i].fuelCnt = userFleets[i].fuelCapacity;
 
-        console.log(`[${userFleets[i].label}] Undocking`);
-        userFleets[i].state = 'Undocking';
-        updateAssistStatus(userFleets[i]);
-        await execUndock(userFleets[i], userFleets[i].starbaseCoord);
-
-        userFleets[i].state = 'Idle';
-        updateAssistStatus(userFleets[i]);
+        await execUndock(fleet, userFleets[i].starbaseCoord);
     }
+
 
     // @todo - need to refactor still
     async function handleMining(i, fleetState, fleetCoords, fleetMining) {
