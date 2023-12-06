@@ -345,12 +345,13 @@
 							let [fleetState, extra] = getFleetState(fleetAcctInfo);
 							let fleetCoords = fleetState == 'Idle' && extra ? extra : [];
 							let fleetScanBlockIdx = 0;
+							/*
 							for (let i = 0; i < fleetScanBlock.length; i++) {
 									if (fleetCoords[0] == fleetScanBlock[i][0] && fleetCoords[1] == fleetScanBlock[i][1]) {
 											fleetScanBlockIdx = i;
 											break;
 									}
-							}
+							}*/
 							userFleets.push({publicKey: fleet.publicKey, label: fleetLabel.replace(/\0/g, ''), state: fleetState, moveTarget: fleetMoveTarget, startingCoords: fleetCoords, cargoHold: fleet.account.cargoHold, fuelTank: fleet.account.fuelTank, ammoBank: fleet.account.ammoBank, repairKitToken: fleetRepairKitToken, sduToken: fleetSduToken, fuelToken: fleetFuelToken, warpFuelConsumptionRate: fleet.account.stats.movementStats.warpFuelConsumptionRate, warpSpeed: fleet.account.stats.movementStats.warpSpeed, maxWarpDistance: fleet.account.stats.movementStats.maxWarpDistance, subwarpFuelConsumptionRate: fleet.account.stats.movementStats.subwarpFuelConsumptionRate, subwarpSpeed: fleet.account.stats.movementStats.subwarpSpeed, cargoCapacity: fleet.account.stats.cargoStats.cargoCapacity, fuelCapacity: fleet.account.stats.cargoStats.fuelCapacity, ammoCapacity: fleet.account.stats.cargoStats.ammoCapacity, scanCost: fleet.account.stats.miscStats.scanRepairKitAmount, scanCooldown: fleet.account.stats.miscStats.scanCoolDown, warpCooldown: fleet.account.stats.movementStats.warpCoolDown, miningRate: fleet.account.stats.cargoStats.miningRate, foodConsumptionRate: fleet.account.stats.cargoStats.foodConsumptionRate, ammoConsumptionRate: fleet.account.stats.cargoStats.ammoConsumptionRate, planetExitFuelAmount: fleet.account.stats.movementStats.planetExitFuelAmount, destCoord: fleetDest, starbaseCoord: fleetStarbase, scanBlock: fleetScanBlock, scanBlockIdx: fleetScanBlockIdx, scanEnd: 0, scanSkipCnt: 0, scanSectorStart: 0, scanMin: fleetScanMin, scanMove: fleetScanMove, toolCnt: currentToolCnt.account.data.parsed.info.tokenAmount.uiAmount, sduCnt: 0, fuelCnt: currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount, moveType: fleetMoveType, mineResource: fleetMineResource, minePlanet: null});
 					}
 					userFleets.sort(function (a, b) {
@@ -738,7 +739,7 @@
               //console.log('---TXHASH---', txHash);
               confirmation = await waitForTxConfirmation(txHash, blockhash, lastValidBlockHeight, fleetName);
           }					
-					console.log(`[${fleetName}] <${opName}> ${confirmation.err ? 'CONFIRM-BAD' : 'CONFIRM-GOOD'} ${Date.now() - opStart}ms`, txHash, confirmation);
+					console.log(`[${fleetName}] <${opName}> ${confirmation.err ? 'CONFIRM-BAD' : 'CONFIRM-GOOD'} ${Date.now() - opStart}ms`);
 					let txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
 
 					//Bad confirmation
@@ -753,7 +754,7 @@
 							while (!txResult) {
 								if(tryCount > 9) break;
 
-								console.log(`[${fleetName}] RE-FETCHING TXRESULT`, txHash);
+								console.log(`[${fleetName}] RE-FETCHING TXRESULT`);
 								await wait(2000);
 								txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
 
@@ -1090,7 +1091,6 @@
 		}
 
 		await wait(2000);
-		//fleet.state = 'Idle';
 		updateFleetState(fleet, 'Idle');
 	}
 
@@ -2053,7 +2053,7 @@
 							userFleets[userFleetIndex].moveType = moveType;
 							userFleets[userFleetIndex].scanBlock = scanBlock;
 							userFleets[userFleetIndex].scanMin = scanMin;
-							userFleets[userFleetIndex].scanMove = scanMove ? 'true' : 'false';
+							userFleets[userFleetIndex].scanMove = scanMove;// ? 'true' : 'false';
 					}
 			}
 			if (errBool === false) {
@@ -2355,6 +2355,7 @@
 							} else {
 									//console.log(`[${userFleets[i].label}] Whomp whomp`);
 							}
+
 							let scanMove = userFleets[i].scanMove == 'true';
 							let timeOnSector = Date.now() - userFleets[i].scanSectorStart;
 							let scanLow = scanCondition < userFleets[i].scanMin;
@@ -2426,8 +2427,7 @@
 					updateAssistStatus(userFleets[i]);
 					await execUndock(userFleets[i], userFleets[i].starbaseCoord);
 					await wait(2000);
-					userFleets[i].state = 'Idle';
-					updateAssistStatus(userFleets[i]);
+					updateFleetState(userFleets[i], 'Idle');
 			} else {
 					let moveDist = calculateMovementDistance(fleetCoords, [starbaseX,starbaseY]);
 					if (moveDist > 0 && userFleets[i].state.slice(0, 13) !== 'Warp Cooldown') {
@@ -2649,7 +2649,8 @@
 									} else {
 											console.log(`[${userFleets[i].label}] Undocking`);
 											await execUndock(userFleets[i], userFleets[i].starbaseCoord);
-											userFleets[i].state = 'Idle';
+											await wait(2000);
+											updateFleetState(userFleets[i], 'Idle');
 									}
 									updateAssistStatus(userFleets[i]);
 									//await wait(2000);
@@ -2891,6 +2892,8 @@
 									console.log(`[${userFleets[i].label}] Undocking`);
 									userFleets[i].state = 'Undocking';
 									await execUndock(userFleets[i], userFleets[i].starbaseCoord);
+									await wait(2000);
+									updateFleetState(userFleets[i], 'Idle');
 							}
 							updateAssistStatus(userFleets[i]);
 							await wait(2000);
@@ -3044,30 +3047,26 @@
 											}
 									}
 							}
-							//if (errorResource.length > 0) { userFleets[i].state = `ERROR: Not enough ${errorResource.toString()}`; } else 
-							{
-									console.log(`[${userFleets[i].label}] Undocking`);
-									userFleets[i].state = 'Undocking';
-									await execUndock(userFleets[i], userFleets[i].destCoord);
-									await wait(2000);
-							}
-							updateAssistStatus(userFleets[i]);
+
+							updateFleetState(userFleets[i], 'Undocking');
+							await execUndock(userFleets[i], userFleets[i].destCoord);
+							await wait(2000);
+							updateFleetState(userFleets[i], 'Idle');
 							userFleets[i].moveTarget = userFleets[i].starbaseCoord;
 							userFleets[i].resupplying = false;
 					}
-					if (errorResource.length > 0) {
-							userFleets[i].state = `ERROR: Not enough ${errorResource.toString()}`;
+
+					//Commented out to prevent stalling at target, transport should always return to starbase if possible
+					//if (errorResource.length > 0) userFleets[i].state = `ERROR: Not enough ${errorResource.toString()}`;
+
+					if (userFleets[i].moveTarget !== '') {
+							let targetX = userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[0].trim() : '';
+							let targetY = userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[1].trim() : '';
+							moveDist = calculateMovementDistance(fleetCoords, [targetX,targetY]);
+							let warpCooldownFinished = await handleMovement(i, moveDist, targetX, targetY);
 					} else {
-							if (userFleets[i].moveTarget !== '') {
-									let targetX = userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[0].trim() : '';
-									let targetY = userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[1].trim() : '';
-									moveDist = calculateMovementDistance(fleetCoords, [targetX,targetY]);
-									let warpCooldownFinished = await handleMovement(i, moveDist, targetX, targetY);
-							} else {
-									console.log(`[${userFleets[i].label}] Transporting - ERROR: Fleet must start at Target or Starbase`);
-									userFleets[i].state = 'ERROR: Fleet must start at Target or Starbase';
-									updateAssistStatus(userFleets[i]);
-							}
+							console.log(`[${userFleets[i].label}] Transporting - ERROR: Fleet must start at Target or Starbase`);
+							updateFleetState(userFleets[i], 'ERROR: Fleet must start at Target or Starbase');
 					}
 					updateAssistStatus(userFleets[i]);
 			} else if (fleetState === 'StarbaseLoadingBay') {
@@ -3135,7 +3134,7 @@
 									}
 									else if (fleetParsedData.assignment == 'Scan' && fleetState == 'Idle') {
 											//console.log(`[${userFleets[i].label}] Scanning`);
-											//startupScanBlockCheck(i, fleetCoords);
+											startupScanBlockCheck(i, fleetCoords);
 											let destCoords = userFleets[i].scanBlock[userFleets[i].scanBlockIdx];
 											handleScan(i, fleetCoords, destCoords);
 									} else if (fleetParsedData.assignment == 'Mine') {
