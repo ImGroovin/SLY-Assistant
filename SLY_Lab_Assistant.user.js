@@ -1057,12 +1057,12 @@
 							}
 					}).instruction()}
 					
-					console.log(`${FleetTimeStamp(fleet)} Docking`);
+					console.log(`${FleetTimeStamp(fleet.label)} Docking`);
 					updateFleetState(fleet, 'Docking');
 					
 					let txResult = await txSignAndSend(tx, fleet, 'DOCK');
 					
-					console.log(`${FleetTimeStamp(fleet)} Docked`);
+					console.log(`${FleetTimeStamp(fleet.label)} Docked`);
 					updateFleetState(fleet, 'Docked');
 					
 					resolve(txResult);
@@ -2684,6 +2684,7 @@
 					}
 			} else if (userFleets[i].state.slice(0, 4) === 'Mine') {
 					let mineEnd = (fleetMining.start.toNumber() + miningDuration) * 1000;
+					userFleets[i].mineEnd = mineEnd;
 					updateFleetState(userFleets[i], 'Mine [' + TimeToStr(new Date(mineEnd)) + ']')
 					let sageResourceAcctInfo = await sageProgram.account.resource.fetch(fleetMining.resource);
 					let mineItem = await sageProgram.account.mineItem.fetch(sageResourceAcctInfo.mineItem);
@@ -3091,11 +3092,10 @@
 					for (let i=0, n=userFleets.length; i < n; i++) {
 							const moving = userFleets[i].state.includes('Move [') || userFleets[i].state.includes('Subwarp [');
 							const scanning = userFleets[i].state.includes('Scan');
+							const mining  = userFleets[i].mineEnd && userFleets[i].state.includes('Mine') && (Date.now() < userFleets[i].mineEnd);;
 							const onTarget = userFleets[i].lastScanCoord == userFleets[i].destCoord;
 							const waitingForScan = userFleets[i].scanEnd && (Date.now() <= userFleets[i].scanEnd);
-							if(userFleets[i].busy) continue;
-							if(userFleets[i].resupplying) continue;
-							if(moving) continue;
+							if(userFleets[i].busy || userFleets[i].resupplying || moving || mining) continue;
 							if(scanning && onTarget && waitingForScan) continue;
 
 							try {
