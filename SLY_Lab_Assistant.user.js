@@ -361,7 +361,7 @@
 
             const fleetSavedData = JSON.parse(await GM.getValue(fleet.publicKey.toString(), '{}'));
             
-            
+            // @todo - left off here
             let fleetDest = fleetParsedData && fleetParsedData.dest ? fleetParsedData.dest : '';
             let fleetScanBlock = fleetParsedData && fleetParsedData.scanBlock ? fleetParsedData.scanBlock : [];
             let fleetScanMin = fleetParsedData && fleetParsedData.scanMin ? fleetParsedData.scanMin : 10;
