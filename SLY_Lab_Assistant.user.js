@@ -2382,7 +2382,16 @@
 									console.log(`[${userFleets[i].label}] Scanning Paused due to low probability [${TimeToStr(new Date(userFleets[i].scanEnd))}]`);
 									userFleets[i].scanSkipCnt = 0;
 							}
+
 							updateAssistStatus(userFleets[i]);
+
+							//Start resupply immediately rather than waiting for scan cooldown
+							const newToolCount = currentToolCnt - userFleets[i].scanCost;
+							if(newToolCount < userFleets[i].scanCost)
+							{
+								console.log(`[${userFleets[i].label}] Starting resupply run`);
+								handleResupply(i, fleetCoords);
+							}
 					}
 			} else {
 					handleResupply(i, fleetCoords)
