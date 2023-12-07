@@ -632,7 +632,7 @@
                 await connection.sendRawTransaction(txn, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
             }
             if (count < 30) return httpMonitor(connection, txHash, txn, lastValidBlockHeight, lastMinAverageBlockSpeed, count);
-            return { name: 'LudicrousTimoutError', err: `Timed out for ${txHash}` };
+            return { txHash, confirmation: { name: 'LudicrousTimoutError', err: `Timed out for ${txHash}` }};
         }, (error) => {
             return error;
         });
