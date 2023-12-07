@@ -723,46 +723,49 @@
 					tx.signer = userPublicKey;
 					let txSigned = null;
 					if (typeof solflare === 'undefined') {
-							txSigned = await solana.signAllTransactions([tx]);
+						txSigned = await solana.signAllTransactions([tx]);
 					} else {
-							txSigned = await solflare.signAllTransactions([tx]);
+						txSigned = await solflare.signAllTransactions([tx]);
 					}
 					let txSerialized = txSigned[0].serialize();
 					let opStart = Date.now();
           let txHash, confirmation;
+
           if (ludicrousMode) {
-							console.log(`[${fleetName}] <${opName}> SEND (LUD)`);
-              ({ txHash, confirmation} = await sendLudicrousTransaction(txSerialized, lastValidBlockHeight, solanaConnection, fleetName));
+						console.log(`[${fleetName}] <${opName}> SEND`);
+          	({ txHash, confirmation} = await sendLudicrousTransaction(txSerialized, lastValidBlockHeight, solanaConnection, fleetName));
           } else {
-              txHash = await solanaConnection.sendRawTransaction(txSerialized, {skipPreflight: true, preflightCommitment: 'confirmed'});
-							console.log(`[${fleetName}] <${opName}> SENT ${Date.now() - opStart}ms`);
-              //console.log('---TXHASH---', txHash);
-              confirmation = await waitForTxConfirmation(txHash, blockhash, lastValidBlockHeight, fleetName);
-          }					
+          	txHash = await solanaConnection.sendRawTransaction(txSerialized, {skipPreflight: true, preflightCommitment: 'confirmed'});
+						console.log(`[${fleetName}] <${opName}> SENT ${Date.now() - opStart}ms`);
+          	//console.log('---TXHASH---', txHash);
+          	confirmation = await waitForTxConfirmation(txHash, blockhash, lastValidBlockHeight, fleetName);
+          }			
+
 					console.log(`[${fleetName}] <${opName}> ${confirmation.err ? 'CONFIRM-BAD' : 'CONFIRM-GOOD'} ${Date.now() - opStart}ms`);
 					let txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
 
 					//Bad confirmation
 					if((confirmation.name == 'LudicrousTimoutError') || (!txResult && confirmation.name == 'TransactionExpiredBlockheightExceededError')) {
-							console.log(`[${fleetName}] <${opName}> RETRY`);
-							txResult = await txSignAndSend(ix, fleet, opName);
+						console.log(`[${fleetName}] <${opName}> RETRY`);
+						txResult = await txSignAndSend(ix, fleet, opName);
 					}
 
 					//Good confirmation - fetch fully confirmed tx
 					if (!confirmation.name) {
-							let tryCount = 0;
-							while (!txResult) {
-								if(tryCount > 9) break;
+						if(!txResult) console.log(`[${fleetName}] RE-FETCHING TXRESULT`);
+						let tryCount = 0;
+						while (!txResult) {
+							if(tryCount > 9) break;
+							await wait(2000);
+							txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
+							tryCount++;
+						}
 
-								console.log(`[${fleetName}] RE-FETCHING TXRESULT`);
-								await wait(2000);
-								txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
-
-								tryCount++;
-							}
-
-							//Something went wrong, start again
-							if(!txResult) txResult = await txSignAndSend(ix, fleet, opName);
+						//Something went wrong, start again
+						if(!txResult) {
+							console.log(`[${fleetName}] <${opName}> RETRY`);
+							txResult = await txSignAndSend(ix, fleet, opName);
+						}
 					}
 
 					//console.log('txResult: ', txResult);
@@ -771,38 +774,38 @@
 			});
 	}
 
-		//bitshift taken from @staratlas/sage permissions.ts
-		function buildPermissions(input) {
-			const out = [0,0,0,0,0,0,0,0];
-			out[0] = new BrowserAnchor.anchor.BN(
-					(input[0][0] ? 1 << 0 : 0) |
-					(input[0][1] ? 1 << 1 : 0) |
-					(input[0][2] ? 1 << 2 : 0) |
-					(input[0][3] ? 1 << 3 : 0) |
-					(input[0][4] ? 1 << 4 : 0) |
-					(input[0][5] ? 1 << 5 : 0) |
-					(input[0][6] ? 1 << 6 : 0) |
-					(input[0][7] ? 1 << 7 : 0));
-			out[1] = new BrowserAnchor.anchor.BN(
-					(input[1][0] ? 1 << 0 : 0) |
-					(input[1][1] ? 1 << 1 : 0) |
-					(input[1][2] ? 1 << 2 : 0) |
-					(input[1][3] ? 1 << 3 : 0) |
-					(input[1][4] ? 1 << 4 : 0) |
-					(input[1][5] ? 1 << 5 : 0) |
-					(input[1][6] ? 1 << 6 : 0) |
-					(input[1][7] ? 1 << 7 : 0));
-			out[2] = new BrowserAnchor.anchor.BN(
-					(input[2][0] ? 1 << 0 : 0) |
-					(input[2][1] ? 1 << 1 : 0) |
-					(input[2][2] ? 1 << 2 : 0) |
-					(input[2][3] ? 1 << 3 : 0) |
-					(input[2][4] ? 1 << 4 : 0) |
-					(input[2][5] ? 1 << 5 : 0) |
-					(input[2][6] ? 1 << 6 : 0) |
-					(input[2][7] ? 1 << 7 : 0));
-			console.log('out: ', out);
-			return out;
+	//bitshift taken from @staratlas/sage permissions.ts
+	function buildPermissions(input) {
+		const out = [0,0,0,0,0,0,0,0];
+		out[0] = new BrowserAnchor.anchor.BN(
+				(input[0][0] ? 1 << 0 : 0) |
+				(input[0][1] ? 1 << 1 : 0) |
+				(input[0][2] ? 1 << 2 : 0) |
+				(input[0][3] ? 1 << 3 : 0) |
+				(input[0][4] ? 1 << 4 : 0) |
+				(input[0][5] ? 1 << 5 : 0) |
+				(input[0][6] ? 1 << 6 : 0) |
+				(input[0][7] ? 1 << 7 : 0));
+		out[1] = new BrowserAnchor.anchor.BN(
+				(input[1][0] ? 1 << 0 : 0) |
+				(input[1][1] ? 1 << 1 : 0) |
+				(input[1][2] ? 1 << 2 : 0) |
+				(input[1][3] ? 1 << 3 : 0) |
+				(input[1][4] ? 1 << 4 : 0) |
+				(input[1][5] ? 1 << 5 : 0) |
+				(input[1][6] ? 1 << 6 : 0) |
+				(input[1][7] ? 1 << 7 : 0));
+		out[2] = new BrowserAnchor.anchor.BN(
+				(input[2][0] ? 1 << 0 : 0) |
+				(input[2][1] ? 1 << 1 : 0) |
+				(input[2][2] ? 1 << 2 : 0) |
+				(input[2][3] ? 1 << 3 : 0) |
+				(input[2][4] ? 1 << 4 : 0) |
+				(input[2][5] ? 1 << 5 : 0) |
+				(input[2][6] ? 1 << 6 : 0) |
+				(input[2][7] ? 1 << 7 : 0));
+		console.log('out: ', out);
+		return out;
 	}
 
 	async function addKeyToProfile(newKey) {
