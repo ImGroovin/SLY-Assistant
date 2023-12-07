@@ -39,6 +39,7 @@
 
 	let userPublicKey = null;
 	let userProfileAcct = null;
+	let userProfileKeyIdx = 0;
 	let userProfileFactionAcct = null;
 	let userFleetAccts = null;
 	let userFleets = [];
@@ -50,6 +51,7 @@
 	let [sageSDUTrackerAcct] = await sageProgram.account.surveyDataUnitTracker.all();
 	console.log('sageSDUTrackerAcct: ', sageSDUTrackerAcct);
 
+	let profileProgram = new BrowserAnchor.anchor.Program(profileIDL, profileProgramId, anchorProvider);
 	let cargoProgram = new BrowserAnchor.anchor.Program(cargoIDL, cargoProgramId, anchorProvider);
 	let [cargoStatsDefinitionAcct] = await cargoProgram.account.cargoStatsDefinition.all();
 	let cargoStatsDefSeqId = cargoStatsDefinitionAcct.account.seqId;
@@ -201,22 +203,42 @@
 							userPublicKey = solflare.publicKey;
 					}
 
-					[userProfileAcct] = await solanaConnection.getProgramAccounts(
-							profileProgramId,
-							{
-									filters: [
-											{
-													memcmp: {
-															offset: 30,
-															bytes: userPublicKey.toString(),
-													},
-											},
-									],
-							}
-					);
-					userProfileAcct = userProfileAcct.pubkey;
+					let userProfiles = await solanaConnection.getProgramAccounts(profileProgramId);
 
-					console.log(userProfileAcct);
+					let foundProf = [];
+					console.log(userProfiles[0]);
+					for (let userProf of userProfiles) {
+							let userProfData = userProf.account.data.subarray(30);
+							let iter = 0;
+							while (userProfData.length >= 80) {
+									let currProf = userProfData.subarray(0, 80);
+									let profDecoded = profileProgram.coder.types.decode('ProfileKey', currProf);
+									if (profDecoded.key.toString() === userPublicKey.toString()) {
+											let [playerNameAcct] = await solanaConnection.getProgramAccounts(
+													profileProgramId,
+													{
+															filters: [
+																	{
+																			memcmp: {
+																					offset: 9,
+																					bytes: userProf.pubkey.toString(),
+																			},
+																	},
+															],
+													}
+											);
+											let playerName = playerNameAcct ? new TextDecoder().decode(playerNameAcct.account.data.subarray(42)) : '';
+											foundProf.push({profile: userProf.pubkey.toString(), name: playerName, idx: iter})
+									}
+									userProfData = userProfData.subarray(80);
+									//iter > 0 && foundProf.push({profile: userProf, key: profDecoded, idx: iter});
+									iter += 1;
+							}
+					}
+
+					let userProfile = foundProf.length > 1 ? await assistProfileToggle(foundProf) : foundProf[0];
+					userProfileAcct = new solanaWeb3.PublicKey(userProfile.profile);
+					userProfileKeyIdx = userProfile.idx;					
 
 					/*
 					function getUserProfileAcct(procId, roomId, sessionId) {
@@ -322,7 +344,15 @@
 							let fleetAcctInfo = await solanaConnection.getAccountInfo(fleet.publicKey);
 							let [fleetState, extra] = getFleetState(fleetAcctInfo);
 							let fleetCoords = fleetState == 'Idle' && extra ? extra : [];
-							userFleets.push({publicKey: fleet.publicKey, label: fleetLabel.replace(/\0/g, ''), state: fleetState, moveTarget: fleetMoveTarget, startingCoords: fleetCoords, cargoHold: fleet.account.cargoHold, fuelTank: fleet.account.fuelTank, ammoBank: fleet.account.ammoBank, repairKitToken: fleetRepairKitToken, sduToken: fleetSduToken, fuelToken: fleetFuelToken, warpFuelConsumptionRate: fleet.account.stats.movementStats.warpFuelConsumptionRate, warpSpeed: fleet.account.stats.movementStats.warpSpeed, maxWarpDistance: fleet.account.stats.movementStats.maxWarpDistance, subwarpFuelConsumptionRate: fleet.account.stats.movementStats.subwarpFuelConsumptionRate, subwarpSpeed: fleet.account.stats.movementStats.subwarpSpeed, cargoCapacity: fleet.account.stats.cargoStats.cargoCapacity, fuelCapacity: fleet.account.stats.cargoStats.fuelCapacity, ammoCapacity: fleet.account.stats.cargoStats.ammoCapacity, scanCost: fleet.account.stats.miscStats.scanRepairKitAmount, scanCooldown: fleet.account.stats.miscStats.scanCoolDown, warpCooldown: fleet.account.stats.movementStats.warpCoolDown, miningRate: fleet.account.stats.cargoStats.miningRate, foodConsumptionRate: fleet.account.stats.cargoStats.foodConsumptionRate, ammoConsumptionRate: fleet.account.stats.cargoStats.ammoConsumptionRate, planetExitFuelAmount: fleet.account.stats.movementStats.planetExitFuelAmount, destCoord: fleetDest, starbaseCoord: fleetStarbase, scanBlock: fleetScanBlock, scanBlockIdx: 0, scanEnd: 0, scanSkipCnt: 0, scanSectorStart: 0, scanMin: fleetScanMin, scanMove: fleetScanMove, toolCnt: currentToolCnt.account.data.parsed.info.tokenAmount.uiAmount, sduCnt: 0, fuelCnt: currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount, moveType: fleetMoveType, mineResource: fleetMineResource, minePlanet: null});
+							let fleetScanBlockIdx = 0;
+							/*
+							for (let i = 0; i < fleetScanBlock.length; i++) {
+									if (fleetCoords[0] == fleetScanBlock[i][0] && fleetCoords[1] == fleetScanBlock[i][1]) {
+											fleetScanBlockIdx = i;
+											break;
+									}
+							}*/
+							userFleets.push({publicKey: fleet.publicKey, label: fleetLabel.replace(/\0/g, ''), state: fleetState, moveTarget: fleetMoveTarget, startingCoords: fleetCoords, cargoHold: fleet.account.cargoHold, fuelTank: fleet.account.fuelTank, ammoBank: fleet.account.ammoBank, repairKitToken: fleetRepairKitToken, sduToken: fleetSduToken, fuelToken: fleetFuelToken, warpFuelConsumptionRate: fleet.account.stats.movementStats.warpFuelConsumptionRate, warpSpeed: fleet.account.stats.movementStats.warpSpeed, maxWarpDistance: fleet.account.stats.movementStats.maxWarpDistance, subwarpFuelConsumptionRate: fleet.account.stats.movementStats.subwarpFuelConsumptionRate, subwarpSpeed: fleet.account.stats.movementStats.subwarpSpeed, cargoCapacity: fleet.account.stats.cargoStats.cargoCapacity, fuelCapacity: fleet.account.stats.cargoStats.fuelCapacity, ammoCapacity: fleet.account.stats.cargoStats.ammoCapacity, scanCost: fleet.account.stats.miscStats.scanRepairKitAmount, scanCooldown: fleet.account.stats.miscStats.scanCoolDown, warpCooldown: fleet.account.stats.movementStats.warpCoolDown, miningRate: fleet.account.stats.cargoStats.miningRate, foodConsumptionRate: fleet.account.stats.cargoStats.foodConsumptionRate, ammoConsumptionRate: fleet.account.stats.cargoStats.ammoConsumptionRate, planetExitFuelAmount: fleet.account.stats.movementStats.planetExitFuelAmount, destCoord: fleetDest, starbaseCoord: fleetStarbase, scanBlock: fleetScanBlock, scanBlockIdx: fleetScanBlockIdx, scanEnd: 0, scanSkipCnt: 0, scanSectorStart: 0, scanMin: fleetScanMin, scanMove: fleetScanMove, toolCnt: currentToolCnt.account.data.parsed.info.tokenAmount.uiAmount, sduCnt: 0, fuelCnt: currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount, moveType: fleetMoveType, mineResource: fleetMineResource, minePlanet: null});
 					}
 					userFleets.sort(function (a, b) {
 							return a.label.toUpperCase().localeCompare(b.label.toUpperCase());
@@ -670,7 +700,7 @@
 				//if (id) connection.removeSignatureListener(id);
 				return result;
 			}, (error) => { 
-				return { txHash, confirmation: error } 
+				return { txHash, confirmation: { name: 'LudicrousTimoutError', err: error } } 
 			});
 	}
 
@@ -693,46 +723,49 @@
 					tx.signer = userPublicKey;
 					let txSigned = null;
 					if (typeof solflare === 'undefined') {
-							txSigned = await solana.signAllTransactions([tx]);
+						txSigned = await solana.signAllTransactions([tx]);
 					} else {
-							txSigned = await solflare.signAllTransactions([tx]);
+						txSigned = await solflare.signAllTransactions([tx]);
 					}
 					let txSerialized = txSigned[0].serialize();
 					let opStart = Date.now();
           let txHash, confirmation;
+
           if (ludicrousMode) {
-							console.log(`[${fleetName}] <${opName}> SEND (LUD)`);
-              ({ txHash, confirmation} = await sendLudicrousTransaction(txSerialized, lastValidBlockHeight, solanaConnection, fleetName));
+						console.log(`[${fleetName}] <${opName}> SEND`);
+          	({ txHash, confirmation} = await sendLudicrousTransaction(txSerialized, lastValidBlockHeight, solanaConnection, fleetName));
           } else {
-              txHash = await solanaConnection.sendRawTransaction(txSerialized, {skipPreflight: true, preflightCommitment: 'confirmed'});
-							console.log(`[${fleetName}] <${opName}> SENT ${Date.now() - opStart}ms`);
-              //console.log('---TXHASH---', txHash);
-              confirmation = await waitForTxConfirmation(txHash, blockhash, lastValidBlockHeight, fleetName);
-          }					
-					console.log(`[${fleetName}] <${opName}> ${confirmation.err ? 'CONFIRM-BAD' : 'CONFIRM-GOOD'} ${Date.now() - opStart}ms`, txHash, confirmation);
+          	txHash = await solanaConnection.sendRawTransaction(txSerialized, {skipPreflight: true, preflightCommitment: 'confirmed'});
+						console.log(`[${fleetName}] <${opName}> SENT ${Date.now() - opStart}ms`);
+          	//console.log('---TXHASH---', txHash);
+          	confirmation = await waitForTxConfirmation(txHash, blockhash, lastValidBlockHeight, fleetName);
+          }			
+
+					console.log(`[${fleetName}] <${opName}> ${confirmation.err ? 'CONFIRM-BAD' : 'CONFIRM-GOOD'} ${Date.now() - opStart}ms`);
 					let txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
 
 					//Bad confirmation
 					if((confirmation.name == 'LudicrousTimoutError') || (!txResult && confirmation.name == 'TransactionExpiredBlockheightExceededError')) {
-							console.log(`[${fleetName}] <${opName}> RETRY`);
-							txResult = await txSignAndSend(ix, fleet, opName);
+						console.log(`[${fleetName}] <${opName}> RETRY`);
+						txResult = await txSignAndSend(ix, fleet, opName);
 					}
 
 					//Good confirmation - fetch fully confirmed tx
 					if (!confirmation.name) {
-							let tryCount = 0;
-							while (!txResult) {
-								if(tryCount > 9) break;
+						if(!txResult) console.log(`[${fleetName}] RE-FETCHING TXRESULT`);
+						let tryCount = 0;
+						while (!txResult) {
+							if(tryCount > 9) break;
+							await wait(2000);
+							txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
+							tryCount++;
+						}
 
-								console.log(`[${fleetName}] RE-FETCHING TXRESULT`, txHash);
-								await wait(2000);
-								txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
-
-								tryCount++;
-							}
-
-							//Something went wrong, start again
-							if(!txResult) txResult = await txSignAndSend(ix, fleet, opName);
+						//Something went wrong, start again
+						if(!txResult) {
+							console.log(`[${fleetName}] <${opName}> RETRY`);
+							txResult = await txSignAndSend(ix, fleet, opName);
+						}
 					}
 
 					//console.log('txResult: ', txResult);
@@ -741,11 +774,97 @@
 			});
 	}
 
+	//bitshift taken from @staratlas/sage permissions.ts
+	function buildPermissions(input) {
+		const out = [0,0,0,0,0,0,0,0];
+		out[0] = new BrowserAnchor.anchor.BN(
+				(input[0][0] ? 1 << 0 : 0) |
+				(input[0][1] ? 1 << 1 : 0) |
+				(input[0][2] ? 1 << 2 : 0) |
+				(input[0][3] ? 1 << 3 : 0) |
+				(input[0][4] ? 1 << 4 : 0) |
+				(input[0][5] ? 1 << 5 : 0) |
+				(input[0][6] ? 1 << 6 : 0) |
+				(input[0][7] ? 1 << 7 : 0));
+		out[1] = new BrowserAnchor.anchor.BN(
+				(input[1][0] ? 1 << 0 : 0) |
+				(input[1][1] ? 1 << 1 : 0) |
+				(input[1][2] ? 1 << 2 : 0) |
+				(input[1][3] ? 1 << 3 : 0) |
+				(input[1][4] ? 1 << 4 : 0) |
+				(input[1][5] ? 1 << 5 : 0) |
+				(input[1][6] ? 1 << 6 : 0) |
+				(input[1][7] ? 1 << 7 : 0));
+		out[2] = new BrowserAnchor.anchor.BN(
+				(input[2][0] ? 1 << 0 : 0) |
+				(input[2][1] ? 1 << 1 : 0) |
+				(input[2][2] ? 1 << 2 : 0) |
+				(input[2][3] ? 1 << 3 : 0) |
+				(input[2][4] ? 1 << 4 : 0) |
+				(input[2][5] ? 1 << 5 : 0) |
+				(input[2][6] ? 1 << 6 : 0) |
+				(input[2][7] ? 1 << 7 : 0));
+		console.log('out: ', out);
+		return out;
+	}
+
+	async function addKeyToProfile(newKey) {
+			return new Promise(async resolve => {
+					let permissions = buildPermissions([[true,true,true,true,true,true,true,true],[true,true,true,true,true,true,true,true],[true,true,true,true,true,true,true,true]]);
+					//let permissions = buildPermissions([[true,false,false,false,false,false,false,false],[false,false,true,true,true,false,false,true],[true,false,true,true,true,false,true,true]]);
+					/*
+					let keys = [{key: 'newKey', expireTime: new BrowserAnchor.anchor.BN(-1), permissions: permissions}];
+					let tempKeys = keys.map(
+						(key) => ({
+							sageProgramId,
+							expireTime:
+								key.expireTime,
+							permissions: key.permissions,
+						}),
+					)
+					*/
+					let txResult = {};
+					if (newKey.length > 0) {
+							let tx = { instruction: await profileProgram.methods.addKeys(0, 0, [{
+									scope: sageProgramId,
+									expireTime: new BrowserAnchor.anchor.BN(-1),
+									permissions: permissions
+							}]).accountsStrict({
+									funder: userPublicKey,
+									profile: userProfileAcct,
+									key: userPublicKey,
+									systemProgram: solanaWeb3.SystemProgram.programId
+							}).remainingAccounts([{
+									pubkey: new solanaWeb3.PublicKey(newKey),
+									isSigner: false,
+									isWritable: false
+							}]).instruction()}
+							txResult = await txSignAndSend(tx);
+					} else {
+							txResult = {name: "InputNeeded"};
+					}
+					resolve(txResult);
+			});
+	}
+
+	async function removeKeyFromProfile() {
+			return new Promise(async resolve => {
+					let tx = { instruction: await profileProgram.methods.removeKeys(0, [new BrowserAnchor.anchor.BN(1), new BrowserAnchor.anchor.BN(2)]).accountsStrict({
+							funder: userPublicKey,
+							profile: userProfileAcct,
+							key: userPublicKey,
+							systemProgram: solanaWeb3.SystemProgram.programId
+					}).instruction()}
+					let txResult = await txSignAndSend(tx);
+					resolve(txResult);
+			});
+	}
+
 	async function execScan(fleet) {
 			return new Promise(async resolve => {
 					// FIX: need to figure out how to initialize fleet.sduToken
 					//      look for await gr.getAccountInfo(Br) || (Rr.push(srcExports$2.createAssociatedTokenAccount(qr, Qr, !0).instructions)
-					let tx = { instruction: await sageProgram.methods.scanForSurveyDataUnits({keyIndex: 0}).accountsStrict({
+					let tx = { instruction: await sageProgram.methods.scanForSurveyDataUnits({keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx)}).accountsStrict({
 							gameAccountsFleetAndOwner: {
 									gameFleetAndOwner: {
 											fleetAndOwner: {
@@ -780,7 +899,7 @@
 
 	async function execSubwarp(fleet, destX, destY) {
 			return new Promise(async resolve => {
-					let tx = { instruction: await sageProgram.methods.startSubwarp({keyIndex: 0, toSector: [new BrowserAnchor.anchor.BN(destX), new BrowserAnchor.anchor.BN(destY)]}).accountsStrict({
+				let tx = { instruction: await sageProgram.methods.startSubwarp({keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx), toSector: [new BrowserAnchor.anchor.BN(destX), new BrowserAnchor.anchor.BN(destY)]}).accountsStrict({
 							gameAccountsFleetAndOwner: {
 									gameFleetAndOwner: {
 											fleetAndOwner: {
@@ -862,7 +981,7 @@
 
 	async function execWarp(fleet, destX, destY) {
 			return new Promise(async resolve => {
-					let tx = { instruction: await sageProgram.methods.warpToCoordinate({keyIndex: 0, toSector: [new BrowserAnchor.anchor.BN(destX), new BrowserAnchor.anchor.BN(destY)]}).accountsStrict({
+				let tx = { instruction: await sageProgram.methods.warpToCoordinate({keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx), toSector: [new BrowserAnchor.anchor.BN(destX), new BrowserAnchor.anchor.BN(destY)]}).accountsStrict({
 							gameAccountsFleetAndOwner: {
 									gameFleetAndOwner: {
 											fleetAndOwner: {
@@ -904,7 +1023,7 @@
 					let starbaseY = dockCoords.split(',')[1].trim();
 					let starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
 					let starbasePlayer = await getStarbasePlayer(userProfileAcct,starbase.publicKey);
-					let tx = { instruction: await sageProgram.methods.idleToLoadingBay({keyIndex: 0}).accountsStrict({
+					let tx = { instruction: await sageProgram.methods.idleToLoadingBay(new BrowserAnchor.anchor.BN(userProfileKeyIdx)).accountsStrict({
 							gameAccountsFleetAndOwner: {
 									gameFleetAndOwner: {
 											fleetAndOwner: {
@@ -933,7 +1052,7 @@
 					let starbaseY = dockCoords.split(',')[1].trim();
 					let starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
 					let starbasePlayer = await getStarbasePlayer(userProfileAcct,starbase.publicKey);
-					let tx = { instruction: await sageProgram.methods.loadingBayToIdle({keyIndex: 0}).accountsStrict({
+					let tx = { instruction: await sageProgram.methods.loadingBayToIdle(new BrowserAnchor.anchor.BN(userProfileKeyIdx)).accountsStrict({
 							gameAccountsFleetAndOwner: {
 									gameFleetAndOwner: {
 											fleetAndOwner: {
@@ -975,7 +1094,6 @@
 		}
 
 		await wait(2000);
-		//fleet.state = 'Idle';
 		updateFleetState(fleet, 'Idle');
 	}
 
@@ -1015,7 +1133,7 @@
 					let fleetResourceAcct = currentResource ? currentResource.pubkey : fleetResourceToken;
 					let resourceCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == tokenMint);
 					await solanaConnection.getAccountInfo(starbaseCargoToken) || await createProgramDerivedAccount(starbaseCargoToken, starbasePlayerCargoHold.publicKey, new solanaWeb3.PublicKey(tokenMint), fleet);
-					let tx = { instruction: await sageProgram.methods.withdrawCargoFromFleet({ amount: new BrowserAnchor.anchor.BN(amount), keyIndex: 0 }).accountsStrict({
+					let tx = { instruction: await sageProgram.methods.withdrawCargoFromFleet({ amount: new BrowserAnchor.anchor.BN(amount), keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx) }).accountsStrict({
 							gameAccountsFleetAndOwner: {
 									gameFleetAndOwner: {
 											fleetAndOwner: {
@@ -1096,7 +1214,7 @@
 							new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
 					);
 					await solanaConnection.getAccountInfo(starbaseCargoToken) || await createProgramDerivedAccount(starbaseCargoToken, starbasePlayerCargoHold.publicKey, new solanaWeb3.PublicKey(tokenMint), fleet);
-					let tx = { instruction: await sageProgram.methods.depositCargoToFleet({ amount: new BrowserAnchor.anchor.BN(amount), keyIndex: 0 }).accountsStrict({
+					let tx = { instruction: await sageProgram.methods.depositCargoToFleet({ amount: new BrowserAnchor.anchor.BN(amount), keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx) }).accountsStrict({
 							gameAccountsFleetAndOwner: {
 									gameFleetAndOwner: {
 											fleetAndOwner: {
@@ -1176,7 +1294,7 @@
 					let targetY = fleet.destCoord.split(',')[1].trim();
 					let starbase = await getStarbaseFromCoords(targetX, targetY);
 					let starbasePlayer = await getStarbasePlayer(userProfileAcct,starbase.publicKey);
-					let tx = { instruction: await sageProgram.methods.startMiningAsteroid({keyIndex: 0}).accountsStrict({
+					let tx = { instruction: await sageProgram.methods.startMiningAsteroid({keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx)}).accountsStrict({
 							gameAccountsFleetAndOwner: {
 									gameFleetAndOwner: {
 											fleetAndOwner: {
@@ -1359,7 +1477,7 @@
 							},
 					]).instruction()}
 
-					let tx2 = { instruction: await sageProgram.methods.stopMiningAsteroid({keyIndex: 0}).accountsStrict({
+					let tx2 = { instruction: await sageProgram.methods.stopMiningAsteroid({keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx)}).accountsStrict({
 							gameAccountsFleetAndOwner: {
 									gameFleetAndOwner: {
 											fleetAndOwner: {
@@ -1925,10 +2043,12 @@
 							let scanShiftX = destX > 0 ? -1 : 1;
 							let scanShiftY = destY > 0 ? -1 : 1;
 							let scanBlock = [];
-							scanBlock.push([destX, destY]);
-							scanBlock.push([destX+scanShiftX, destY]);
-							scanBlock.push([destX+scanShiftX, destY+scanShiftY]);
-							scanBlock.push([destX, destY+scanShiftY]);
+							if (destX !== '' && destY !== '') {
+								scanBlock.push([destX, destY]);
+								scanBlock.push([destX+scanShiftX, destY]);
+								scanBlock.push([destX+scanShiftX, destY+scanShiftY]);
+								scanBlock.push([destX, destY+scanShiftY]);
+							}
 							await GM.setValue(fleetPK, `{\"name\": \"${fleetName}\", \"assignment\": \"${fleetAssignment}\", \"mineResource\": \"${fleetMineResource}\", \"dest\": \"${fleetDestCoord}\", \"starbase\": \"${fleetStarbaseCoord}\", \"moveType\": \"${moveType}\", \"subwarpPref\": \"${subwarpPref}\", \"moveTarget\": \"${fleetMoveTarget}\", \"transportResource1\": \"${transportResource1}\", \"transportResource1Perc\": ${transportResource1Perc}, \"transportResource2\": \"${transportResource2}\", \"transportResource2Perc\": ${transportResource2Perc}, \"transportResource3\": \"${transportResource3}\", \"transportResource3Perc\": ${transportResource3Perc}, \"transportResource4\": \"${transportResource4}\", \"transportResource4Perc\": ${transportResource4Perc}, \"transportSBResource1\": \"${transportSBResource1}\", \"transportSBResource1Perc\": ${transportSBResource1Perc}, \"transportSBResource2\": \"${transportSBResource2}\", \"transportSBResource2Perc\": ${transportSBResource2Perc}, \"transportSBResource3\": \"${transportSBResource3}\", \"transportSBResource3Perc\": ${transportSBResource3Perc}, \"transportSBResource4\": \"${transportSBResource4}\", \"transportSBResource4Perc\": ${transportSBResource4Perc}, \"scanBlock\": ${JSON.stringify(scanBlock)}, \"scanMin\": ${scanMin}, \"scanMove\": \"${scanMove}\"}`);
 							userFleets[userFleetIndex].mineResource = fleetMineResource;
 							userFleets[userFleetIndex].destCoord = fleetDestCoord;
@@ -1936,7 +2056,7 @@
 							userFleets[userFleetIndex].moveType = moveType;
 							userFleets[userFleetIndex].scanBlock = scanBlock;
 							userFleets[userFleetIndex].scanMin = scanMin;
-							userFleets[userFleetIndex].scanMove = scanMove;
+							userFleets[userFleetIndex].scanMove = scanMove;// ? 'true' : 'false';
 					}
 			}
 			if (errBool === false) {
@@ -2010,6 +2130,41 @@
 			} else {
 					targetElem.style.display = 'none';
 			}
+	}
+
+	async function assistProfileToggle(profiles) {
+		return new Promise(async resolve => {
+				let targetElem = document.querySelector('#profileModal');
+				if (targetElem.style.display === 'none' && profiles) {
+						targetElem.style.display = 'block';
+						let contentElem = document.querySelector('#profileDiv');
+						let transportOptStr = '';
+						profiles.forEach( function(profile) {transportOptStr += '<option value="' + profile.profile + '">' + profile.name + '  [' + profile.profile + ']</option>';});
+						let profileSelect = document.createElement('select');
+						profileSelect.size = profiles.length + 1;
+						profileSelect.style.padding = '2px 10px';
+						profileSelect.innerHTML = transportOptStr;
+						contentElem.append(profileSelect);
+						profileSelect.onchange = function() {
+								console.log(profileSelect.value);
+								let selected = profiles.find(o => o.profile === profileSelect.value);
+								assistProfileToggle(null);
+								resolve(selected);
+						}
+				} else {
+						targetElem.style.display = 'none';
+						resolve(null);
+				}
+		});
+	}
+
+	async function assistAddAcctToggle() {
+					let targetElem = document.querySelector('#addAcctModal');
+					if (targetElem.style.display === 'none') {
+							targetElem.style.display = 'block';
+					} else {
+							targetElem.style.display = 'none';
+					}
 	}
 
 	async function handleMovement(i, moveDist, moveX, moveY) {
@@ -2203,6 +2358,7 @@
 							} else {
 									//console.log(`[${userFleets[i].label}] Whomp whomp`);
 							}
+
 							let scanMove = userFleets[i].scanMove == 'true';
 							let timeOnSector = Date.now() - userFleets[i].scanSectorStart;
 							let scanLow = scanCondition < userFleets[i].scanMin;
@@ -2274,8 +2430,7 @@
 					updateAssistStatus(userFleets[i]);
 					await execUndock(userFleets[i], userFleets[i].starbaseCoord);
 					await wait(2000);
-					userFleets[i].state = 'Idle';
-					updateAssistStatus(userFleets[i]);
+					updateFleetState(userFleets[i], 'Idle');
 			} else {
 					let moveDist = calculateMovementDistance(fleetCoords, [starbaseX,starbaseY]);
 					if (moveDist > 0 && userFleets[i].state.slice(0, 13) !== 'Warp Cooldown') {
@@ -2497,7 +2652,8 @@
 									} else {
 											console.log(`[${userFleets[i].label}] Undocking`);
 											await execUndock(userFleets[i], userFleets[i].starbaseCoord);
-											userFleets[i].state = 'Idle';
+											await wait(2000);
+											updateFleetState(userFleets[i], 'Idle');
 									}
 									updateAssistStatus(userFleets[i]);
 									//await wait(2000);
@@ -2507,10 +2663,10 @@
 									handleMineMovement();
 							}
 					} else if (fleetCoords[0] == destX && fleetCoords[1] == destY) {
-							await execStartMining(userFleets[i], mineItem, sageResource, planet);
 							console.log(`[${userFleets[i].label}] Mining Start`);
 							userFleets[i].state = 'Mine [' + TimeToStr(new Date(Date.now()+(miningDuration * 1000))) + ']';
 							updateAssistStatus(userFleets[i]);
+							await execStartMining(userFleets[i], mineItem, sageResource, planet);
 					} else {
 							userFleets[i].moveTarget = userFleets[i].destCoord;
 							handleMineMovement();
@@ -2522,6 +2678,9 @@
 					let sageResourceAcctInfo = await sageProgram.account.resource.fetch(fleetMining.resource);
 					let mineItem = await sageProgram.account.mineItem.fetch(sageResourceAcctInfo.mineItem);
 					if (Date.now() > mineEnd) {
+							console.log(`[${userFleets[i].label}] Mining Stop`);
+							userFleets[i].state = 'Mining Stop';
+							updateAssistStatus(userFleets[i]);						
 							await execStopMining(userFleets[i], fleetMining.resource, sageResourceAcctInfo, sageResourceAcctInfo.mineItem, mineItem.mint);
 							await wait(2000);
 							console.log(`[${userFleets[i].label}] Idle`);
@@ -2736,6 +2895,8 @@
 									console.log(`[${userFleets[i].label}] Undocking`);
 									userFleets[i].state = 'Undocking';
 									await execUndock(userFleets[i], userFleets[i].starbaseCoord);
+									await wait(2000);
+									updateFleetState(userFleets[i], 'Idle');
 							}
 							updateAssistStatus(userFleets[i]);
 							await wait(2000);
@@ -2889,30 +3050,26 @@
 											}
 									}
 							}
-							//if (errorResource.length > 0) { userFleets[i].state = `ERROR: Not enough ${errorResource.toString()}`; } else 
-							{
-									console.log(`[${userFleets[i].label}] Undocking`);
-									userFleets[i].state = 'Undocking';
-									await execUndock(userFleets[i], userFleets[i].destCoord);
-									await wait(2000);
-							}
-							updateAssistStatus(userFleets[i]);
+
+							updateFleetState(userFleets[i], 'Undocking');
+							await execUndock(userFleets[i], userFleets[i].destCoord);
+							await wait(2000);
+							updateFleetState(userFleets[i], 'Idle');
 							userFleets[i].moveTarget = userFleets[i].starbaseCoord;
 							userFleets[i].resupplying = false;
 					}
-					if (errorResource.length > 0) {
-							userFleets[i].state = `ERROR: Not enough ${errorResource.toString()}`;
+
+					//Commented out to prevent stalling at target, transport should always return to starbase if possible
+					//if (errorResource.length > 0) userFleets[i].state = `ERROR: Not enough ${errorResource.toString()}`;
+
+					if (userFleets[i].moveTarget !== '') {
+							let targetX = userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[0].trim() : '';
+							let targetY = userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[1].trim() : '';
+							moveDist = calculateMovementDistance(fleetCoords, [targetX,targetY]);
+							let warpCooldownFinished = await handleMovement(i, moveDist, targetX, targetY);
 					} else {
-							if (userFleets[i].moveTarget !== '') {
-									let targetX = userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[0].trim() : '';
-									let targetY = userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[1].trim() : '';
-									moveDist = calculateMovementDistance(fleetCoords, [targetX,targetY]);
-									let warpCooldownFinished = await handleMovement(i, moveDist, targetX, targetY);
-							} else {
-									console.log(`[${userFleets[i].label}] Transporting - ERROR: Fleet must start at Target or Starbase`);
-									userFleets[i].state = 'ERROR: Fleet must start at Target or Starbase';
-									updateAssistStatus(userFleets[i]);
-							}
+							console.log(`[${userFleets[i].label}] Transporting - ERROR: Fleet must start at Target or Starbase`);
+							updateFleetState(userFleets[i], 'ERROR: Fleet must start at Target or Starbase');
 					}
 					updateAssistStatus(userFleets[i]);
 			} else if (fleetState === 'StarbaseLoadingBay') {
@@ -3055,9 +3212,10 @@
 
 	let observer = new MutationObserver(waitForLabs);
 	function waitForLabs(mutations, observer){
-			if(document.querySelectorAll('#root > div:first-of-type > div:first-of-type > div > header > h1').length > 0 && !document.getElementById("autoScanBtn")) {
-			//if(document.querySelectorAll('body').length > 0 && !document.getElementById("autoScanBtn")) {
-					observer.disconnect();
+				let elemTrigger = observer ? '#root > div:first-of-type > div:first-of-type > div > header > h1' : 'body';
+        if(document.querySelectorAll(elemTrigger).length > 0 && !document.getElementById("assistContainer")) {
+					document.getElementById("assistContainerIso") && document.getElementById("assistContainerIso").remove();
+					observer && observer.disconnect();				
 					let assistCSS = document.createElement('style');
 					assistCSS.innerHTML = '.assist-modal {display: none; position: fixed; z-index: 2; padding-top: 100px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);} .assist-modal-content {position: relative; display: flex; flex-direction: column; background-color: rgb(41, 41, 48); margin: auto; padding: 0; border: 1px solid #888; width: 785px; min-width: 450px; max-width: 75%; height: auto; min-height: 50px; max-height: 85%; overflow-y: auto; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19); -webkit-animation-name: animatetop; -webkit-animation-duration: 0.4s; animation-name: animatetop; animation-duration: 0.4s;} #assist-modal-error {color: red; margin-left: 5px; margin-right: 5px; font-size: 16px;} .assist-modal-header-right {color: rgb(255, 190, 77); margin-left: auto !important; font-size: 20px;} .assist-btn {background-color: rgb(41, 41, 48); color: rgb(255, 190, 77); margin-left: 2px; margin-right: 2px;} .assist-btn:hover {background-color: rgba(255, 190, 77, 0.2);} .assist-modal-close:hover, .assist-modal-close:focus {font-weight: bold; text-decoration: none; cursor: pointer;} .assist-modal-btn {color: rgb(255, 190, 77); padding: 5px 5px; margin-right: 5px; text-decoration: none; background-color: rgb(41, 41, 48); border: none; cursor: pointer;} .assist-modal-save:hover { background-color: rgba(255, 190, 77, 0.2); } .assist-modal-header {display: flex; align-items: center; padding: 2px 16px; background-color: rgba(255, 190, 77, 0.2); border-bottom: 2px solid rgb(255, 190, 77); color: rgb(255, 190, 77);} .assist-modal-body {padding: 2px 16px; font-size: 12px;} .assist-modal-body > table {width: 100%;} .assist-modal-body th, .assist-modal-body td {padding-right: 5px, padding-left: 5px;} #assistStatus {background-color: rgba(0.1,0.1,0.1,1); opacity: 1; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1;} #assistCheck {background-color: rgba(0,0,0,0.75); backdrop-filter: blur(10px); position: absolute; margin: auto; left: 0; right: 0; top: 100px; width: 650px; min-width: 450px; max-width: 75%; z-index: 1;} .dropdown { position: absolute; display: none; margin-top: 25px; margin-left: 152px; background-color: rgb(41, 41, 48); min-width: 120px; box-shadow: 0 8px 16px 0 rgba(0, 0, 0, 0.2); z-index: 2; } .dropdown.show { display: block; } .assist-btn-alt { color: rgb(255, 190, 77); padding: 12px 16px; text-decoration: none; display: block; background-color: rgb(41, 41, 48); border: none; cursor: pointer; } .assist-btn-alt:hover { background-color: rgba(255, 190, 77, 0.2); } #checkresults { padding: 5px; margin-top: 20px; border: 1px solid grey; border-radius: 8px;} .dropdown button {width: 100%; text-align: left;} #assistModal table {border-collapse: collapse;} .assist-scan-row, .assist-mine-row, .assist-transport-row {background-color: rgba(255, 190, 77, 0.1); border-left: 1px solid white; border-right: 1px solid white; border-bottom: 1px solid white} .show-top-border {background-color: rgba(255, 190, 77, 0.1); border-left: 1px solid white; border-right: 1px solid white; border-top: 1px solid white;}';
 
@@ -3068,7 +3226,7 @@
 					let assistModalContent = document.createElement('div');
 					assistModalContent.classList.add('assist-modal-content');
 					let iconStr = 'data:image/png;base64,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';
-					assistModalContent.innerHTML = '<div class="assist-modal-header"><img src="' + iconStr + '" /><span style="padding-left: 15px;">SLY Lab Assistant</span><div class="assist-modal-header-right"><button id="configImportExport" class="assist-modal-btn">Import/Export</button><button class=" assist-modal-btn assist-modal-save">Save</button><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><table><tr><td>Fleet</td><td>Assignment</td><td>Target</td><td>Starbase</td><td>Subwarp</td><td>Max Cargo</td><td>Max Ammo</td><td>Max Fuel</td></tr></table></div>';
+					assistModalContent.innerHTML = '<div class="assist-modal-header"><img src="' + iconStr + '" /><span style="padding-left: 15px;">SLY Lab Assistant</span><div class="assist-modal-header-right"><button id="addAcctOpen" class="assist-modal-btn">Add Restricted Account</button><button id="configImportExport" class="assist-modal-btn">Import/Export</button><button class=" assist-modal-btn assist-modal-save">Save</button><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><table><tr><td>Fleet</td><td>Assignment</td><td>Target</td><td>Starbase</td><td>Subwarp</td><td>Max Cargo</td><td>Max Ammo</td><td>Max Fuel</td></tr></table></div>';
 					assistModal.append(assistModalContent);
 
 					let importModal = document.createElement('div');
@@ -3078,8 +3236,28 @@
 					importModal.style.zIndex = 3;
 					let importModalContent = document.createElement('div');
 					importModalContent.classList.add('assist-modal-content');
-					importModalContent.innerHTML = '<div class="assist-modal-header"><span>Config Import/Export</span><div class="assist-modal-header-right"><button class="assist-modal-btn assist-modal-save">Import Config</button><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><div></div><span>Copy the text below to save your raw Lab Assistant configuration. To restore your previous configuration, enter configuration text in the text box below then click the Import Config button.</span><div></div><textarea id="importText" rows="4" cols="80" max-width="100%"></textarea></div>';
+					importModalContent.innerHTML = '<div class="assist-modal-header"><span>Config Import/Export</span><div class="assist-modal-header-right"><button id="importConfigBtn" class="assist-modal-btn assist-modal-save">Import Config</button><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><div></div><span>Copy the text below to save your raw Lab Assistant configuration. To restore your previous configuration, enter configuration text in the text box below then click the Import Config button.</span><div></div><textarea id="importText" rows="4" cols="80" max-width="100%"></textarea></div>';
 					importModal.append(importModalContent);
+
+					let profileModal = document.createElement('div');
+					profileModal.classList.add('assist-modal');
+					profileModal.id = 'profileModal';
+					profileModal.style.display = 'none';
+					profileModal.style.zIndex = 3;
+					let profileModalContent = document.createElement('div');
+					profileModalContent.classList.add('assist-modal-content');
+					profileModalContent.innerHTML = '<div class="assist-modal-header"><span>Profile Selection</span><div class="assist-modal-header-right"><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><div></div><span>Select a profile to connect to Lab Assistant.</span><div></div><div id="profileDiv" max-width="100%"></div></div>';
+					profileModal.append(profileModalContent);
+
+					let addAcctModal = document.createElement('div');
+					addAcctModal.classList.add('assist-modal');
+					addAcctModal.id = 'addAcctModal';
+					addAcctModal.style.display = 'none';
+					addAcctModal.style.zIndex = 3;
+					let addAcctModalContent = document.createElement('div');
+					addAcctModalContent.classList.add('assist-modal-content');
+					addAcctModalContent.innerHTML = '<div class="assist-modal-header"><span>Add Restricted Account</span><div class="assist-modal-header-right"><button id="addAcctBtn" class="assist-modal-btn">Add Account</button><button id="removeAcctBtn" class="assist-modal-btn">Remove Account</button><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><div></div><span>Grant restricted access to interact with this account\'s SAGE instance from another account. Enter the public key of the restricted account below.</span><div></div><div max-width="100%"><input id="addAcctDiv" type="text" style="width: 375px;"></div></div>';
+					addAcctModal.append(addAcctModalContent);
 
 					let assistStatus = document.createElement('div');
 					assistStatus.id = 'assistStatus';
@@ -3162,16 +3340,24 @@
 					dropdown.appendChild(assistCheckButton);
 					dropdown.appendChild(assistConfigButton);
 
-					let targetElem = document.querySelector('#root > div:first-of-type > div:first-of-type > div > header > h1');
-					//let targetElem = document.querySelector('body');
-					targetElem.style.fontSize = '18px';
-					//targetElem.insertBefore(autoContainer, targetElem.firstElementChild);
-					targetElem.append(assistCSS);
-					targetElem.append(autoContainer);
+					let targetElem = document.querySelector('body');
+					if (observer) {
+							autoContainer.id = 'assistContainer';
+							targetElem = document.querySelector('#root > div:first-of-type > div:first-of-type > div > header > h1');
+							targetElem.style.fontSize = '18px';
+							targetElem.append(assistCSS);
+							targetElem.append(autoContainer);
+					} else {
+							autoContainer.id = 'assistContainerIso';
+							targetElem.prepend(autoContainer);
+							targetElem.prepend(assistCSS);
+					}
 					targetElem.append(assistModal);
 					targetElem.append(assistStatus);
 					targetElem.append(assistCheck);
 					targetElem.append(importModal);
+					targetElem.append(profileModal);
+					targetElem.append(addAcctModal);
 					let assistModalClose = document.querySelector('#assistModal .assist-modal-close');
 					assistModalClose.addEventListener('click', function(e) {assistModalToggle();});
 					let assistModalSave = document.querySelector('#assistModal .assist-modal-save');
@@ -3184,11 +3370,21 @@
 					assistCheckFleetBtn.addEventListener('click', function(e) {getFleetCntAtCoords();});
 					let configImportExport = document.querySelector('#configImportExport');
 					configImportExport.addEventListener('click', function(e) {assistImportToggle();});
-					let configImport = document.querySelector('#importModal .assist-modal-save');
+					let configImport = document.querySelector('#importConfigBtn');
 					configImport.addEventListener('click', function(e) {saveConfigImport();});
+					let addAcctOpen = document.querySelector('#addAcctOpen');
+					addAcctOpen.addEventListener('click', function(e) {assistAddAcctToggle();});
+					let addAcctBtn = document.querySelector('#addAcctBtn');
+					addAcctBtn.addEventListener('click', function(e) {addKeyToProfile(document.querySelector('#addAcctDiv').value);});
+					let removeAcctBtn = document.querySelector('#removeAcctBtn');
+					removeAcctBtn.addEventListener('click', function(e) {removeKeyFromProfile();});
 					let configImportClose = document.querySelector('#importModal .assist-modal-close');
 					configImportClose.addEventListener('click', function(e) {assistImportToggle();});
-
+					let profileModalClose = document.querySelector('#profileModal .assist-modal-close');
+					profileModalClose.addEventListener('click', function(e) {assistProfileToggle(null);});
+					let addAcctClose = document.querySelector('#addAcctModal .assist-modal-close');
+					addAcctClose.addEventListener('click', function(e) {assistAddAcctToggle();});
+					
 					makeDraggable(assistCheck);
 					makeDraggable(assistStatus);
 			}
