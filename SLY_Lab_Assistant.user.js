@@ -2608,7 +2608,7 @@
 			let miningDuration = calculateMiningDuration(userFleets[i].cargoCapacity - cargoCnt, userFleets[i].miningRate, resourceHardness, systemRichness);
 			let foodForDuration = Math.ceil(miningDuration * (userFleets[i].foodConsumptionRate / 10000));
 			let ammoForDuration = Math.ceil(miningDuration * (userFleets[i].ammoConsumptionRate / 10000));
-			ammoForDuration = Math.min(userFleets[i].ammoCapacity, ammoForDuration);
+			//ammoForDuration = Math.min(userFleets[i].ammoCapacity, ammoForDuration);
 			//let fuelNeeded = userFleets[i].planetExitFuelAmount;
 
 			let distToTarget = calculateMovementDistance(fleetCoords, [destX,destY]);
@@ -2647,7 +2647,7 @@
 					console.log(`${FleetTimeStamp(userFleets[i].label)} fuel: ${currentFuelCnt}/${fuelNeeded}`);
 					console.log(`${FleetTimeStamp(userFleets[i].label)} ammo: ${currentAmmoCnt}/${ammoForDuration}`);
 					console.log(`${FleetTimeStamp(userFleets[i].label)} food: ${currentFoodCnt}/${foodForDuration}`);
-	
+
 					let errorResource = [];
 					let needSupplies = false;
 
@@ -2677,8 +2677,7 @@
 											await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, userFleets[i].mineResource, userFleets[i].starbaseCoord, currentResourceCnt);
 											await wait(2000);
 									}
-									console.log(`${FleetTimeStamp(userFleets[i].label)} Loading`);
-									//updateFleetState(userFleets[i], 'Loading');
+
 									if (currentFuelCnt < userFleets[i].fuelCapacity) {
 											console.log(`${FleetTimeStamp(userFleets[i].label)} Loading fuel`);
 											updateFleetState(userFleets[i], `Loading fuel`);
@@ -2689,6 +2688,7 @@
 											}
 											await wait(2000);
 									} else { console.log(`${FleetTimeStamp(userFleets[i].label)} Fuel loading skipped: ${currentFuelCnt} / ${userFleets[i].fuelCapacity}`); }
+
 									if (currentAmmoCnt < ammoForDuration) {
 											console.log(`${FleetTimeStamp(userFleets[i].label)} Loading ammo`);
 											updateFleetState(userFleets[i], `Loading ammo`);
@@ -2700,6 +2700,7 @@
 											}
 											await wait(2000);
 									} else { console.log(`${FleetTimeStamp(userFleets[i].label)} Ammo loading skipped: ${currentAmmoCnt} / ${ammoForDuration}`); }
+
 									fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 									cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
 									miningDuration = calculateMiningDuration(userFleets[i].cargoCapacity - cargoCnt, userFleets[i].miningRate, resourceHardness, systemRichness);
