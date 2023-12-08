@@ -78,3 +78,10 @@ The script is built as a TamperMonkey script. [TamperMonkey](https://www.tamperm
 1. Launch the game as usual
 2. Click the Lab Assistant "Start" button
 3. __Leave the browser window open (it can be minimized)__ - this is required since the script runs in the browser
+
+## Contact Information
+Our website: https://sly.cyclic.app/
+Our discord: https://discord.gg/DCD9CuJFRr
+Our github: https://github.com/ImGroovin
+
+If you'd like to tip/donate/buy the devs a beer/coffee, our Solana address: SLYxadUPv6gnFRBKj7UxZytGYbLdAtUHn4TTLMj1dmL
