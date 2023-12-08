@@ -2282,10 +2282,12 @@
 											let warpResult = await execWarp(userFleets[i], moveX, moveY);
 											warpCooldownFinished = Date.now() + userFleets[i].warpCooldown*1000 + 2000;
 									} else if (currentFuelCnt + currentCargoFuelCnt >= subwarpCost) {
-											console.log(`${FleetTimeStamp(userFleets[i].label)} Subwarping to [${moveX},${moveY}]`);
+											const coordStr = `[${moveX},${moveY}]`;
+											console.log(`${FleetTimeStamp(userFleets[i].label)} Subwarping to ${coordStr}`);
 											moveTime = calculateSubwarpTime(userFleets[i], moveDist);
 											//moveCost = calculateSubwarpFuelBurn(userFleets[i], moveDist);
-											const newFleetState = 'Subwarp [' + TimeToStr(new Date(Date.now()+(moveTime * 1000 + 10000))) + ']';
+											const travelEndTime = TimeToStr(new Date(Date.now()+(moveTime * 1000 + 10000)));
+											const newFleetState = `Subwarp ${coordStr} ${travelEndTime}`;
 											updateFleetState(userFleets[i], newFleetState);
 											let subwarpResult = await execSubwarp(userFleets[i], moveX, moveY);
 									} else {
@@ -2679,6 +2681,7 @@
 									//updateFleetState(userFleets[i], 'Loading');
 									if (currentFuelCnt < userFleets[i].fuelCapacity) {
 											console.log(`${FleetTimeStamp(userFleets[i].label)} Loading fuel`);
+											updateFleetState(userFleets[i], `Loading fuel`);
 											let fuelResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, fleetFuelAcct, sageGameAcct.account.mints.fuel.toString(), fuelCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].fuelCapacity - currentFuelCnt);
 											if (fuelResp && fuelResp.name == 'NotEnoughResource') {
 													console.log(`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough fuel`);
@@ -2688,6 +2691,7 @@
 									} else { console.log(`${FleetTimeStamp(userFleets[i].label)} Fuel loading skipped: ${currentFuelCnt} / ${userFleets[i].fuelCapacity}`); }
 									if (currentAmmoCnt < ammoForDuration) {
 											console.log(`${FleetTimeStamp(userFleets[i].label)} Loading ammo`);
+											updateFleetState(userFleets[i], `Loading ammo`);
 											let ammoCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.ammo);
 											let ammoResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].ammoBank, fleetAmmoAcct, sageGameAcct.account.mints.ammo.toString(), ammoCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].ammoCapacity - currentAmmoCnt);
 											if (ammoResp && ammoResp.name == 'NotEnoughResource') {
@@ -2702,6 +2706,7 @@
 									foodForDuration = Math.ceil(miningDuration * (userFleets[i].foodConsumptionRate / 10000));
 									if (currentFoodCnt < foodForDuration) {
 											console.log(`${FleetTimeStamp(userFleets[i].label)} Loading food`);
+											updateFleetState(userFleets[i], `Loading food`);
 											let foodCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.food);
 											let foodResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetFoodAcct, sageGameAcct.account.mints.food.toString(), foodCargoTypeAcct, userFleets[i].starbaseCoord, foodForDuration - currentFoodCnt);
 											if (foodResp && foodResp.name == 'NotEnoughResource') {
@@ -2710,12 +2715,14 @@
 											}
 											await wait(2000);
 									} else { console.log(`${FleetTimeStamp(userFleets[i].label)} Food loading skipped: ${currentFoodCnt} / ${foodForDuration}`); }
+									
+									updateFleetState(userFleets[i], `Loading finish`);
+
 									if (errorResource.length > 0) {
-											userFleets[i].state = `ERROR: Not enough ${errorResource.toString()}`;
+										updateFleetState(userFleets[i], `ERROR: Not enough ${errorResource.toString()}`);
 									} else {
-											await execUndock(userFleets[i], userFleets[i].starbaseCoord);
+										await execUndock(userFleets[i], userFleets[i].starbaseCoord);
 									}
-									updateAssistStatus(userFleets[i]);
 									//await wait(2000);
 									//userFleets[i].moveTarget = userFleets[i].destCoord;
 							} else {
@@ -3147,6 +3154,7 @@
 				let fleetParsedData = JSON.parse(fleetSavedData);
 				if(!fleetParsedData.assignment) return;
 
+				userFleets[i].iterCnt++;
 				console.log(`${FleetTimeStamp(userFleets[i].label)} <getAccountInfo> (${userFleets[i].state})`);
 				if(userFleets[i].mineEnd && userFleets[i].state.includes('Mine'))
 					console.log(`${FleetTimeStamp(userFleets[i].label)} Mining? ${Date.now()} < ${userFleets[i].mineEnd}`);
@@ -3182,7 +3190,6 @@
 
 	async function startFleet(i) {
 		if (!enableAssistant) return;
-		userFleets[i].iterCnt++;
 		
 		await operateFleet(i);
 
