@@ -3146,7 +3146,11 @@
 				let fleetSavedData = await GM.getValue(userFleets[i].publicKey.toString(), '{}');
 				let fleetParsedData = JSON.parse(fleetSavedData);
 				if(!fleetParsedData.assignment) return;
-				console.log(`${FleetTimeStamp(userFleets[i].label)} <getAccountInfo>`);
+
+				console.log(`${FleetTimeStamp(userFleets[i].label)} <getAccountInfo> (${userFleets[i].state})`);
+				if(userFleets[i].mineEnd && userFleets[i].state.includes('Mine'))
+					console.log(`${FleetTimeStamp(userFleets[i].label)} Mining? ${Date.now()} < ${userFleets[i].mineEnd}`);
+
 				let fleetAcctInfo = await solanaConnection.getAccountInfo(userFleets[i].publicKey);
 				let [fleetState, extra] = getFleetState(fleetAcctInfo);
 				let fleetCoords = fleetState == 'Idle' ? extra : [];
@@ -3172,6 +3176,8 @@
 		} catch (err) {
 				console.log(`${FleetTimeStamp(userFleets[i].label)} ERROR`, err);
 		}
+
+		updateAssistStatus(userFleets[i]);
 	}
 
 	async function startFleet(i) {
@@ -3179,9 +3185,6 @@
 		userFleets[i].iterCnt++;
 		
 		await operateFleet(i);
-		await wait(100);
-
-		updateAssistStatus(userFleets[i]);
 
 		setTimeout(() => { startFleet(i); }, 10000);
 	}
