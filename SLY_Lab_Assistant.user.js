@@ -18,6 +18,7 @@
 (async function() {
     'use strict';
     
+    let provider;
     let graceBlockWindow = 5;
     let enableAssistant = false;
     let initComplete = false;
@@ -63,64 +64,6 @@
     const AssociatedTokenProgram = new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
     const RecentSlotHashes = new solanaWeb3.PublicKey('SysvarS1otHashes111111111111111111111111111');
     const InstructionsSysVar = new solanaWeb3.PublicKey('Sysvar1nstructions1111111111111111111111111');
-
-    const wallets = {
-        'solana': window.solana,
-        'solflare': window.solflare,
-        'phantom': window.phantom.solana
-    }
-    
-    async function getProvider (wallets) {
-        const walletNames = Object.keys(wallets)
-        const walletName = walletNames.find(name => name in walletWindow)
-        if (walletName) {
-            const provider = wallets[walletName];
-            if (!provider.isConnected) await provider.connect();
-            return provider; 
-        }
-    }
-
-    function wait(ms) {
-        return new Promise(resolve => {
-            setTimeout(resolve, ms);
-        });
-    }
-
-    async function createProgramDerivedAccount(derived, derivedFrom1, derivedFrom2) {
-        const keys = [{
-            pubkey: userPublicKey,
-            isSigner: true,
-            isWritable: true
-        }, {
-            pubkey: derived,
-            isSigner: false,
-            isWritable: true
-        }, {
-            pubkey: derivedFrom1,
-            isSigner: false,
-            isWritable: false
-        }, {
-            pubkey: derivedFrom2,
-            isSigner: false,
-            isWritable: false
-        }, {
-            pubkey: solanaWeb3.SystemProgram.programId,
-            isSigner: false,
-            isWritable: false
-        }, {
-            pubkey: tokenProgram,
-            isSigner: false,
-            isWritable: false
-        }];
-
-        return await txSignAndSend({
-            instruction: new solanaWeb3.TransactionInstruction({
-                keys: keys,
-                programId: AssociatedTokenProgram.toString(),
-                data: []
-            })
-        });
-    }
 
     const ResourceTokens = {
         fuel: {
@@ -182,7 +125,7 @@
         },
         getPodToken: async function (input) {
             let { name, publicKey, pod } = input;
-            if (publicKey) name = this.find(item => item.publicKey === publicKey).name;
+            if (publicKey) name = this.find(item => item.publicKey === publicKey || item.publicKey.toString() === publicKey).name;
             if (name) name = name.toLowerCase().trim();
             if (!name || name === '' || !publicKey) throw new Error('Need to provide resource name or publicKey!');
             if (!pod || !this[name].from) throw new Error('Need to provide pod (fleet or starbase) for resource!');
@@ -206,6 +149,140 @@
             }
             return pda;
         }
+    }
+
+    const wallets = {
+        'solana': window.solana,
+        'solflare': window.solflare,
+        'phantom': window.phantom.solana
+    }
+    
+/**
+ * The function `getProvider` is an asynchronous function that takes in a `wallets` object and returns
+ * the provider object associated with the first wallet found in the `walletWindow` object.
+ * @param wallets - An object that contains different wallet providers. The keys of the object are the
+ * names of the wallets, and the values are the corresponding wallet provider objects.
+ * @returns the provider object if it exists and is connected.
+ */
+    async function getProvider (wallets) {
+        const walletNames = Object.keys(wallets)
+        const walletName = walletNames.find(name => name in walletWindow)
+        if (walletName) {
+            const provider = wallets[walletName];
+            if (!provider.isConnected) await provider.connect();
+            return provider; 
+        }
+    }
+
+/**
+ * The "wait" function returns a promise that resolves after a specified number of milliseconds.
+ * @param ms - The "ms" parameter represents the number of milliseconds to wait before resolving the
+ * promise.
+ * @returns a Promise object.
+ */
+    function wait(ms) {
+        return new Promise(resolve => {
+            setTimeout(resolve, ms);
+        });
+    }
+
+    const MAX_TRANSACTION_SIZE = 1232;
+
+    function lengthToCompact16size(size) {
+        if (size > 0x7f) return 2;
+        return 1;
+    }
+
+/**
+ * The function calculates the size of a transaction in bytes based on the number of instructions and
+ * the keys involved.
+ * @param instructions - An array of objects representing instructions for a transaction. Each object
+ * has the following properties: `instruction`
+ * @param funder - The `funder` parameter is an object that represents the funder's account. It should
+ * have a `toBase58()` method that returns the base58 encoded string representation of the account's
+ * public key.
+ * @returns the size of a transaction in bytes.
+ */
+    function getTransactionSize(instructions, funder) {
+        let ixSizes = 0;
+        const uniqueSigners = new Set(funder.toBase58());
+        const uniqueKeys = new Set(funder.toBase58());
+
+        instructions.forEach(({ instruction }) => {
+            uniqueKeys.add(instruction.programId.toBase58());
+
+            instruction.keys.forEach((key) => {
+                if (key.isSigner) uniqueSigners.add(key.pubkey.toBase58());
+                uniqueKeys.add(key.pubkey.toBase58());
+            });
+            ixSizes +=
+            1 + // program id index
+            lengthToCompact16size(instruction.keys.length) + // num accounts
+            instruction.keys.length + // account indexes
+            lengthToCompact16size(instruction.data.length) + // num ix bytes
+            instruction.data.length; // ix bytes
+        });
+    
+      // console.log({ uniqueSigners, uniqueKeys, ixSizes });
+    
+      return (
+        lengthToCompact16size(uniqueSigners.size) + // num sigs
+        uniqueSigners.size * 64 + // Sigs
+        3 + // message header
+        lengthToCompact16size(uniqueKeys.size) + // num accounts
+        uniqueKeys.size * 32 + // accounts
+        32 + // recent blockhash
+        lengthToCompact16size(instructions.length) + // num instructions
+        ixSizes
+      );
+    }
+
+/**
+ * The function `createProgramDerivedAccount` creates a derived account using the provided derived
+ * public key and two other derived from public keys.
+ * @param derived - The `derived` parameter is the public key of the account that will be created as a
+ * derived account.
+ * @param derivedFrom1 - The `derivedFrom1` parameter is a public key that represents the account from
+ * which the `derived` account is derived.
+ * @param derivedFrom2 - The parameter `derivedFrom2` is a public key that represents the account from
+ * which the `derived` account is derived.
+ * @returns the result of the `txSignAndSend` function, which is likely a promise that resolves to the
+ * transaction details.
+ */
+    async function createProgramDerivedAccount(derived, derivedFrom1, derivedFrom2) {
+        const keys = [{
+            pubkey: provider.publicKey(),
+            isSigner: true,
+            isWritable: true
+        }, {
+            pubkey: derived,
+            isSigner: false,
+            isWritable: true
+        }, {
+            pubkey: derivedFrom1,
+            isSigner: false,
+            isWritable: false
+        }, {
+            pubkey: derivedFrom2,
+            isSigner: false,
+            isWritable: false
+        }, {
+            pubkey: solanaWeb3.SystemProgram.programId,
+            isSigner: false,
+            isWritable: false
+        }, {
+            pubkey: tokenProgram,
+            isSigner: false,
+            isWritable: false
+        }];
+
+        return await txSignAndSend({
+            instruction: new solanaWeb3.TransactionInstruction({
+                keys: keys,
+                programId: AssociatedTokenProgram.toString(),
+                data: []
+            })
+        });
     }
 
     const seqBN = new BrowserAnchor.anchor.BN(cargoStatsDefSeqId);
@@ -263,6 +340,16 @@
         },
     ]);
 
+/**
+ * The function `getFleetState` takes in fleet account information and returns the fleet state and any
+ * additional data associated with it.
+ * @param fleetAcctInfo - The `fleetAcctInfo` parameter is an object that contains information about a
+ * fleet account. It has a property called `data` which is an array of numbers.
+ * @returns The function `getFleetState` returns an array with two elements. The first element is the
+ * fleet state, which can be one of the following values: 'StarbaseLoadingBay', 'Idle', 'MineAsteroid',
+ * 'MoveWarp', 'MoveSubwarp', or 'Respawn'. The second element is an additional value that provides
+ * extra information depending on the fleet state.
+ */
     function getFleetState(fleetAcctInfo) {
         let remainingData = fleetAcctInfo.data.slice(414);
         let fleetState = 'Unknown';
@@ -297,10 +384,14 @@
         return [fleetState, extra];
     }
 
-    let provider;
+    /**
+     * The `initUser` function retrieves user profiles and fleet accounts, and returns the user profile
+     * and user profile faction account.
+     * @returns The function `initUser` returns an object with properties `userProfile` and
+     * `userProfileFactionAcct`.
+     */
     async function initUser() {
         provider = await getProvider(wallets);
-        const userPublicKey = provider.publicKey();
         let userProfiles = await solanaConnection.getProgramAccounts(profileProgramId);
 
         let playerProfiles = [];
@@ -311,7 +402,7 @@
                 const profile = array.slice(i, i + profileSize);
                 const decodedProfile = profileProgram.coder.types.decode('ProfileKey', profile);
 
-                if (decodedProfile.key.toString() === userPublicKey.toString()) {
+                if (decodedProfile.key.toString() === provider.publicKey().toString()) {
                     const [playerNameAcct] = await solanaConnection.getProgramAccounts(
                         profileProgramId,
                         {
@@ -340,6 +431,8 @@
                 },
             },
         ]);
+        userProfile.faction = userProfileFactionAcct;
+
         const userFleetAccts = await sageProgram.account.fleet.all([
             {
                 memcmp: {
@@ -401,6 +494,16 @@
         return { userProfile, userProfileFactionAcct };
     }
 
+/**
+ * The function `getBalanceChange` calculates the change in balance for a specific account after a
+ * transaction.
+ * @param txResult - The `txResult` parameter is an object that represents the result of a transaction.
+ * It contains information about the transaction, such as the message, metadata, and token balances
+ * before and after the transaction.
+ * @param targetAcct - The `targetAcct` parameter is the account address or key that you want to get
+ * the balance change for.
+ * @returns an object with two properties: "preBalance" and "postBalance".
+ */
     function getBalanceChange(txResult, targetAcct) {
         const acctIdx = txResult.transaction.message.staticAccountKeys.findIndex(item => item.toString() === targetAcct);
 
@@ -412,36 +515,83 @@
         return { preBalance, postBalance }
     }
 
-    function calculateMovementDistance(orig, dest) {
-        return dest ? Math.sqrt((orig[0] - dest[0]) ** 2 + (orig[1] - dest[1]) ** 2) : 0
+ /**
+  * The function calculates the distance between two points in a two-dimensional space.
+  * @param origin - The origin parameter represents the starting point of movement. It is an array
+  * containing the x and y coordinates of the origin point.
+  * @param destination - The destination parameter is the coordinates of the destination point. It is
+  * an array with two elements, where the first element represents the x-coordinate and the second
+  * element represents the y-coordinate.
+  * @returns the distance between the origin and destination points.
+  */
+    function calculateMovementDistance(origin, destination) {
+        return dest ? Math.sqrt((origin[0] - destination[0]) ** 2 + (origin[1] - destination[1]) ** 2) : 0
     }
 
-    // function calculateWarpTime(fleet, distance) {
-    //     return fleet.warpSpeed > 0 ? distance / (fleet.warpSpeed / 1e6) : 0
-    // }
-
+/**
+ * The function calculates the amount of fuel burned by a fleet traveling a certain distance while warping.
+ * @param fleet - An object representing a fleet of spaceships. It should have a property called
+ * "warpFuelConsumptionRate" which represents the rate at which the fleet consumes warp fuel.
+ * @param distance - The distance is the total distance that the fleet will be traveling.
+ * @returns the amount of fuel burned by a fleet when traveling a certain distance.
+ */
     function calculateWarpFuelBurn(fleet, distance) {
         return distance * (fleet.warpFuelConsumptionRate / 100)
     }
 
-    // function calculateSubwarpTime(fleet, distance) {
-    //     return fleet.subwarpSpeed > 0 ? distance / (fleet.subwarpSpeed / 1e6) : 0
-    // }
-
+/**
+ * The function calculates the amount of fuel burned by a fleet based on the distance traveled.
+ * @param fleet - The fleet parameter represents the fleet of ships that will be traveling the
+ * distance. It is assumed to be an object with properties related to the fleet's subwarp fuel
+ * consumption rate.
+ * @param distance - The distance is the total distance that the fleet will be traveling.
+ * @returns the amount of fuel burned by a fleet when traveling a certain distance.
+ */
     function calculateSubwarpFuelBurn(fleet, distance) {
         return distance * (fleet.subwarpFuelConsumptionRate / 100)
     }
 
+/**
+ * The function calculates the duration of mining based on cargo capacity, mining rate, resource
+ * hardness, and system richness.
+ * @param cargoCapacity - The cargo capacity refers to the maximum amount of resources that can be
+ * stored in the mining vessel.
+ * @param miningRate - The rate at which resources can be extracted via the mining
+ * operation. It is measured in units per second.
+ * @param resourceHardness - Resource hardness refers to the difficulty or toughness of the resource
+ * being mined. It is usually measured on a scale from 0 to 100, where 0 represents a very soft or
+ * easy-to-mine resource, and 100 represents a very hard or difficult-to-mine resource.
+ * @param systemRichness - System richness refers to the abundance or concentration of the resource
+ * being mined in the system. It is usually represented as a percentage, where 100% indicates a high
+ * concentration of the resource and 0% indicates no concentration or availability of the resource in
+ * the system.
+ * @returns the calculated mining duration.
+ */
     function calculateMiningDuration(cargoCapacity, miningRate, resourceHardness, systemRichness) {
         return resourceHardness > 0 ? Math.ceil(cargoCapacity / (((miningRate / 10000) * (systemRichness / 100)) / (resourceHardness / 100))) : 0;
     }
 
+/**
+ * The function BNToBs58 takes a BigNumber as input, converts it to a byte array, and then encodes it
+ * using the Base58 encoding scheme.
+ * @param bignumber - The `bignumber` parameter is a number that you want to convert to a Base58
+ * encoded string.
+ * @returns a Base58 encoded string.
+ */
     function BNToBs58(bignumber) {
         const bn = new BrowserAnchor.anchor.BN(bignumber);
         const bnArray = bn.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "le", 8);
         return bs58.encode(bnArray);
     }
 
+/**
+ * The function `getStarbaseFromCoords` retrieves a starbase using it's coordinates.
+ * @param x - The `x` parameter represents the x-coordinate of the starbase location. It is used to
+ * search for a starbase that matches the given x-coordinate.
+ * @param y - The parameter `y` represents the y-coordinate of a starbase.
+ * @returns The function `getStarbaseFromCoords` returns the starbase object that matches the given
+ * coordinates (x, y).
+ */
     async function getStarbaseFromCoords(x, y) {
         const [starbase] = await sageProgram.account.starbase.all([
             {
@@ -461,6 +611,12 @@
         return starbase;
     }
 
+/**
+ * The function `getPlanetsFromCoords` retrieves planets from coordinates (x, y) using the Sage program.
+ * @param x - The parameter `x` represents the x-coordinate of a location
+ * @param y - The parameter `y` represents the y-coordinate of a location.
+ * @returns an array of planets found in the given coordinates.
+ */
     async function getPlanetsFromCoords(x, y) {
         return await sageProgram.account.planet.all([
             {
@@ -478,6 +634,13 @@
         ]);
     }
 
+/**
+ * The function `getStarbasePlayer` retrieves a starbase player based on the user profile and starbase
+ * provided.
+ * @param userProfile - The `userProfile` is the public key of the player profile.
+ * @param starbase - The `starbase` is the public key for the given starbase. 
+ * @returns the `starbasePlayer` public key.
+ */
     async function getStarbasePlayer(userProfile, starbase) {
         const [starbasePlayer] = await sageProgram.account.starbasePlayer.all([
             {
@@ -496,7 +659,7 @@
         return starbasePlayer;
     }
 
-    async function getFleetCntAtCoords() {
+    async function getFleetCountAtCoords() {
         const gridSize = document.querySelector('#fleetGridSelect').value;
         const targetCoords = document.querySelector('#checkFleetCntInput').value;
 
@@ -594,6 +757,26 @@
         }
     }
     
+/**
+ * The function `httpMonitor` is an asynchronous function that monitors the status of a transaction.
+ * @param connection - The `connection` parameter is an object that represents the connection to the
+ * Solana blockchain network. It is used to interact with the network and perform various operations
+ * such as sending transactions, querying account information, etc.
+ * @param txHash - The transaction hash of the transaction you want to monitor.
+ * @param txn - The `txn` parameter represents the serialized transaction that you want to monitor. It is
+ * used if the transaction needs to be re-submitted.
+ * @param lastValidBlockHeight - The `lastValidBlockHeight` parameter represents the block height up to
+ * which the monitoring function should wait for the transaction to be confirmed. If the current block
+ * height exceeds or equals `lastValidBlockHeight`, the function will return a timeout error.
+ * @param lastMinAverageBlockSpeed - The `lastMinAverageBlockSpeed` parameter represents the average
+ * block speed in the last minute. It is used to calculate the waiting time before checking the
+ * transaction status again.
+ * @param [count=1] - The `count` parameter is used to keep track of the number of times the
+ * `httpMonitor` function has been called recursively. It is initially set to 1 and is incremented each
+ * time the function is called.
+ * @returns an object with properties `name` and `err` if a timeout occurs. Otherwise, it returns an
+ * object with properties `txHash` and `confirmation` if the transaction is confirmed.
+ */
     async function httpMonitor(connection, txHash, txn, lastValidBlockHeight, lastMinAverageBlockSpeed, count = 1) {
         const acceptableCommitments = [connection.commitment, 'finalized'];
         try {
@@ -624,6 +807,22 @@
         return { name: 'LudicrousTimoutError', err: `Timed out for ${txHash}` };
     }
 
+/**
+ * The function `sendLudicrousTransaction` sends a transaction using a connection object, logs the
+ * transaction hash, and then calls the `httpMonitor` function to monitor the transaction's status.
+ * @param txn - The `txn` parameter is the transaction object that you want to send. It contains all
+ * the necessary information for the transaction, such as the sender, recipient, amount, and any
+ * additional data or instructions.
+ * @param lastValidBlockHeight - The `lastValidBlockHeight` parameter represents the height of the last
+ * valid block on the blockchain. It is used in the `sendLudicrousTransaction` function to monitor the
+ * transaction's confirmation status and ensure that it is included in a block after the specified
+ * height.
+ * @param connection - The `connection` parameter is an object that represents the connection to the
+ * Solana blockchain network. It is used to interact with the network and perform various operations
+ * such as sending transactions, querying account information, etc.
+ * @returns The function `sendLudicrousTransaction` is returning the result of the `httpMonitor`
+ * function.
+ */
     async function sendLudicrousTransaction(txn, lastValidBlockHeight, connection) {
         console.log('---SENDTXN---');
         let txHash = await connection.sendRawTransaction(txn, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
@@ -636,64 +835,106 @@
         return await httpMonitor(connection, txHash, txn, lastValidBlockHeight, lastMinAverageBlockSpeed);
     }
 
-    async function txSignAndSend(ix) {
-        let tx = new solanaWeb3.Transaction();
-        const { blockhash, lastValidBlockHeight } = await solanaConnection.getLatestBlockhash('confirmed');
 
-        console.log('---INSTRUCTION---');
-        console.log(ix);
-        if (ix.constructor === Array) {
-            ix.forEach(item => tx.add(item.instruction))
-        } else {
-            tx.add(ix.instruction);
+/**
+ * The function `batchTransactions` is an asynchronous function that takes an array of instructions
+ * (`ixs`) and batches them into multiple transactions based on a maximum transaction size.
+ * @param ixs - An array of instructions (ixs) to be batched together. Each instruction represents 
+ * a specific action to be performed on the Solana blockchain.
+ * @param [txs] - The `txs` parameter is an array that stores the transactions that have been batched
+ * so far. It is an optional parameter and is initially an empty array. Each transaction is added to
+ * this array before recursively calling the `batchTransactions` function again with the remaining
+ * transactions.
+ * @returns The function `batchTransactions` returns an array of transactions (`txs`).
+ */
+    async function batchTransactions(ixs, blockhash, lastValidBlockHeight, txs = []) {
+        const tx = new solanaWeb3.Transaction();
+
+        for (let index = 0; index < ixs.length; index++) {
+            let before = ixs.slice(0, index + 1);
+            const after = ixs.slice(-(ixs.length - (index + 1)));
+
+            if (getTransactionSize(before, provider.publicKey()) > MAX_TRANSACTION_SIZE) {
+                before = ixs.slice(0, index);
+            } else {
+                if (before.length != after.length) continue;
+            }
+
+            before.forEach(ix => tx.add(ix.instruction));
+            tx.recentBlockhash = blockhash;
+            tx.lastValidBlockHeight = lastValidBlockHeight;
+            tx.feePayer = provider.publicKey();
+            tx.signer = provider.publicKey();
+            txs.push(tx);
+            if (after.length > 0) return batchTransactions(after, blockhash, lastValidBlockHeight, txs);
         }
-
-        tx.recentBlockhash = blockhash;
-        tx.lastValidBlockHeight = lastValidBlockHeight;
-        tx.feePayer = userPublicKey;
-        tx.signer = userPublicKey;
-        
-        const txSigned = await provider.signAllTransactions([tx]);
-        const txSerialized = txSigned[0].serialize();
-
-        const { txHash, confirmation} = await sendLudicrousTransaction(txSerialized, lastValidBlockHeight, solanaConnection);
-        
-        console.log('---CONFIRMATION---');
-        console.log(confirmation);
-        if ((confirmation.name == 'TransactionExpiredBlockheightExceededError' || confirmation.name == 'LudicrousTimoutError')) {
-            console.log('-----RETRY-----');
-            return txSignAndSend(ix);
-        }
-        
-        const txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
-        console.log('txResult: ', txResult);
-        return txResult;
+        return txs;
     }
 
-    async function execScan(fleet, userProfile, userProfileFactionAcct) {
+/**
+ * The function `txSignAndSend` signs and sends a batch of transactions to the Solana blockchain,
+ * handling errors and retries if necessary.
+ * @param ixs - The parameter `ixs` is an array of instructions that you want to include in the
+ * transaction. Each instruction represents an action to be performed on the Solana blockchain.
+ * @returns an array of transaction results.
+ */
+    async function txSignAndSend(ixs) {
+        const { blockhash, lastValidBlockHeight } = await solanaConnection.getLatestBlockhash('confirmed');
+        if (ixs.constructor !== Array) ixs = [ixs];
+
+        console.log('---INSTRUCTION---');
+        console.log(ixs);
+        const txns = await batchTransactions(ixs, blockhash, lastValidBlockHeight);
+        const signedTxns = await provider.signAllTransactions(txns);
+
+        let txResults = [];
+        for (const txn of signedTxns) {
+            ({ txHash, confirmation} = await sendLudicrousTransaction(txn.serialize(), lastValidBlockHeight, solanaConnection));
+            console.log('---CONFIRMATION---');
+            console.log(confirmation);
+            if ((confirmation.name == 'TransactionExpiredBlockheightExceededError' || confirmation.name == 'LudicrousTimoutError')) {
+                console.log('-----RETRY-----');
+                return txSignAndSend(ix);
+            }
+
+            const txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
+            console.log('txResult: ', txResult);
+            txResults.push(txResult);
+        }
+        return txResults;
+    }
+
+/**
+ * The `execScan` triggers a scan for survey data units.
+ * @param fleet - The `fleet` parameter represents the fleet object.
+ * @param userProfile - The `userProfile` parameter represents the user's profile information. It
+ * includes properties such as `index`, `pubkey`, and `faction`.
+ * @returns the transaction result of the scan.
+ */
+    async function execScan(fleet, userProfile) {
         const tx = { instruction: await sageProgram.methods.scanForSurveyDataUnits({keyIndex: new BrowserAnchor.anchor.BN(userProfile.index)}).accountsStrict({
             gameAccountsFleetAndOwner: {
                 gameFleetAndOwner: {
                     fleetAndOwner: {
-                        fleet: fleet.publicKey, // sageProgram.fleet.publicKey
-                        owningProfile: userProfile.pubkey, // from API
-                        owningProfileFaction: userProfileFactionAcct.publicKey,
-                        key: provider.publicKey // wallet.publicKey
+                        fleet: fleet.publicKey,
+                        owningProfile: userProfile.pubkey,
+                        owningProfileFaction: userProfile.faction,
+                        key: provider.publicKey
                     },
-                    gameId: sageGameAcct.publicKey // sageProgram.game.publicKey
+                    gameId: sageGameAcct.publicKey
                 },
-                gameState: sageGameAcct.account.gameState // sageProgram.game.gameState
+                gameState: sageGameAcct.account.gameState
             },
-            surveyDataUnitTracker: sageSDUTrackerAcct.publicKey, // sageProgram.SurveyDataUnitTracker.publicKey
-            surveyDataUnitTrackerSigner: sageSDUTrackerAcct.account.signer, // sageProgram.SurveyDataUnitTracker.signer
-            cargoHold: fleet.cargoHold, // sageProgram.fleet.cargoHold
-            sduCargoType: sduCargoTypeAcct.publicKey, // cargoProgram.cargoType - memcmp offset 41 'SDUsgfSZaDhhZ76U3ZgvtFiXsfnHbf2VrzYxjBZ5YbM'
-            repairKitCargoType: repairKitCargoTypeAcct.publicKey, // cargoProgram.cargoType - memcmp offset 41 'tooLsNYLiVqzg8o4m3L2Uetbn62mvMWRqkog6PQeYKL'
-            cargoStatsDefinition: sageGameAcct.account.cargo.statsDefinition, // sageProgram.game.cargo
-            sduTokenFrom: await ResourceTokens.getPodToken('sdu'), // calculated
+            surveyDataUnitTracker: sageSDUTrackerAcct.publicKey,
+            surveyDataUnitTrackerSigner: sageSDUTrackerAcct.account.signer,
+            cargoHold: fleet.cargoHold,
+            sduCargoType: sduCargoTypeAcct.publicKey,
+            repairKitCargoType: repairKitCargoTypeAcct.publicKey,
+            cargoStatsDefinition: sageGameAcct.account.cargo.statsDefinition,
+            sduTokenFrom: await ResourceTokens.getPodToken('sdu'),
             sduTokenTo: ResourceTokens.sdu.publicKey,
             repairKitTokenFrom: await ResourceTokens.getPodToken('toolkit', fleet.cargoHold),
-            repairKitMint: sageGameAcct.account.mints.repairKit, // sageProgram.game.repairKit
+            repairKitMint: sageGameAcct.account.mints.repairKit,
             cargoProgram: cargoProgramId,
             tokenProgram,
             recentSlothashes: RecentSlotHashes,
@@ -702,6 +943,19 @@
         return await txSignAndSend(tx);
     }
     
+/**
+ * The `execSubwarp` function calculates the distance between two coordinates, checks if the fleet has
+ * enough fuel to subwarp, and if it does then initiates a subwarp to the destination coordinates.
+ * @param fleet - The `fleet` parameter represents a fleet of ships that will be used for the subwarp
+ * operation. It contains information about the fleet, such as its origin and destination coordinates,
+ * maximum warp distance, and fuel tank account.
+ * @param origin - The `origin` parameter is optional, it is the starting coordinates of the fleet. Defaults
+ * to the origin in the fleet's config file. It is an array containing the X and Y coordinates of the 
+ * origin sector.
+ * @param destination - The `destination` parameter is optional, it is the destination point for the fleet. 
+ * Defaults to the destination in the fleet's config file. It is an array containing the X and Y coordinates.
+ * @returns the transaction result from Solana for entering subwarp.
+ */
     async function execSubwarp(fleet, origin, destination) {
         const [destX, destY] = (destination || fleet.destination.coords);
         const moveDist = calculateMovementDistance((origin || fleet.origin.coords), [destX, destY]);
@@ -733,6 +987,11 @@
         return await txSignAndSend(tx);      
     }
 
+    /**
+     * The function `execExitSubwarp` executes the command (submits transaction) to exit subwarp to Solana.
+     * @param fleet - The `fleet` parameter is an object that represents a fleet.
+     * @returns the transaction result from Solana for exiting subwarp.
+     */
     async function execExitSubwarp(fleet) {
         const tx = { instruction: await sageProgram.methods.fleetStateHandler().accountsStrict({
             fleet: fleet.publicKey
@@ -791,6 +1050,20 @@
         return await txSignAndSend(tx);
     }
 
+/**
+ * The `execWarp` function calculates the distance between two coordinates, checks if the fleet has
+ * enough fuel to warp, and if it does then initiates a warp to the destination coordinates.
+ * @param fleet - The fleet parameter represents a fleet of ships that will be used for the warp
+ * operation. It contains information about the fleet, such as its origin and destination coordinates,
+ * maximum warp distance, and fuel tank account.
+ * @param origin - The `origin` parameter represents the starting coordinates of the fleet. It is an
+ * optional parameter, and if not provided, it will default to the `coords` property of the fleet's
+ * `origin` object.
+ * @param destination - The `destination` parameter is the coordinates of the destination point where
+ * the fleet needs to be warped to. It is an array containing the X and Y coordinates of the
+ * destination point.
+ * @returns the transaction result from Solana for entering warp.
+ */
     async function execWarp(fleet, origin, destination) {
         const [originX, originY] = (origin || fleet.origin.coords);
         const [destX, destY] = (destination || fleet.destination.coords);
@@ -841,6 +1114,11 @@
         return await txSignAndSend(tx);
     }
 
+/**
+ * The function `execExitWarp` executes the command (submits transaction) to exit warp to Solana.
+ * @param fleet - The `fleet` parameter is an object that represents a fleet.
+ * @returns the transaction result from Solana for exiting warp.
+ */
     async function execExitWarp(fleet) {
         const tx = { instruction: await sageProgram.methods.fleetStateHandler().accountsStrict({
             fleet: fleet.publicKey
@@ -848,6 +1126,16 @@
         return await txSignAndSend(tx);
     }
 
+/**
+ * The `execDock` function takes a fleet and coordinates as input, retrieves the starbase and starbase
+ * player associated with the coordinates, and then executes a transaction to dock the fleet at the
+ * starbase.  Should be called before {@link handleReturnTrip} function.
+ * @param fleet - The `fleet` parameter is an object that represents a fleet.
+ * @param coords - The `coords` parameter is an optional string representing the coordinates of a starbase. 
+ * Defaults to `fleet.destination.coords`. It is in the format "x,y" where `x` and `y` are the x and y coordinates
+ * respectively.
+ * @returns the transaction result from Solana for docking.
+ */
     async function execDock(fleet, coords) {
         const [starbaseX, starbaseY] = (coords || fleet.destination.coords).split(',').map(item => item.trim());
         const starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
@@ -873,6 +1161,15 @@
         return await txSignAndSend(tx);
     }
 
+/**
+ * The `execUndock` function undocks a fleet from a starbase. Should be called after {@link handleReturnTrip}
+ * function.
+ * @param fleet - The `fleet` parameter is an object that represents a fleet.
+ * @param coords - The `coords` parameter is an optional string representing the coordinates of a starbase.
+ * Defaults to `fleet.origin.coords`. It is in the format "x,y" where `x` and `y` are the x and y coordinates 
+ * respectively.
+ * @returns The function `execUndock` is returning the result of the `txSignAndSend` function.
+ */
     async function execUndock(fleet, coords) {
         const [starbaseX, starbaseY] = (coords || fleet.origin.coords).split(',').map(item => item.trim());
         const starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
@@ -903,8 +1200,8 @@
     }
     
     // @todo - stopped here
-    async function execCargoFromFleetToStarbase(input) {
-        const { fleet, coords, tokenMint, customAmount } = input;
+    async function execCargoFromFleetToStarbase(fleet, options) {
+        const { coords, supplies } = options;
         const [starbaseX, starbaseY] = (coords || fleet.destination.coords).split(',').map(item => item.trim());
         const starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
         const starbasePlayer = await getStarbasePlayer(userProfile.account, starbase.publicKey);
@@ -918,7 +1215,7 @@
         ]);
         const starbasePlayerCargoHold = starbasePlayerCargoHolds.find(item => item.account.openTokenAccounts > 0);
         let resourcesToUnload = await solanaConnection.getParsedTokenAccountsByOwner(fleet.account.cargoHold, {programId: tokenProgram});
-        if (tokenMint) resourcesToUnload.value = resourcesToUnload.value.filter(item => item.account.mint.toString() == tokenMint);
+        if (supplies) resourcesToUnload.value = resourcesToUnload.value.filter(item => Object.keys(supplies).includes(item.account.mint.toString()));
 
         let ixs = [];
         for (let resource of resourcesInCargoHold.value) {
@@ -936,7 +1233,7 @@
                                 fleet: fleet.publicKey,
                                 owningProfile: userProfile.account,
                                 owningProfileFaction: userProfileFactionAcct.publicKey,
-                                key: userPublicKey
+                                key: provider.publicKey()
                             },
                             gameId: sageGameAcct.publicKey
                         },
@@ -953,7 +1250,7 @@
                     tokenFrom: fleet.account.cargoHold,
                     tokenTo: starbaseCargoToken,
                     tokenMint: resource.publicKey.toString(),
-                    fundsTo: userPublicKey,
+                    fundsTo: provider.publicKey(),
                     cargoProgram: cargoProgramId,
                     tokenProgram
                 }).remainingAccounts([{
@@ -961,11 +1258,11 @@
                     isSigner: false,
                     isWritable: false
                 }]).instruction()
-                ixs.push(ix)
+                ixs.push({ instruction: ix })
             }
         }
 
-        return await txSignAndSend({ instruction: ixs });
+        return await txSignAndSend(ixs);
     }
 
     async function execCargoFromStarbaseToFleet(fleet, cargoPodTo, tokenTo, tokenMint, cargoType, dockCoords, amount) {
@@ -1019,13 +1316,13 @@
                             fleet: fleet.publicKey,
                             owningProfile: userProfile.account,
                             owningProfileFaction: userProfileFactionAcct.publicKey,
-                            key: userPublicKey
+                            key: provider.publicKey()
                         },
                         gameId: sageGameAcct.publicKey
                     },
                     gameState: sageGameAcct.account.gameState
                 },
-                fundsTo: userPublicKey,
+                fundsTo: provider.publicKey(),
                 starbaseAndStarbasePlayer: {
                     starbase: starbase.publicKey,
                     starbasePlayer: starbasePlayer.publicKey
@@ -1101,7 +1398,7 @@
                             fleet: fleet.publicKey,
                             owningProfile: userProfile.account,
                             owningProfileFaction: userProfileFactionAcct.publicKey,
-                            key: userPublicKey
+                            key: provider.publicKey()
                         },
                         gameId: sageGameAcct.publicKey
                     },
@@ -1286,7 +1583,7 @@
                             fleet: fleet.publicKey,
                             owningProfile: userProfile.account,
                             owningProfileFaction: userProfileFactionAcct.publicKey,
-                            key: userPublicKey
+                            key: provider.publicKey()
                         },
                         gameId: sageGameAcct.publicKey
                     },
@@ -2124,7 +2421,6 @@
     }
 
     // only handles resupply
-    // @todo - need to refactor still
     async function handleResupply(fleetIndex) {
         const fleet = userFleets[fleetIndex];
         
@@ -2162,8 +2458,6 @@
         await execUndock(fleet, userFleets[i].starbaseCoord);
     }
 
-
-    // @todo - need to refactor still
     async function handleMining(i, fleetState, fleetCoords, fleetMining) {
         let destX = userFleets[i].destCoord.split(',')[0].trim();
         let destY = userFleets[i].destCoord.split(',')[1].trim();
@@ -2408,7 +2702,6 @@
         }
     }
 
-    // @todo - need to refactor still
     async function handleTransport(i, fleetState, fleetCoords, fleetResupply) {
         let destX = userFleets[i].destCoord.split(',')[0].trim();
         let destY = userFleets[i].destCoord.split(',')[1].trim();
@@ -2771,7 +3064,6 @@
         }
     }
 
-    // @todo - need to refactor still
     let iterCnt = 1;
     async function startAssistant() {
         if (enableAssistant) {
@@ -3036,7 +3328,7 @@
             let assistCheckClose = document.querySelector('#assistCheck .assist-modal-close');
             assistCheckClose.addEventListener('click', function(e) {assistCheckToggle();});
             let assistCheckFleetBtn = document.querySelector('#checkFleetBtn');
-            assistCheckFleetBtn.addEventListener('click', function(e) {getFleetCntAtCoords();});
+            assistCheckFleetBtn.addEventListener('click', function(e) {getFleetCountAtCoords();});
             let configImportExport = document.querySelector('#configImportExport');
             configImportExport.addEventListener('click', function(e) {assistImportToggle();});
             let configImport = document.querySelector('#importConfigBtn');
@@ -3072,7 +3364,7 @@
     async function miningSelfDestruct(fleet, destX, destY) {
         let [playerAtlasTokenAcct] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
             [
-                new solanaWeb3.PublicKey(userPublicKey).toBuffer(),
+                provider.publicKey().toBuffer(),
                 tokenProgram.toBuffer(),
                 new solanaWeb3.PublicKey('ATLASXmbPQxBUYbxPsV97usA3fPQYEqzQBUHgiFCUsXx').toBuffer()
             ],
