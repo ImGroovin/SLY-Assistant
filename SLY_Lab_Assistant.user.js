@@ -905,93 +905,95 @@
 	}
 
 	async function execSubwarp(fleet, destX, destY) {
-			return new Promise(async resolve => {
-				let tx = { instruction: await sageProgram.methods.startSubwarp({keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx), toSector: [new BrowserAnchor.anchor.BN(destX), new BrowserAnchor.anchor.BN(destY)]}).accountsStrict({
-							gameAccountsFleetAndOwner: {
-									gameFleetAndOwner: {
-											fleetAndOwner: {
-													fleet: fleet.publicKey,
-													owningProfile: userProfileAcct,
-													owningProfileFaction: userProfileFactionAcct.publicKey,
-													key: userPublicKey
-											},
-											gameId: sageGameAcct.publicKey
-									},
-									gameState: sageGameAcct.account.gameState
-							},
-					}).instruction()}
-					let txResult = await txSignAndSend(tx, fleet, 'SUBWARP');
-					resolve(txResult);
-			});
+		return new Promise(async resolve => {
+			let tx = { instruction: await sageProgram.methods.startSubwarp({keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx), toSector: [new BrowserAnchor.anchor.BN(destX), new BrowserAnchor.anchor.BN(destY)]}).accountsStrict({
+				gameAccountsFleetAndOwner: {
+					gameFleetAndOwner: {
+						fleetAndOwner: {
+							fleet: fleet.publicKey,
+							owningProfile: userProfileAcct,
+							owningProfileFaction: userProfileFactionAcct.publicKey,
+							key: userPublicKey
+						},
+						gameId: sageGameAcct.publicKey
+					},
+					gameState: sageGameAcct.account.gameState
+				},
+				}).instruction()
+			}
+
+			let txResult = await txSignAndSend(tx, fleet, 'SUBWARP');
+			resolve(txResult);
+		});
 	}
 
 	async function execExitSubwarp(fleet) {
-			return new Promise(async resolve => {
-					let tx = { instruction: await sageProgram.methods.fleetStateHandler().accountsStrict({
-							fleet: fleet.publicKey
-					}).remainingAccounts([
-							{
-									pubkey: userProfileAcct,
-									isSigner: false,
-									isWritable: true
-							},
-							{
-									pubkey: fleet.fuelTank,
-									isSigner: false,
-									isWritable: true
-							},
-							{
-									pubkey: fuelCargoTypeAcct.publicKey,
-									isSigner: false,
-									isWritable: false
-							},
-							{
-									pubkey: sageGameAcct.account.cargo.statsDefinition,
-									isSigner: false,
-									isWritable: false
-							},
-							{
-									pubkey: fleet.fuelToken,
-									isSigner: false,
-									isWritable: true
-							},
-							{
-									pubkey: sageGameAcct.account.mints.fuel,
-									isSigner: false,
-									isWritable: true
-							},
-							{
-									pubkey: sageGameAcct.account.gameState,
-									isSigner: false,
-									isWritable: false
-							},
-							{
-									pubkey: sageGameAcct.publicKey,
-									isSigner: false,
-									isWritable: false
-							},
-							{
-									pubkey: new solanaWeb3.PublicKey('Cargo8a1e6NkGyrjy4BQEW4ASGKs9KSyDyUrXMfpJoiH'),
-									isSigner: false,
-									isWritable: false
-							},
-							{
-									pubkey: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'),
-									isSigner: false,
-									isWritable: false
-							},
-					]).instruction()}
-					
-					console.log(`${FleetTimeStamp(fleet.label)} Exiting Subwarp`);
-					updateFleetState(fleet, 'Exiting Subwarp');
-					
-					let txResult = await txSignAndSend(tx, fleet, 'EXIT SUBWARP');
-					
-					console.log(`${FleetTimeStamp(fleet.label)} Idle`);
-					updateFleetState(fleet, 'Idle');
+		return new Promise(async resolve => {
+			let tx = { instruction: await sageProgram.methods.fleetStateHandler().accountsStrict({
+					fleet: fleet.publicKey
+			}).remainingAccounts([
+					{
+							pubkey: userProfileAcct,
+							isSigner: false,
+							isWritable: true
+					},
+					{
+							pubkey: fleet.fuelTank,
+							isSigner: false,
+							isWritable: true
+					},
+					{
+							pubkey: fuelCargoTypeAcct.publicKey,
+							isSigner: false,
+							isWritable: false
+					},
+					{
+							pubkey: sageGameAcct.account.cargo.statsDefinition,
+							isSigner: false,
+							isWritable: false
+					},
+					{
+							pubkey: fleet.fuelToken,
+							isSigner: false,
+							isWritable: true
+					},
+					{
+							pubkey: sageGameAcct.account.mints.fuel,
+							isSigner: false,
+							isWritable: true
+					},
+					{
+							pubkey: sageGameAcct.account.gameState,
+							isSigner: false,
+							isWritable: false
+					},
+					{
+							pubkey: sageGameAcct.publicKey,
+							isSigner: false,
+							isWritable: false
+					},
+					{
+							pubkey: new solanaWeb3.PublicKey('Cargo8a1e6NkGyrjy4BQEW4ASGKs9KSyDyUrXMfpJoiH'),
+							isSigner: false,
+							isWritable: false
+					},
+					{
+							pubkey: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'),
+							isSigner: false,
+							isWritable: false
+					},
+			]).instruction()}
+			
+			console.log(`${FleetTimeStamp(fleet.label)} Exiting Subwarp`);
+			updateFleetState(fleet, 'Exiting Subwarp');
+			
+			let txResult = await txSignAndSend(tx, fleet, 'EXIT SUBWARP');
+			
+			console.log(`${FleetTimeStamp(fleet.label)} Idle`);
+			updateFleetState(fleet, 'Idle');
 
-					resolve(txResult);
-			});
+			resolve(txResult);
+		});
 	}
 
 	async function execWarp(fleet, destX, destY) {
@@ -2274,10 +2276,12 @@
 													await GM.setValue(fleetPK, JSON.stringify(fleetParsedData));
 													moveDist = calculateMovementDistance(extra, [moveX,moveY]);
 											}
-											console.log(`${FleetTimeStamp(userFleets[i].label)} Warping to [${moveX},${moveY}]`);
+											const coordStr = `[${moveX},${moveY}]`;
+											const travelEndTime = TimeToStr(new Date(Date.now()+(moveTime * 1000 + 10000)));
+											console.log(`${FleetTimeStamp(userFleets[i].label)} Warping to ${coordStr}`);
 											moveTime = calculateWarpTime(userFleets[i], moveDist);
 											//moveCost = calculateWarpFuelBurn(userFleets[i], moveDist);
-											const newFleetState = 'Warp [' + TimeToStr(new Date(Date.now()+(moveTime * 1000 + 10000))) + ']';
+											const newFleetState = `Warp ${coordStr} ${travelEndTime}`;
 											updateFleetState(userFleets[i], newFleetState);
 											let warpResult = await execWarp(userFleets[i], moveX, moveY);
 											warpCooldownFinished = Date.now() + userFleets[i].warpCooldown*1000 + 2000;
@@ -2608,7 +2612,7 @@
 			let miningDuration = calculateMiningDuration(userFleets[i].cargoCapacity - cargoCnt, userFleets[i].miningRate, resourceHardness, systemRichness);
 			let foodForDuration = Math.ceil(miningDuration * (userFleets[i].foodConsumptionRate / 10000));
 			let ammoForDuration = Math.ceil(miningDuration * (userFleets[i].ammoConsumptionRate / 10000));
-			//ammoForDuration = Math.min(userFleets[i].ammoCapacity, ammoForDuration);
+			ammoForDuration = Math.min(userFleets[i].ammoCapacity, ammoForDuration);
 			//let fuelNeeded = userFleets[i].planetExitFuelAmount;
 
 			let distToTarget = calculateMovementDistance(fleetCoords, [destX,destY]);
@@ -2642,22 +2646,9 @@
 			}
 
 			if (fleetState === 'Idle') {
-					console.log(`${FleetTimeStamp(userFleets[i].label)} Mining Status Check`);
-					console.log(`${FleetTimeStamp(userFleets[i].label)} Calculated miningDuration: ${miningDuration}`);
-					console.log(`${FleetTimeStamp(userFleets[i].label)} fuel: ${currentFuelCnt}/${fuelNeeded}`);
-					console.log(`${FleetTimeStamp(userFleets[i].label)} ammo: ${currentAmmoCnt}/${ammoForDuration}`);
-					console.log(`${FleetTimeStamp(userFleets[i].label)} food: ${currentFoodCnt}/${foodForDuration}`);
-
 					let errorResource = [];
 					let needSupplies = false;
 
-					/*
-					//Hard-coded 10 food count check: no point resuming mining if it'll only take 1 second to finish
-					if(currentFoodCnt < 10) {
-						console.log(`${FleetTimeStamp(userFleets[i].label)} Food low (less than 10) ${currentFoodCnt}`);
-						needSupplies = true;
-					}	
-					*/
 					//Hard-coded 60 second duration check: no point resuming mining if it'll take less than 1 minute to finish
 					if(miningDuration < 60) {
 						console.log(`${FleetTimeStamp(userFleets[i].label)} Supplies low, only ${miningDuration} seconds left`);
@@ -2669,6 +2660,19 @@
 
 					if (needSupplies) {
 							console.log(`${FleetTimeStamp(userFleets[i].label)} Need resupply`);
+
+							//Recalulate requirements
+							miningDuration = calculateMiningDuration(userFleets[i].cargoCapacity, userFleets[i].miningRate, resourceHardness, systemRichness);
+							foodForDuration = Math.ceil(miningDuration * (userFleets[i].foodConsumptionRate / 10000));
+							ammoForDuration = Math.ceil(miningDuration * (userFleets[i].ammoConsumptionRate / 10000));
+							ammoForDuration = Math.min(userFleets[i].ammoCapacity, ammoForDuration);
+
+							console.log(`${FleetTimeStamp(userFleets[i].label)} Calculated miningDuration: ${miningDuration}`);
+							console.log(`${FleetTimeStamp(userFleets[i].label)} fuel: ${currentFuelCnt}/${fuelNeeded}`);
+							console.log(`${FleetTimeStamp(userFleets[i].label)} ammo: ${currentAmmoCnt}/${ammoForDuration}`);
+							console.log(`${FleetTimeStamp(userFleets[i].label)} ammoForDuration: ${ammoForDuration} = miningDuration ${miningDuration} * (ammoConsumptionRate ${userFleets[i].ammoConsumptionRate} / 10000)`);
+							console.log(`${FleetTimeStamp(userFleets[i].label)} food: ${currentFoodCnt}/${foodForDuration}`);
+
 							if (fleetCoords[0] == starbaseX && fleetCoords[1] == starbaseY) {
 									await execDock(userFleets[i], userFleets[i].starbaseCoord);
 									console.log(`${FleetTimeStamp(userFleets[i].label)} Unloading ore`);
