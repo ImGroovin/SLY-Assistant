@@ -3202,7 +3202,10 @@
 
 		let extraTime = 0;
 		try { await operateFleet(i); } 
-		catch { extraTime = 20000 }
+		catch(error) {
+			extraTime = 20000;
+			console.log(`${FleetTimeStamp(userFleets[i].label)} Uncaught error - waiting 20s longer`, error);
+		}
 
 		//Add extra wait time if an uncaught error occurred
 		setTimeout(() => { startFleet(i); }, 10000 + extraTime);
