@@ -20,6 +20,7 @@
 
 	let enableAssistant = false;
 	let initComplete = false;
+	let extraFuelToDropOffAtTarget = 0;
 
 	//const solanaConnection = new solanaWeb3.Connection('https://solana-api.syndica.io/access-token/WPoEqWQ2auQQY1zHRNGJyRBkvfOLqw58FqYucdYtmy8q9Z84MBWwqtfVf8jKhcFh/rpc', 'confirmed');
 	const solanaConnection = new solanaWeb3.Connection('https://rpc.hellomoon.io/cfd5910f-fb7d-4489-9b32-f97193eceefd', 'confirmed');
@@ -2984,6 +2985,7 @@
 									console.log(`${FleetTimeStamp(userFleets[i].label)} Subwarp Cost: ${subwarpCost}`);
 									console.log(`${FleetTimeStamp(userFleets[i].label)} Extra Fuel: ${extraFuel}`);
 
+									//Unloading
 									let extraAmmo = 0;
 									for (let [j, resource] of targetResources.entries()) {
 											let resourceAmount = targetResourceAmounts[j];
@@ -3004,15 +3006,16 @@
 
 									//Unload extra fuel from tank
 									if (extraFuel > 0) {
-											let fleetCurrentFuelTank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
-											let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
-											let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
-											let resFuelMax = Math.min(currentFuelCnt, extraFuel);
-											console.log(`${FleetTimeStamp(userFleets[i].label)} Unloading extra fuel: ${resFuelMax}`);
-											if (resFuelMax > 0) {
-													await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].fuelTank, sageGameAcct.account.mints.fuel.toString(), userFleets[i].destCoord, resFuelMax);
-													await wait(2000);
-											}
+											//let fleetCurrentFuelTank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+											//let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
+											//let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
+											//let resFuelMax = Math.min(currentFuelCnt, extraFuel);
+											let resFuelMax = Math.min(extraFuelToDropOffAtTarget, extraFuel);
+											console.log(`${FleetTimeStamp(userFleets[i].label)} Unloading extra fuel: ${extraFuel}`);
+											//if (resFuelMax > 0) {
+											await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].fuelTank, sageGameAcct.account.mints.fuel.toString(), userFleets[i].destCoord, resFuelMax);
+											await wait(2000);
+											//}
 									} 
 									//Pickup enough fuel to return to base
 									else if(extraFuel < 0) {
@@ -3066,6 +3069,7 @@
 							let cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
 							let cargoSpace = userFleets[i].cargoCapacity - cargoCnt;
 
+							//Loading
 							for (let [j, resource] of starbaseResources.entries()) {
 									let resourceAmount = starbaseResourceAmounts[j];
 									if (resource !== '' && resourceAmount > 0) {
@@ -3081,8 +3085,7 @@
 											let currentRes = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === resource);
 											let fleetResAcct = currentRes ? currentRes.pubkey : fleetResourceToken;
 											let resCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == resource);
-											//let res1Amt = Math.ceil((userFleets[i].cargoCapacity - cargoCnt) * (resource1Perc / 100));
-											let resAmt = resource == sageGameAcct.account.mints.ammo.toString() ? extraAmmo : resourceAmount;
+											let resAmt = resource == sageGameAcct.account.mints.ammo.toString() ? extraAmmo : resourceAmount;  //Special handling for ammo
 											let resMax = Math.min(cargoSpace, resAmt);
 											console.log(`${FleetTimeStamp(userFleets[i].label)} Loading ${resMax} ${resource}`);
 											if (resMax > 0) {
@@ -3194,11 +3197,15 @@
 	}
 
 	async function startFleet(i) {
+		//Bail if assistant is stopped
 		if (!enableAssistant) return;
-		
-		await operateFleet(i);
 
-		setTimeout(() => { startFleet(i); }, 10000);
+		let extraTime = 0;
+		try { await operateFleet(i); } 
+		catch { extraTime = 20000 }
+
+		//Add extra wait time if an uncaught error occurred
+		setTimeout(() => { startFleet(i); }, 10000 + extraTime);
 	}
 
 	function startAssistant() {
