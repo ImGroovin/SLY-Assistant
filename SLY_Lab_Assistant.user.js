@@ -25,6 +25,9 @@
 
     // in memory storage
     let userFleets = [];
+    const GLOBAL_SCALE_DECIMALS_2 = 100;
+    const GLOBAL_SCALE_DECIMALS_4 = 10000;
+    const GLOBAL_SCALE_DECIMALS_6 = 1000000;
 
     const RPCEndpoints = ['https://rpc.hellomoon.io/cfd5910f-fb7d-4489-9b32-f97193eceefd'];
     const solanaConnection = new solanaWeb3.Connection(RPCEndpoints[0], 'confirmed');
@@ -948,17 +951,20 @@
  * @param fleet - The `fleet` parameter represents a fleet of ships that will be used for the subwarp
  * operation. It contains information about the fleet, such as its origin and destination coordinates,
  * maximum warp distance, and fuel tank account.
- * @param origin - The `origin` parameter is optional, it is the starting coordinates of the fleet. Defaults
- * to the origin in the fleet's config file. It is an array containing the X and Y coordinates of the 
- * origin sector.
- * @param destination - The `destination` parameter is optional, it is the destination point for the fleet. 
+ * @param origin - The `origin` parameter is optional, it is the origin point for the subwarp. 
+ * Defaults to the origin in the fleet's config file. It is an array containing the X and Y coordinates.
+ * @param destination - The `destination` parameter is optional, it is the destination point for the subwarp. 
  * Defaults to the destination in the fleet's config file. It is an array containing the X and Y coordinates.
- * @returns the transaction result from Solana for entering subwarp.
+ * @returns the duration for subwarp and the transaction result from Solana for entering subwarp.
  */
     async function execSubwarp(fleet, origin, destination) {
-        const [destX, destY] = (destination || fleet.destination.coords);
-        const moveDist = calculateMovementDistance((origin || fleet.origin.coords), [destX, destY]);
-        const subwarpCost = calculateSubwarpFuelBurn(fleet, moveDist);
+        const { subwarpSpeed } = fleet.account.stats.movementStats;
+        const [destX, destY] = (destination || fleet.destination.coords).split(',').map(item => item.trim());
+        const [originX, originY] = (origin || fleet.origin.coords).split(',').map(item => item.trim());
+
+        const moveDistance = calculateMovementDistance([originX, originY], [destX, destY]);
+        const duration = subwarpSpeed > 0 ? (moveDistance / subwarpSpeed / GLOBAL_SCALE_DECIMALS_6) : 0;
+        const subwarpCost = calculateSubwarpFuelBurn(fleet, moveDistance);
     
         const fleetCurrentFuelTank = await solanaConnection.getParsedTokenAccountsByOwner(fleet.account.fuelTank, { programId: tokenProgram });
         let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
@@ -969,7 +975,10 @@
             return fleet.state = 'ERROR: Not enough fuel';
         }
 
-        const tx = { instruction: await sageProgram.methods.startSubwarp({keyIndex: new BrowserAnchor.anchor.BN(userProfile.index), toSector: [new BrowserAnchor.anchor.BN(destX), new BrowserAnchor.anchor.BN(destY)]}).accountsStrict({
+        const tx = { instruction: await sageProgram.methods.startSubwarp({
+            keyIndex: new BrowserAnchor.anchor.BN(userProfile.index), 
+            toSector: [new BrowserAnchor.anchor.BN(destX), new BrowserAnchor.anchor.BN(destY)]
+        }).accountsStrict({
             gameAccountsFleetAndOwner: {
                 gameFleetAndOwner: {
                     fleetAndOwner: {
@@ -983,7 +992,8 @@
                 gameState: sageGameAcct.account.gameState
             },
         }).instruction()}
-        return await txSignAndSend(tx);      
+        const txResult = await txSignAndSend(tx);
+        return { duration, txResult };
     }
 
     /**
@@ -1055,29 +1065,30 @@
  * @param fleet - The fleet parameter represents a fleet of ships that will be used for the warp
  * operation. It contains information about the fleet, such as its origin and destination coordinates,
  * maximum warp distance, and fuel tank account.
- * @param origin - The `origin` parameter represents the starting coordinates of the fleet. It is an
- * optional parameter, and if not provided, it will default to the `coords` property of the fleet's
- * `origin` object.
- * @param destination - The `destination` parameter is the coordinates of the destination point where
- * the fleet needs to be warped to. It is an array containing the X and Y coordinates of the
- * destination point.
- * @returns the transaction result from Solana for entering warp.
+ * @param origin - The `origin` parameter is optional, it is the origin point for the warp. 
+ * Defaults to the origin in the fleet's config file. It is an array containing the X and Y coordinates.
+ * @param destination - The `destination` parameter is optional, it is the destination point for the warp. 
+ * Defaults to the destination in the fleet's config file. It is an array containing the X and Y coordinates.
+ * @returns the duration for warp and the transaction result from Solana for entering warp.
  */
     async function execWarp(fleet, origin, destination) {
-        const [originX, originY] = (origin || fleet.origin.coords);
-        const [destX, destY] = (destination || fleet.destination.coords);
+        const { warpSpeed, maxWarpDistance } = fleet.account.stats.movementStats;
+        const [destX, destY] = (destination  || fleet.destination.coords).split(',').map(item => item.trim());
+        const [originX, originY] = (origin || fleet.origin.coords).split(',').map(item => item.trim());
 
-        let moveDist = calculateMovementDistance([originX, originY], [destX, destY]);
-        if (moveDist > (fleet.maxWarpDistance / 100)) {
-            const warpCnt = fleet.maxWarpDistance > 0 ? moveDist / (fleet.maxWarpDistance / 100) : 1;
-            const warpX = Math.trunc((destX - originX) / warpCnt);            
-            const warpY = Math.trunc((destY - originY) / warpCnt);
+        let moveDistance = calculateMovementDistance([originX, originY], [destX, destY]);
+        let warpCount = 0;
+        if (moveDistance > (maxWarpDistance / 100)) {
+            warpCount = maxWarpDistance > 0 ? (moveDistance / maxWarpDistance / GLOBAL_SCALE_DECIMALS_2) : 1;
+            const warpX = Math.trunc((destX - originX) / warpCount);            
+            const warpY = Math.trunc((destY - originY) / warpCount);
             
             destX = originX + warpX;
             destY = originY + warpY;
             
-            moveDist = calculateMovementDistance([originX, originY], [destX,destY]);
+            moveDistance = calculateMovementDistance([originX, originY], [destX,destY]);
         }
+        const duration = warpSpeed > 0 ? (moveDistance / warpSpeed / GLOBAL_SCALE_DECIMALS_6) : 0;
 
         const warpCost = calculateWarpFuelBurn(fleet, moveDist);
         const fleetCurrentFuelTank = await solanaConnection.getParsedTokenAccountsByOwner(fleet.account.fuelTank, { programId: tokenProgram });
@@ -1110,7 +1121,8 @@
             cargoProgram: cargoProgramId,
             tokenProgram
         }).instruction()}
-        return await txSignAndSend(tx);
+        const txResult = await txSignAndSend(tx);
+        return { duration, warpCount, txResult };
     }
 
 /**
@@ -1157,6 +1169,7 @@
                 starbasePlayer: starbasePlayer.publicKey
             }
         }).instruction()}
+        fleet.state = 'Docking';
         return await txSignAndSend(tx);
     }
 
@@ -1195,9 +1208,28 @@
             isSigner: false,
             isWritable: false
         }]).instruction()}
+        fleet.state = 'Undocking';
         return await txSignAndSend(tx);
-    }
-       
+    }   
+
+    // @todo - documentation
+    async function determineDefaultLocation(fleet, reverse) {
+        let location = 'destination'; // default location
+        let currentFleetState = await solanaConnection.getAccountInfo(fleet.publicKey);
+        currentFleetState = sageProgram.coder.accounts.decode('Fleet', currentFleetState.data);
+        const [_, extra] = getFleetState(currentFleetState);
+                
+        for (const [key, value] of Object.entries(fleet)) {
+            if (value.coords && value.coords == `"${extra[0]},${extra[1]}"`){
+                location = key;
+                break;
+            }
+        }
+
+        return reverse ? (location == 'destination' ? 'origin' : 'destination') : location; 
+    } 
+
+    // @todo - redo documentation
 /**
  * The function `execCargoFromFleetToStarbase` transfers cargo from a fleet to a starbase.
  * @param fleet - The `fleet` parameter represents the fleet object that contains information about the
@@ -1210,9 +1242,11 @@
  * @returns the transaction result from Solana for transferring cargo from a fleet to a starbase.
  */
     async function execCargoFromFleetToStarbase(fleet, options) {
-        let { coords, supplies, resupply } = options;
-        if (resupply) supplies = fleet.destination.supplies;
-        const [starbaseX, starbaseY] = (coords || fleet.destination.coords).split(',').map(item => item.trim());
+        let { coords, supplies } = options;
+        const location = await determineDefaultLocation(fleet); // needs to be opposite of current location
+
+        supplies = supplies || fleet[location].supplies;
+        const [starbaseX, starbaseY] = (coords || fleet[location].coords).split(',').map(item => item.trim());
         const starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
         const starbasePlayer = await getStarbasePlayer(userProfile.account, starbase.publicKey);
         const starbasePlayerCargoHolds = await cargoProgram.account.cargoPod.all([
@@ -1230,7 +1264,7 @@
         let ixs = [];
         for (let resource of resourcesInCargoHold.value) {
             const resourceString = resource.account.mint.toString()
-            const amount = supplies[resourceString] || resource.account.data.parsed.info.tokenAmount.uiAmount || 0;
+            const amount = Math.min(supplies[resourceString], resource.account.data.parsed.info.tokenAmount.uiAmount || 0);
             if (amount > 0) {
                 const resourceCargoType = cargoTypes.find(item => item.account.mint.toString() == resourceString);
                 const ix = await sageProgram.methods.withdrawCargoFromFleet({
@@ -1271,10 +1305,12 @@
                 ixs.push({ instruction: ix })
             }
         }
-        return await txSignAndSend(ixs);
+        fleet.state = 'Unloading';
+        if (ixs.length > 0) await txSignAndSend(ixs);
+        fleet.state = 'Docked';
     }
 
-
+    // @todo - redo documentation
 /**
  * The function `execCargoFromStarbaseToFleet` transfers cargo from a starbase to a fleet in a game,
  * based on the provided options.
@@ -1288,9 +1324,11 @@
  * @returns the transaction result(s) from Solana for transferring cargo from a starbase to a fleet.
  */
     async function execCargoFromStarbaseToFleet(fleet, options) {
-        let { coords, supplies, resupply } = options;
-        if (resupply) supplies = fleet.origin.supplies;
-        const [starbaseX, starbaseY] = (coords || fleet.origin.coords).split(',').map(item => item.trim());
+        let { coords, supplies } = options;
+        const location = await determineDefaultLocation(fleet, true);
+
+        supplies = supplies || fleet[location].supplies;
+        const [starbaseX, starbaseY] = (coords || fleet[location].coords).split(',').map(item => item.trim());
         const starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
         const starbasePlayer = await getStarbasePlayer(userProfile.account, starbase.publicKey);
         const starbasePlayerCargoHolds = await cargoProgram.account.cargoPod.all([
@@ -1309,7 +1347,7 @@
         let ixs = [];
         for (let resource of resourcesInCargoHold.value) {
             const resourceString = resource.account.mint.toString()
-            const amount = supplies[resourceString] || resource.account.data.parsed.info.tokenAmount.uiAmount || 0;
+            const amount = Math.min(supplies[resourceString], resource.account.data.parsed.info.tokenAmount.uiAmount || 0);
             const resourceCargoType = cargoTypes.find(item => item.account.mint.toString() == resourceString);
             if (amount > 0) {
                 const ix = { instruction: await sageProgram.methods.depositCargoToFleet({ 
@@ -1350,7 +1388,9 @@
                 ixs.push({ instruction: ix })
             }
         }
-        return await txSignAndSend(ixs);
+        fleet.state = 'Loading';
+        if (ixs.length > 0) await txSignAndSend(ixs);
+        fleet.state = 'Docked';
     }
     
 /**
@@ -1425,16 +1465,16 @@
         const resourceHardness = mineItem.account.resourceHardness;
         const { systemRichness } = sageResource.account;
 
-        const { cargoCapacity, miningRate } = fleet.stats.cargoStats;
+        const { cargoCapacity, miningRate } = fleet.account.stats.cargoStats;
         const currentCargo = await solanaConnection.getParsedTokenAccountsByOwner(fleet.account.cargoHold, {programId: tokenProgram});
-        const currentCargoCount = currentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
+        const currentCargoCount = currentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount || 0, 0);
         const maxCargoCapacity = cargoCapacity - currentCargoCount;
         let mineAmount = amount || maxCargoCapacity;
         if (mineAmount > maxCargoCapacity) {
             mineAmount = maxCargoCapacity;
             console.log(`Can't mine ${mineAmount} adjusted to ${maxCargoCapacity}, rock and STONE!`)
         }
-        
+        fleet.destination.supplies[mineResource.publicKey.toString()] = mineAmount;
         const duration = calculateMiningDuration(mineAmount, miningRate, resourceHardness, systemRichness);
 
         const ix = { instruction: await sageProgram.methods.startMiningAsteroid({
@@ -1460,6 +1500,7 @@
             resource: sageResource.publicKey,
             planet: planet.publicKey,
         }).instruction()}
+        fleet.state = 'Mining';
         const txResult = await txSignAndSend(ix);
         return { duration, txResult };
     }
@@ -1617,9 +1658,19 @@
             cargoProgram: cargoProgramId,
             tokenProgram
         }).instruction()}
+        fleet.state = 'Mining stopped';
         return await txSignAndSend([tx1,tx2]);
     }
 
+    async function handleResupply(fleet) {
+        await execDock(fleet);
+        await execCargoFromFleetToStarbase(fleet);
+        await execCargoFromStarbaseToFleet(fleet);
+        await execUndock(fleet);
+
+        const fleetSavedData = JSON.parse(await GM.getValue(fleet.publicKey.toString(), '{}'));
+        return { ...fleet, ...fleetSavedData };
+    }
 
 /**
  * The `handleMovement` function handles the movement of a fleet, checking its current state
@@ -1627,8 +1678,10 @@
  * @param fleet - The `fleet` parameter is an object that represents a fleet.
  * @returns The function does not explicitly return anything.
  */
-    async function handleMovement(fleet) {
-        const [destX, destY] = fleet.destination;
+    async function handleMovement(fleet, options) {
+        const { coords, resupply } = options;
+        const [destX, destY] = (coords || fleet.destination.coords).split(',').map(item => item.trim());
+    
         let currentFleetState = await solanaConnection.getAccountInfo(fleet.publicKey);
         currentFleetState = sageProgram.coder.accounts.decode('Fleet', currentFleetState.data);
         const warpCooldownExpiresAt = fleetAcctData.warpCooldownExpiresAt ? fleetAcctData.warpCooldownExpiresAt.toNumber() * 1000 : 0;
@@ -1636,35 +1689,42 @@
 
         switch (fleetState) {
             case 'Idle':
-                if (extra.length > 1 && (extra[0] !== destX || extra[1] !== destY)) {
-                    const origin = [extra[0], extra[1]];
+                if (extra[0] !== destX || extra[1] !== destY) {
+                    const currentLocation = [extra[0], extra[1]];
 
                     if (fleet.moveType == 'warp') {
                         if (warpCooldownExpiresAt > 0) {
-                            await execSubwarp(fleet, origin);
+                            await execSubwarp(fleet, currentLocation);
                         } else {
-                            await execWarp(fleet, origin);
+                            await execWarp(fleet, currentLocation);
                         }
                     } else {
-                        await execSubwarp(fleet, origin);
+                        await execSubwarp(fleet, currentLocation);
                     }
+                } else {
+                    fleet.state = "Arrived";
+                    if (resupply) await handleResupply(fleet);
+                    return;
                 }
                 break;
             case 'MoveWarp':
                 const warpArrival = extra.warpFinish.toNumber() * 1000;
-                if (warpArrival > Date.now()) return fleet.state = 'Move [' + new Date(warpArrival).toLocaleTimeString() + ']';
+                if (warpArrival > Date.now()) fleet.state = 'Move [' + new Date(warpArrival).toLocaleTimeString() + ']';
+                await wait(warpArrival);
                 await execExitWarp(fleet);
                 break;
             case 'MoveSubwarp':
                 const subwarpArrival = extra.arrivalTime.toNumber() * 1000;
-                if (subwarpArrival > Date.now()) return fleet.state = 'Move [' + new Date(subwarpArrival).toLocaleTimeString() + ']';
+                if (subwarpArrival > Date.now()) fleet.state = 'Move [' + new Date(subwarpArrival).toLocaleTimeString() + ']';
+                await wait(subwarpArrival);
                 await execExitSubwarp(fleet);
                 break;
             default:
                 console.log('I only handle movement, bro');
         }
 
-        updateAssistStatus(fleet);
+        const fleetSavedData = JSON.parse(await GM.getValue(fleet.publicKey.toString(), '{}'));
+        return handleMovement({ ...fleet, ...fleetSavedData }, options);
     }
 
 
@@ -1673,7 +1733,7 @@
  * destination coordinates and updating the fleet's saved data.
  * @param fleet - The `fleet` parameter is an object that represents a fleet.
  */
-    async function handleReturnTrip(fleet) {
+    async function handleReturnTrip(fleet, resupply) {
         // shallow copy to mutate and flip origin and destination
         const { origin, destination } = JSON.parse(JSON.stringify(fleet));
         const [destX, destY] = destination;
@@ -1693,8 +1753,12 @@
             fleetParsedData.destination.coords = fleet.destination.coords;
 
             await GM.setValue(fleetPK, JSON.stringify(fleetParsedData));
-            await handleMovement(fleet)
+            await handleMovement(fleet);
+            if (resupply) await handleResupply(fleet);
         }
+
+        const fleetSavedData = JSON.parse(await GM.getValue(fleet.publicKey.toString(), '{}'));
+        return { ...fleet, ...fleetSavedData };
     }
 
 /**
@@ -1720,7 +1784,7 @@
         const { scanRepairKitAmount, scanCooldown } = miscStats;
 
         const currentCargo = await solanaConnection.getParsedTokenAccountsByOwner(fleet.account.cargoHold, {programId: tokenProgram});
-        const currentCargoCount = currentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
+        const currentCargoCount = currentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount || 0, 0);
         const repairKitToken = await ResourceTokens.getPodToken({ name: 'toolkit', pod: fleet.account.cargoHold });
 
         const currentToolkit = fleetCurrentCargo.value.find(item => item.pubkey.toString() === repairKitToken.toString());
@@ -1772,292 +1836,42 @@
                 console.log(`[${fleet.label}] Scanning Paused due to low probability [${new Date(fleet.scanEnd).toLocaleTimeString()}]`);
             }
         }
-        updateAssistStatus(fleet);
+        const fleetSavedData = JSON.parse(await GM.getValue(fleet.publicKey.toString(), '{}'));
+        return { ...fleet, ...fleetSavedData };
     }
 
     // @todo stopped here
-    async function handleResupply(fleetIndex) {
-        const fleet = userFleets[fleetIndex];
-        
-        await execDock(fleet, userFleets[i].starbaseCoord);
+    async function handleMining(fleet) {
+        // pre-1. when setting mining assignment set fleet.destination.supplies = false
+        // 1. prepareToMine - unload supplies and load for maxMiningDuration (food, ammo)
+        // 2. handleMovement - move to destination
+        // 3. mine
+        // 4. handleReturnTrip - move to origin. If assignment changes away from mining/transport unload supplies
 
-        let fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgram});
-        
-        // 1. resupply fuel
-        // 2. resupply ammo
-        // 3. resupply cargo
+        const { duration: miningDuration } = await execStartMining(fleet);
+        const { foodConsumptionRate, ammoConsumptionRate } = fleet.account.stats.cargoStats;
 
-        
-        // unloads SDUs
-        let currentSduCnt = fleetCurrentCargo.value.find(item => item.pubkey.toString() === userFleets[i].sduToken.toString())
-        if (currentSduCnt && currentSduCnt.account.data.parsed.info.tokenAmount.uiAmount > 0) {
-            await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, 'SDUsgfSZaDhhZ76U3ZgvtFiXsfnHbf2VrzYxjBZ5YbM', userFleets[i].starbaseCoord, currentSduCnt.account.data.parsed.info.tokenAmount.uiAmount);
-            userFleets[i].sduCnt = 0;
-        }
-        
-        // loads toolkit
-        let currentToolCnt = fleetCurrentCargo.value.find(item => item.pubkey.toString() === userFleets[i].repairKitToken.toString())
-        let fleetCurrentFuel = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: tokenProgram});
-        let currentFuelCnt = fleetCurrentFuel.value.find(item => item.pubkey.toString() === userFleets[i].fuelToken.toString())
-        if (userFleets[i].scanCost > 0) {
-            await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, userFleets[i].repairKitToken, 'tooLsNYLiVqzg8o4m3L2Uetbn62mvMWRqkog6PQeYKL', repairKitCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].cargoCapacity - currentToolCnt.account.data.parsed.info.tokenAmount.uiAmount);
-        }
-        
-        // loads fuel
-        fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgram});
-        let currentTool = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === 'tooLsNYLiVqzg8o4m3L2Uetbn62mvMWRqkog6PQeYKL');
-        userFleets[i].toolCnt = currentTool ? currentTool.account.data.parsed.info.tokenAmount.uiAmount : 0;
-        await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, userFleets[i].fuelToken, 'fueL3hBZjLLLJHiFH9cqZoozTG3XQZ53diwFPwbzNim', fuelCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].fuelCapacity - currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount);
-        userFleets[i].fuelCnt = userFleets[i].fuelCapacity;
+        const currentAmmoBank = await solanaConnection.getParsedTokenAccountsByOwner(fleet.account.ammoBank, {programId: tokenProgram});
+        const currentAmmoCount = currentAmmoBank.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount || 0, 0);
+        const maxAmmoDuration = Math.floor(currentAmmoCount / ammoConsumptionRate)
 
-        await execUndock(fleet, userFleets[i].starbaseCoord);
+        const currentFood = await solanaConnection.getParsedTokenAccountsByOwner(fleet.account.cargoHold, {programId: tokenProgram});
+        currentFood.value = currentFood.value.filter(item => item.account.mint.toString() == ResourceTokens['food'].publicKey.toString());
+        const currentFoodCount = currentFood.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount || 0, 0);
+        const maxFoodDuration = Math.floor(currentFoodCount / foodConsumptionRate);
+
+        const duration = Math.min(maxFoodDuration, maxAmmoDuration, miningDuration);
+        fleet.state = 'Mine [' + new Date(Date.now() + (duration * 1000)).toLocaleTimeString() + ']';
+        await wait(duration);
+        await execStopMining(fleet);
+
+        const fleetSavedData = JSON.parse(await GM.getValue(fleet.publicKey.toString(), '{}'));
+        return { ...fleet, ...fleetSavedData };
     }
 
-    async function handleMining(i, fleetState, fleetCoords, fleetMining) {
-        let destX = userFleets[i].destCoord.split(',')[0].trim();
-        let destY = userFleets[i].destCoord.split(',')[1].trim();
-        let starbaseX = userFleets[i].starbaseCoord.split(',')[0].trim();
-        let starbaseY = userFleets[i].starbaseCoord.split(',')[1].trim();
-        let [mineItem] = await sageProgram.account.mineItem.all([
-            {
-                memcmp: {
-                    offset: 105,
-                    bytes: userFleets[i].mineResource,
-                },
-            },
-        ]);
-        let resourceHardness = mineItem.account.resourceHardness;
-        let planets = await getPlanetsFromCoords(destX, destY);
-        let sageResource = null;
-        let planet = null;
-        for (let planetCheck of planets) {
-            let resourceCheck = await sageProgram.account.resource.all([
-                {
-                    memcmp: {
-                        offset: 41,
-                        bytes: planetCheck.publicKey,
-                    },
-                },
-                {
-                    memcmp: {
-                        offset: 73,
-                        bytes: mineItem.publicKey,
-                    },
-                },
-            ]);
-            if (sageResource === null && resourceCheck.length > 0) {
-                [sageResource] = resourceCheck;
-                planet = planetCheck
-            }
-        }
-        let systemRichness = null;
-        if (sageResource && sageResource.account) {
-            systemRichness = sageResource.account.systemRichness;
-        } else {
-            let resShort = resourceTokens.concat(r4Tokens).find(r => r.token == userFleets[i].mineResource).name;
-            console.log(`[${userFleets[i].label}] ERROR: ${resShort} not found at mining location`);
-            userFleets[i].state = `ERROR: ${resShort} not found at mining location`;
-            updateAssistStatus(userFleets[i]);
-        }
+    async function handleTransport(fleet) {
 
-        // fleet PDA
-        let [fleetResourceToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
-            [
-                userFleets[i].cargoHold.toBuffer(),
-                tokenProgram.toBuffer(),
-                new solanaWeb3.PublicKey(userFleets[i].mineResource).toBuffer()
-            ],
-            AssociatedTokenProgram
-        );
-        let [fleetFoodToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
-            [
-                userFleets[i].cargoHold.toBuffer(),
-                tokenProgram.toBuffer(),
-                sageGameAcct.account.mints.food.toBuffer()
-            ],
-            AssociatedTokenProgram
-        );
-        let [fleetAmmoToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
-            [
-                userFleets[i].ammoBank.toBuffer(),
-                tokenProgram.toBuffer(),
-                sageGameAcct.account.mints.ammo.toBuffer()
-            ],
-            AssociatedTokenProgram
-        );
-        let [fleetCargoAmmoToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
-            [
-                userFleets[i].cargoHold.toBuffer(),
-                tokenProgram.toBuffer(),
-                sageGameAcct.account.mints.ammo.toBuffer()
-            ],
-            AssociatedTokenProgram
-        );
-        let [fleetFuelToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
-            [
-                userFleets[i].fuelTank.toBuffer(),
-                tokenProgram.toBuffer(),
-                ResourceTokens.fuel.publicKey.toBuffer()
-            ],
-            AssociatedTokenProgram
-        );
 
-        let fleetCurrentFuelTank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: tokenProgram});
-        let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
-        let fleetFuelAcct = currentFuel ? currentFuel.pubkey : fleetFuelToken;
-        let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
-        let fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgram});
-        let cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
-        let currentFood = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.food.toString());
-        let fleetFoodAcct = currentFood ? currentFood.pubkey : fleetFoodToken;
-        let currentFoodCnt = currentFood ? currentFood.account.data.parsed.info.tokenAmount.uiAmount : 0;
-        let currentResource = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === userFleets[i].mineResource);
-        let fleetResourceAcct = currentResource ? currentResource.pubkey : fleetResourceToken;
-        let currentResourceCnt = currentResource ? currentResource.account.data.parsed.info.tokenAmount.uiAmount : 0;
-        let fleetCurrentAmmoBank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].ammoBank, {programId: tokenProgram});
-        let currentAmmo = fleetCurrentAmmoBank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.ammo.toString());
-        let fleetAmmoAcct = currentAmmo ? currentAmmo.pubkey : fleetAmmoToken;
-        let currentAmmoCnt = currentAmmo ? currentAmmo.account.data.parsed.info.tokenAmount.uiAmount : 0;
-
-        let miningDuration = calculateMiningDuration(userFleets[i].cargoCapacity - cargoCnt, userFleets[i].miningRate, resourceHardness, systemRichness);
-        let foodForDuration = Math.ceil((miningDuration-10) * (userFleets[i].foodConsumptionRate / 10000)); // Adding less food to ensure that food is completely consumed
-        let ammoForDuration = Math.ceil(miningDuration * (userFleets[i].ammoConsumptionRate / 10000));
-        ammoForDuration = Math.min(userFleets[i].ammoCapacity, ammoForDuration);
-
-        let distToTarget = calculateMovementDistance(fleetCoords, [destX,destY]);
-        let distReturn = calculateMovementDistance([destX,destY], [starbaseX,starbaseY]);
-        let fuelNeeded = userFleets[i].planetExitFuelAmount;
-        let warpCost = calculateWarpFuelBurn(userFleets[i], distToTarget) + calculateWarpFuelBurn(userFleets[i], distReturn) + userFleets[i].planetExitFuelAmount;
-        let halfWarpCost = calculateWarpFuelBurn(userFleets[i], distToTarget) + calculateSubwarpFuelBurn(userFleets[i], distReturn) + userFleets[i].planetExitFuelAmount;
-        let subwarpCost = calculateSubwarpFuelBurn(userFleets[i], distToTarget) + calculateSubwarpFuelBurn(userFleets[i], distReturn) + userFleets[i].planetExitFuelAmount;
-        if (userFleets[i].moveType == 'warp') {
-            fuelNeeded = userFleets[i].planetExitFuelAmount + (userFleets[i].fuelCapacity < warpCost ? userFleets[i].fuelCapacity < halfWarpCost ? subwarpCost : halfWarpCost : warpCost);
-        } else {
-            fuelNeeded = userFleets[i].planetExitFuelAmount + subwarpCost;
-        }
-
-        async function handleMineMovement() {
-            if (userFleets[i].destination && userFleets[i].destination !== '') {
-                let targetX = userFleets[i].destination.split(',').length > 1 ? userFleets[i].destination.split(',')[0].trim() : '';
-                let targetY = userFleets[i].destination.split(',').length > 1 ? userFleets[i].destination.split(',')[1].trim() : '';
-                let moveDist = calculateMovementDistance(fleetCoords, [targetX,targetY]);
-                if (moveDist > 0) {
-                    let warpCooldownFinished = await handleMovement(i, [targetX, targetY]);
-                } else {
-                    console.log(`[${userFleets[i].label}] Idle`);
-                    userFleets[i].state = 'Idle';
-                    updateAssistStatus(userFleets[i]);
-                }
-            } else {
-                console.log(`[${userFleets[i].label}] Mining - ERROR: Fleet must start at Target or Starbase`);
-                userFleets[i].state = 'ERROR: Fleet must start at Target or Starbase';
-                updateAssistStatus(userFleets[i]);
-            }
-        }
-
-        if (fleetState === 'Idle') {
-            console.log(`[${userFleets[i].label}] Mining Status Check`);
-            let errorResource = [];
-            let needSupplies = false;
-
-            if (currentFuelCnt < fuelNeeded || currentAmmoCnt < ammoForDuration || currentFoodCnt < foodForDuration || cargoCnt > userFleets[i].cargoCapacity * 0.95) {
-                needSupplies = true;
-            }
-
-            if (needSupplies) {
-                if (fleetCoords[0] == starbaseX && fleetCoords[1] == starbaseY) {
-                    console.log(`[${userFleets[i].label}] Docking`);
-                    userFleets[i].state = 'Docking';
-                    updateAssistStatus(userFleets[i]);
-                    await execDock(userFleets[i], userFleets[i].starbaseCoord);
-                    await wait(2000);
-                    console.log(`[${userFleets[i].label}] Unloading`);
-                    userFleets[i].state = 'Unloading';
-                    updateAssistStatus(userFleets[i]);
-                    if (currentResourceCnt > 0) {
-                        await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, userFleets[i].mineResource, userFleets[i].starbaseCoord, currentResourceCnt);
-                        await wait(2000);
-                    }
-                    console.log(`[${userFleets[i].label}] Loading`);
-                    userFleets[i].state = 'Loading';
-                    updateAssistStatus(userFleets[i]);
-                    if (currentFuelCnt < userFleets[i].fuelCapacity) {
-                        console.log(`[${userFleets[i].label}] Loading fuel`);
-                        let fuelResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, fleetFuelAcct, sageGameAcct.account.mints.fuel.toString(), fuelCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].fuelCapacity - currentFuelCnt);
-                        if (fuelResp && fuelResp.name == 'NotEnoughResource') {
-                            console.log(`[${userFleets[i].label}] ERROR: Not enough fuel`);
-                            errorResource.push('fuel');
-                        }
-                        await wait(2000);
-                    }
-                    if (currentAmmoCnt < ammoForDuration) {
-                        console.log(`[${userFleets[i].label}] Loading ammo`);
-                        let ammoCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.ammo);
-                        let ammoResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].ammoBank, fleetAmmoAcct, sageGameAcct.account.mints.ammo.toString(), ammoCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].ammoCapacity - currentAmmoCnt);
-                        if (ammoResp && ammoResp.name == 'NotEnoughResource') {
-                            console.log(`[${userFleets[i].label}] ERROR: Not enough ammo`);
-                            errorResource.push('ammo');
-                        }
-                        await wait(2000);
-                    }
-                    fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgram});
-                    cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
-                    miningDuration = calculateMiningDuration(userFleets[i].cargoCapacity - cargoCnt, userFleets[i].miningRate, resourceHardness, systemRichness);
-                    foodForDuration = Math.ceil(miningDuration * (userFleets[i].foodConsumptionRate / 10000));
-                    if (currentFoodCnt < foodForDuration) {
-                        console.log(`[${userFleets[i].label}] Loading food`);
-                        let foodCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.food);
-                        let foodResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetFoodAcct, sageGameAcct.account.mints.food.toString(), foodCargoTypeAcct, userFleets[i].starbaseCoord, foodForDuration - currentFoodCnt);
-                        if (foodResp && foodResp.name == 'NotEnoughResource') {
-                            console.log(`[${userFleets[i].label}] ERROR: Not enough food`);
-                            errorResource.push('food');
-                        }
-                        await wait(2000);
-                    }
-                    if (errorResource.length > 0) {
-                        userFleets[i].state = `ERROR: Not enough ${errorResource.toString()}`;
-                    } else {
-                        console.log(`[${userFleets[i].label}] Undocking`);
-                        await execUndock(userFleets[i], userFleets[i].starbaseCoord);
-                        userFleets[i].state = 'Idle';
-                    }
-                    updateAssistStatus(userFleets[i]);
-                    //await wait(2000);
-                    //userFleets[i].destination = userFleets[i].destCoord;
-                } else {
-                    userFleets[i].destination = userFleets[i].starbaseCoord;
-                    handleMineMovement();
-                }
-            } else if (fleetCoords[0] == destX && fleetCoords[1] == destY) {
-                console.log(`[${userFleets[i].label}] Mining Start`);
-                userFleets[i].state = 'Mine [' + new Date(Date.now()+(miningDuration * 1000)).toLocaleTimeString() + ']';
-                updateAssistStatus(userFleets[i]);
-                await execStartMining(userFleets[i], mineItem, sageResource, planet);
-            } else {
-                userFleets[i].destination = userFleets[i].destCoord;
-                handleMineMovement();
-            }
-        } else if (userFleets[i].state.slice(0, 4) === 'Mine') {
-            let mineEnd = (fleetMining.start.toNumber() + miningDuration) * 1000 + 10; // Adding a 10 second buffer to avoid stopping too early
-            userFleets[i].state = 'Mine [' + new Date(mineEnd).toLocaleTimeString() + ']';
-            updateAssistStatus(userFleets[i]);
-            let sageResourceAcctInfo = await sageProgram.account.resource.fetch(fleetMining.resource);
-            let mineItem = await sageProgram.account.mineItem.fetch(sageResourceAcctInfo.mineItem);
-            if (Date.now() > mineEnd) {
-                console.log(`[${userFleets[i].label}] Mining Stop`);
-                userFleets[i].state = 'Mining Stop';
-                updateAssistStatus(userFleets[i]);
-                await execStopMining(userFleets[i], fleetMining.resource, sageResourceAcctInfo, sageResourceAcctInfo.mineItem, mineItem.mint);
-                await wait(2000);
-                console.log(`[${userFleets[i].label}] Idle`);
-                userFleets[i].state = 'Idle';
-                updateAssistStatus(userFleets[i]);
-            }
-            //userFleets[i].destination = userFleets[i].starbaseCoord;
-        }
-    }
-
-    async function handleTransport(i, fleetState, fleetCoords, fleetResupply) {
         let destX = userFleets[i].destCoord.split(',')[0].trim();
         let destY = userFleets[i].destCoord.split(',')[1].trim();
         let starbaseX = userFleets[i].starbaseCoord.split(',')[0].trim();
@@ -2183,7 +1997,7 @@
                     fuelNeeded = calculateSubwarpFuelBurn(userFleets[i], moveDist) * 2;
                 }
                 fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgram});
-                let cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
+                let cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount || 0, 0);
                 let cargoSpace = userFleets[i].cargoCapacity - cargoCnt;
                 if (fuelNeeded > userFleets[i].fuelCapacity) {
                     let currentFuel = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
@@ -2357,7 +2171,7 @@
                 }
 
                 fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgram});
-                let cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
+                let cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount || 0, 0);
                 let cargoSpace = userFleets[i].cargoCapacity - cargoCnt;
 
                 for (let [j, resource] of starbaseResources.entries()) {
@@ -2463,7 +2277,7 @@
         fleetSubwarpPrefTd.appendChild(fleetSubwarpPref);
 
         let fleetCargoCapacity = document.createElement('span');
-        fleetCargoCapacity.innerHTML = fleet.stats.cargoStats.cargoCapacity;
+        fleetCargoCapacity.innerHTML = fleet.account.stats.cargoStats.cargoCapacity;
         let fleetCargoCapacityTd = document.createElement('td');
         fleetCargoCapacityTd.appendChild(fleetCargoCapacity);
 
@@ -3035,50 +2849,64 @@
             }
     }
 
-    let iterCnt = 1;
+    function TaskQueue(concurrentCount = 1) {
+        this.tasks = [];
+        this.total = this.tasks.length;
+        this.running = [];
+        this.complete = [];
+        this.count = concurrentCount;
+    }
+
+    TaskQueue.prototype.runNext = function(){
+        return ((this.running.length < this.count) && this.task.length);
+    }
+
+    TaskQueue.prototype.add = function(task){
+        this.tasks.push(task);
+    }
+
+    TaskQueue.prototype.run = function () {
+        while (this.runNext()) {
+          const promise = this.tasks.shift();
+          promise.then((fleet) => {
+            switch(fleet.assignment) {
+                case 'Mine':
+                    this.add(handleMining(fleet));
+                    break;
+                case 'Transport':
+                    this.add(handleTransport(fleet));
+                    break;
+                case 'Scan':
+                    this.add(handleScan(fleet));
+                    break;
+                default:
+                    console.log(`${ assignment } is unsupported`);
+            }
+            this.run();
+          });
+          this.running.push(promise);
+        }  
+    }
+
     async function startAssistant() {
         if (enableAssistant) {
-            console.log('----TICK----');
-            for (let i=0, n=userFleets.length; i < n; i++) {
-                console.log(`[${userFleets[i].label}] - ${userFleets[i].busy ? 'busy' : 'not busy'}`);
-                if(userFleets[i].busy) continue;
-                try {
-                    let fleetSavedData = await GM.getValue(userFleets[i].publicKey.toString(), '{}');
-                    let fleetParsedData = JSON.parse(fleetSavedData);
-                    let fleetAcctInfo = await solanaConnection.getAccountInfo(userFleets[i].publicKey);
-                    let [fleetState, extra] = getFleetState(fleetAcctInfo);
-                    
-                    console.log(`State: ${fleetState}`);
-                    console.log(`${userFleets[i].state}`);
-
-                    let fleetCoords = fleetState == 'Idle' ? extra : [];
-                    let fleetMining = fleetState == 'MineAsteroid' ? extra : [];
-                    userFleets[i].origin = fleetCoords;
-                    if (userFleets[i].state == 'MoveWarp' || userFleets[i].state == 'MoveSubwarp') {
-                        handleMovement(i, [null, null]);
-                    }
-                    if (fleetParsedData.assignment == 'Scan' && fleetState == 'Idle') {
-                        console.log(`[${userFleets[i].label}] Scanning`);
-                        let destCoords = userFleets[i].scanBlock[userFleets[i].scanBlockIdx];
-                        handleScan(i, fleetCoords, destCoords);
-                    } else if (fleetParsedData.assignment == 'Mine') {
-                        if (userFleets[i].state.slice(0, 5) !== 'ERROR') {
-                            handleMining(i, userFleets[i].state, fleetCoords, fleetMining);
-                        }
-                    } else if (fleetParsedData.assignment == 'Transport') {
-                        if (userFleets[i].state.slice(0, 5) !== 'ERROR') {
-                            handleTransport(i, userFleets[i].state, fleetCoords, fleetParsedData.resupply);
-                        }
-                    }
-                } catch (err) {
-                    console.log('ERROR: ', err);
+            const fleetQueue = new TaskQueue(userFleets.length);
+            for (let fleet of userFleets) {
+                switch(fleet.assignment) {
+                    case 'Mine':
+                        fleetQueue.add(handleMining(fleet));
+                        break;
+                    case 'Transport':
+                        fleetQueue.add(handleTransport(fleet));
+                        break;
+                    case 'Scan':
+                        fleetQueue.add(handleScan(fleet));
+                        break;
+                    default:
+                        console.log(`${ assignment } is unsupported`);
                 }
-                await wait(100);
-                updateAssistStatus(userFleets[i]);
             }
-            setTimeout(startAssistant, 20000);
-            iterCnt++;
-        };
+        }
     }
 
     async function toggleAssistant() {
