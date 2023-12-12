@@ -19,7 +19,7 @@
     'use strict';
     
     let provider;
-    const wallets = [ solflare ];
+    const wallets = [ solflare, solana, phantom ];
     let graceBlockWindow = 5;
     let enableAssistant = false;
     let initComplete = false;
@@ -27,11 +27,9 @@
     // in memory storage
     let userFleets = [];
     const GLOBAL_SCALE_DECIMALS_2 = 100;
-    const GLOBAL_SCALE_DECIMALS_4 = 10000;
     const GLOBAL_SCALE_DECIMALS_6 = 1000000;
 
-    const RPCEndpoints = ['https://rpc.hellomoon.io/cfd5910f-fb7d-4489-9b32-f97193eceefd'];
-    const solanaConnection = new solanaWeb3.Connection(RPCEndpoints[0], 'confirmed');
+    const solanaConnection = new solanaWeb3.Connection('https://rpc.hellomoon.io/cfd5910f-fb7d-4489-9b32-f97193eceefd', 'confirmed');
     const anchorProvider = new BrowserAnchor.anchor.AnchorProvider(solanaConnection, null, null);
 
     // load SAGE program and methods
@@ -155,6 +153,7 @@
         }
     }
     
+    // @todo - redo documentation
 /**
  * The function `getProvider` is an asynchronous function that takes in a `wallets` object and returns
  * the provider object associated with the first wallet found in the `walletWindow` object.
@@ -336,18 +335,22 @@
         },
     ]);
 
+    // @todo - redo documentation
 /**
- * The function `getFleetState` takes in fleet account information and returns the fleet state and any
+ * The function `getCurrentFleet` takes in fleet account information and returns the fleet state and any
  * additional data associated with it.
- * @param fleetAccountInfo - The `fleetAccountInfo` parameter is an object that contains information about a
+ * @param fleet - The `fleetAccountInfo` parameter is an object that contains information about a
  * fleet account. It has a property called `data` which is an array of numbers.
- * @returns The function `getFleetState` returns an array with two elements. The first element is the
+ * @returns The function `getCurrentFleet` returns an array with two elements. The first element is the
  * fleet state, which can be one of the following values: 'StarbaseLoadingBay', 'Idle', 'MineAsteroid',
  * 'MoveWarp', 'MoveSubwarp', or 'Respawn'. The second element is an additional value that provides
  * extra information depending on the fleet state.
  */
-    function getFleetState(fleetAccountInfo) {
-        let remainingData = fleetAccountInfo.data.slice(414);
+    async function getCurrentFleet(fleet) {
+        const fleetAccountInfo = await solanaConnection.getAccountInfo(fleet.publicKey);
+        const fleetData = sageProgram.coder.accounts.decode('Fleet', fleetAccountInfo.data);
+        const remainingData = fleetAccountInfo.data.slice(414);
+
         let fleetState = 'Unknown';
         let extra = null;
         switch(remainingData[0]) {
@@ -377,7 +380,7 @@
                 fleetState = 'Respawn';
                 break;
         }
-        return [fleetState, extra];
+        return { fleetData, fleetState, extra };
     }
 
     /**
@@ -471,8 +474,7 @@
                 if (fleetDefaultData.hasOwnProperty(key)) fleetDefaultData[key] = fleetSavedData[key]
             });
             
-            const fleetAccountInfo = await solanaConnection.getAccountInfo(fleet.publicKey);
-            let [fleetState, extra] = getFleetState(fleetAccountInfo);
+            const { fleetState, extra } = await getCurrentFleet(fleet);
             if (fleetState == 'Idle' && extra) {
                 for (let i = 0; i < fleetDefaultData.scanBlock.length; i++) {
                     if (extra[0] == fleetDefaultData.scanBlock[i][0] && extra[1] == fleetDefaultData.scanBlock[i][1]) {
@@ -1212,12 +1214,8 @@
     }   
 
     // @todo - documentation
-    async function determineDefaultLocation(fleet, reverse) {
-        let location = 'destination'; // default location
-        let currentFleetState = await solanaConnection.getAccountInfo(fleet.publicKey);
-        currentFleetState = sageProgram.coder.accounts.decode('Fleet', currentFleetState.data);
-        const [_, extra] = getFleetState(currentFleetState);
-                
+    async function determineDefaultLocation(fleet, extra, reverse) {
+        let location = 'destination'; // default location               
         for (const [key, value] of Object.entries(fleet)) {
             if (value.coords && value.coords == `"${extra[0]},${extra[1]}"`){
                 location = key;
@@ -1242,7 +1240,8 @@
  */
     async function execCargoFromFleetToStarbase(fleet, options) {
         let { coords, supplies, dump } = options;
-        const location = await determineDefaultLocation(fleet); // needs to be opposite of current location
+        const { extra } = await getCurrentFleet(fleet);
+        const location = await determineDefaultLocation(fleet, extra); // needs to be opposite of current location
 
         supplies = supplies || fleet[location].supplies;
         const [starbaseX, starbaseY] = (coords || fleet[location].coords).split(',').map(item => item.trim());
@@ -1325,7 +1324,8 @@
  */
     async function execCargoFromStarbaseToFleet(fleet, options) {
         let { coords, supplies } = options;
-        const location = await determineDefaultLocation(fleet, true);
+        const { extra } = await getCurrentFleet(fleet);
+        const location = await determineDefaultLocation(fleet, extra, true);
 
         supplies = supplies || fleet[location].supplies;
         const [starbaseX, starbaseY] = (coords || fleet[location].coords).split(',').map(item => item.trim());
@@ -1439,7 +1439,6 @@
         return { mineItem, planet, sageResource };
     }
 
-
     /**
      * The `execStartMining` function starts the mining process for a fleet.
      * @param fleet - The `fleet` parameter represents the fleet object, which contains information
@@ -1454,29 +1453,7 @@
      * @returns an object containing `duration` and the transaction result from Solana.
      */
     async function execStartMining(fleet, options) {
-        let { coords, mineResource, amount } = options;
-        mineResource = ResourceTokens[mineResource || fleet.mineResource];
-
-        const [starbaseX, starbaseY] = (coords || fleet.destination.coords).split(',').map(item => item.trim());
-        const starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
-        const starbasePlayer = await getStarbasePlayer(playerProfile.pubkey, starbase.publicKey);
-
-        const { mineItem, planet, sageResource } = await getMiningDetails(mineResource.publicKey, [starbaseX, starbaseY]);
-        const resourceHardness = mineItem.account.resourceHardness;
-        const { systemRichness } = sageResource.account;
-
-        const { cargoCapacity, miningRate } = fleet.account.stats.cargoStats;
-        const currentCargo = await solanaConnection.getParsedTokenAccountsByOwner(fleet.account.cargoHold, {programId: tokenProgram});
-        const currentCargoCount = currentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount || 0, 0);
-        const maxCargoCapacity = cargoCapacity - currentCargoCount;
-        let mineAmount = amount || maxCargoCapacity;
-        if (mineAmount > maxCargoCapacity) {
-            mineAmount = maxCargoCapacity;
-            console.log(`Can't mine ${mineAmount} adjusted to ${maxCargoCapacity}, rock and STONE!`)
-        }
-        fleet.destination.supplies[mineResource.publicKey.toString()] = mineAmount;
-        const duration = calculateMiningDuration(mineAmount, miningRate, resourceHardness, systemRichness);
-
+        const { starbase, starbasePlayer, planet } = options;
         const ix = { instruction: await sageProgram.methods.startMiningAsteroid({
             keyIndex: new BrowserAnchor.anchor.BN(playerProfile.index)
         }).accountsStrict({
@@ -1501,8 +1478,7 @@
             planet: planet.publicKey,
         }).instruction()}
         fleet.state = 'Mining';
-        const txResult = await txSignAndSend(ix);
-        return { duration, txResult };
+        return await txSignAndSend(ix);
     }
 
 /**
@@ -1673,34 +1649,6 @@
         return { ...fleet, ...fleetSavedData };
     }
 
-    // @todo - documentation
-    async function prepareForTrip(fleet) {
-        const location = await determineDefaultLocation(fleet, true);
-        const { supplies } = fleet[location];
-
-        const starbasePlayerCargoHold = starbasePlayerCargoHolds.find(item => item.account.openTokenAccounts > 0);
-        let resourcesToLoad = await solanaConnection.getParsedTokenAccountsByOwner(starbasePlayerCargoHold.publicKey, {programId: tokenProgram});
-        let resupplyNeeded = false;
-
-        if (supplies) {
-            resourcesToLoad.value = resourcesToLoad.value.filter(item => Object.keys(supplies).includes(item.account.mint.toString()));
-
-            for (let resource of resourcesToLoad.value) {
-                const resourceString = resource.account.mint.toString()
-                const amount = resource.account.data.parsed.info.tokenAmount.uiAmount || 0;
-                resupplyNeeded = supplies[resourceString] != amount
-            }
-        }
-
-        if (resupplyNeeded || !supplies) {
-            await handleMovement(fleet, { coords: fleet.origin.coords });
-            await handleResupply(fleet, true);
-        }
-        
-        const fleetSavedData = JSON.parse(await GM.getValue(fleet.publicKey.toString(), '{}'));
-        return { ...fleet, ...fleetSavedData };
-    }
-
 /**
  * The `handleMovement` function handles the movement of a fleet, checking its current state
  * and executing the appropriate actions based on that state.
@@ -1711,10 +1659,8 @@
         const { coords } = options;
         const [destX, destY] = (coords || fleet.destination.coords).split(',').map(item => item.trim());
     
-        let currentFleetState = await solanaConnection.getAccountInfo(fleet.publicKey);
-        currentFleetState = sageProgram.coder.accounts.decode('Fleet', currentFleetState.data);
-        const warpCooldownExpiresAt = (fleetAcctData.warpCooldownExpiresAt.toNumber() || 0) * 1000;
-        const [fleetState, extra] = getFleetState(currentFleetState);
+        const { fleetData, fleetState, extra }= getCurrentFleet(fleet);
+        const warpCooldownExpiresAt = (fleetData.warpCooldownExpiresAt.toNumber() || 0) * 1000;
 
         switch (fleetState) {
             case 'Idle':
@@ -1752,9 +1698,70 @@
         }
 
         const fleetSavedData = JSON.parse(await GM.getValue(fleet.publicKey.toString(), '{}'));
-        return handleMovement({ ...fleet, ...fleetSavedData }, options);
+        return handleMovement({ ...fleetData, ...fleetSavedData }, options);
     }
 
+    // @todo - documentation
+    async function prepareToMine(fleetObject, options) {
+        let { coords, mineResource, amount } = options;
+        
+        const { foodConsumptionRate, ammoConsumptionRate } = fleet.account.stats.cargoStats;
+        mineResource = ResourceTokens[mineResource || fleet.mineResource];
+
+        const [starbaseX, starbaseY] = (coords || fleet.destination.coords).split(',').map(item => item.trim());
+        const starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
+        const starbasePlayer = await getStarbasePlayer(playerProfile.pubkey, starbase.publicKey);
+
+        const { mineItem, planet, sageResource } = await getMiningDetails(mineResource.publicKey, [starbaseX, starbaseY]);
+        const resourceHardness = mineItem.account.resourceHardness;
+        const { systemRichness } = sageResource.account;
+
+        const { cargoCapacity, miningRate } = fleet.account.stats.cargoStats;
+        const currentCargo = await solanaConnection.getParsedTokenAccountsByOwner(fleet.account.cargoHold, {programId: tokenProgram});
+        const currentCargoCount = currentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount || 0, 0);
+        const maxCargoCapacity = cargoCapacity - currentCargoCount;
+        let mineAmount = amount || maxCargoCapacity;
+        if (mineAmount > maxCargoCapacity) {
+            mineAmount = maxCargoCapacity;
+            console.log(`Can't mine ${mineAmount} adjusted to ${maxCargoCapacity}, rock and STONE!`)
+        }
+
+        const duration = calculateMiningDuration(mineAmount, miningRate, resourceHardness, systemRichness);
+        
+        fleet.origin.supplies[mineResource.publicKey.toString()] = mineAmount;
+        fleet.destination.supplies[ResourceTokens.ammo.publicKey.toString()] = Math.floor(duration * ammoConsumptionRate);
+        fleet.destination.supplies[ResourceTokens.food.publicKey.toString()] = Math.floor(duration * foodConsumptionRate);
+
+        return { duration, starbase, starbasePlayer, planet };
+    }
+
+    // @todo - documentation
+    async function prepareForTrip(fleet) {
+        // get all the most recent information about the fleet
+        const { fleetData } = await getCurrentFleet(fleet);
+            if (fleetData.assignment.lower() in fleetState.lower()) return { fleet, skip: true}
+        // preparing for trip will allows check destination
+        const { supplies } = fleet.destination;
+        let fleetCargoHold = await solanaConnection.getParsedTokenAccountsByOwner(fleet.account.cargoHold, {programId: tokenProgram});
+        let resupplyNeeded = false;
+
+        if (supplies) {
+            fleetCargoHold.value = fleetCargoHold.value.filter(item => Object.keys(supplies).includes(item.account.mint.toString()));
+
+            for (let cargo of fleetCargoHold.value) {
+                const cargoString = cargo.account.mint.toString()
+                const amount = cargo.account.data.parsed.info.tokenAmount.uiAmount || 0;
+                resupplyNeeded = supplies[cargoString] != amount
+            }
+        }
+
+        if (resupplyNeeded || !supplies) {
+            await handleMovement(fleet, { coords: fleet.origin.coords });
+            await handleResupply(fleet, true);
+        }
+        
+        return { fleet, skip: false };
+    }
 
 /**
  * The function `handleReturnTrip` handles the return trip of a fleet by flipping the origin and
@@ -1763,11 +1770,9 @@
  */
     async function handleReturnTrip(fleet) {
         // shallow copy to mutate and flip origin and destination
+        const { extra } = getCurrentFleet(fleet);
         const { origin, destination } = JSON.parse(JSON.stringify(fleet));
         const [destX, destY] = destination;
-
-        const fleetAccountInfo = await solanaConnection.getAccountInfo(fleet.publicKey);
-        const [fleetState, extra] = getFleetState(fleetAccountInfo);
 
         if (fleetState == 'Idle' && (extra[0] === destX || extra[1] === destY)) {
             const fleetPK = fleet.publicKey.toString();
@@ -1801,8 +1806,8 @@
  * Defaults to 120 seconds.
  * @returns The function does not explicitly return anything.
  */
-    async function handleScan(fleet, options) {
-        await prepareForTrip(fleet);
+    async function handleScan(fleetObject, options) {
+        const { fleet } = await prepareForTrip(fleetObject);
         await handleMovement(fleet);
 
         const { cargoHoldBuffer, scanDelay, scanSectorAge } = options;
@@ -1871,41 +1876,55 @@
                 console.log(`[${fleet.label}] Scanning Paused due to low probability [${new Date(fleet.scanEnd).toLocaleTimeString()}]`);
             }
         }
+
         const fleetSavedData = JSON.parse(await GM.getValue(fleet.publicKey.toString(), '{}'));
         return { ...fleet, ...fleetSavedData };
     }
 
-    async function handleMining(fleet) {
-        await prepareForTrip(fleet);
-        await handleMovement(fleet);
+    async function handleMining(fleetObject) {
+        const {  
+            duration: miningDuration, 
+            starbase, 
+            starbasePlayer, 
+            planet
+        } = prepareToMine(fleetObject, options);
+        const { fleet, skip } = await prepareForTrip(fleetObject);
 
-        const { duration: miningDuration } = await execStartMining(fleet);
+        if (!skip) {
+            await handleMovement(fleet);
+            await execStartMining(fleet, { starbase, starbasePlayer, planet });
+        }
+
         const { foodConsumptionRate, ammoConsumptionRate } = fleet.account.stats.cargoStats;
 
         const currentAmmoBank = await solanaConnection.getParsedTokenAccountsByOwner(fleet.account.ammoBank, {programId: tokenProgram});
         const currentAmmoCount = currentAmmoBank.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount || 0, 0);
-        const maxAmmoDuration = Math.floor(currentAmmoCount / ammoConsumptionRate)
+        const maxAmmoDuration = Math.floor(currentAmmoCount / ammoConsumptionRate);
 
         const currentFood = await solanaConnection.getParsedTokenAccountsByOwner(fleet.account.cargoHold, {programId: tokenProgram});
         currentFood.value = currentFood.value.filter(item => item.account.mint.toString() == ResourceTokens.food.publicKey.toString());
         const currentFoodCount = currentFood.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount || 0, 0);
         const maxFoodDuration = Math.floor(currentFoodCount / foodConsumptionRate);
 
-        const duration = Math.min(maxFoodDuration, maxAmmoDuration, miningDuration);
+        const duration = Math.min(miningDuration, maxAmmoDuration, maxFoodDuration);
         fleet.state = 'Mine [' + new Date(Date.now() + (duration * 1000)).toLocaleTimeString() + ']';
+        
         await wait(duration);
         await execStopMining(fleet);
-
         await handleReturnTrip(fleet);
+
         const fleetSavedData = JSON.parse(await GM.getValue(fleet.publicKey.toString(), '{}'));
         return { ...fleet, ...fleetSavedData };
     }
 
-    async function handleTransport(fleet) {
-        await prepareForTrip(fleet);
+    async function handleTransport(fleetObject) {
+        const { fleet } = await prepareForTrip(fleetObject);
         await handleMovement(fleet);
         await handleResupply(fleet);
         await handleReturnTrip(fleet);
+
+        const fleetSavedData = JSON.parse(await GM.getValue(fleet.publicKey.toString(), '{}'));
+        return { ...fleet, ...fleetSavedData };
     }
 
     async function addAssistInput(fleet) {
@@ -2597,8 +2616,7 @@
             startAssistant();
             autoSpanRef.innerHTML = 'Stop';
             for (let i=0, n=userFleets.length; i < n; i++) {
-                let fleetAccountInfo = await solanaConnection.getAccountInfo(userFleets[i].publicKey);
-                let [fleetState, extra] = getFleetState(fleetAccountInfo);
+                let {fleetState, extra} = await getCurrentFleet(userFleets[i]);
                 let fleetCoords = fleetState == 'Idle' && extra ? extra : [];
                 userFleets[i].origin = fleetCoords;
                 userFleets[i].state = fleetState;
@@ -2639,8 +2657,6 @@
     let observer = new MutationObserver(waitForLabs);
     function waitForLabs(mutations, observer){
         let elemTrigger = observer ? '#root > div:first-of-type > div:first-of-type > div > header > h1' : 'body';
-        //if(document.querySelectorAll('#root > div:first-of-type > div:first-of-type > div > header > h1').length > 0 && !document.getElementById("autoScanBtn")) {
-        //if(document.querySelectorAll('body').length > 0 && !document.getElementById("autoScanBtn")) {
         if(document.querySelectorAll(elemTrigger).length > 0 && !document.getElementById("assistContainer")) {
             document.getElementById("assistContainerIso") && document.getElementById("assistContainerIso").remove();
             observer && observer.disconnect();
@@ -2699,7 +2715,6 @@
 			assistCheck.id = 'assistCheck'
 			assistCheck.style.display = 'none'
 			let assistCheckContent = document.createElement('div')
-			//assistCheckContent.classList.add('assist-check-content');
 			assistCheckContent.innerHTML = '<div class="assist-modal-header" style="cursor: move;">Fleet Surveillance<div class="assist-modal-header-right"><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><div style="display: flex; flex-direction: row; justify-content: center;"><select id="fleetGridSelect"><option value="3">3x3</option><option value="5">5x5</option><option value="7">7x7</option></select><input id="checkFleetCntInput" type="text" placeholder="x, y" style="width: 50px;"><button id="checkFleetBtn" class="assist-btn"><span style="font-size: 14px;">Check</span></button></div><div style="display: flex; justify-content: center;"><div id="loadingMessage" style="display: none;">Loading...</div><table id="fleetGrid" class="fleet-grid" style="display: none;"></table></div></div>';
 			assistCheck.append(assistCheckContent)
 
@@ -2712,9 +2727,6 @@
             let autoButton = document.createElement('button');
             autoButton.id = 'autoScanBtn';
             autoButton.classList.add('assist-btn');
-            //autoButton.style.position = 'absolute';
-            //autoButton.style.left = '50%';
-            //autoButton.style.transform = 'translate(-50%, 0)';
             autoButton.addEventListener('click', function(e) {toggleAssistant();});
             let autoBtnSpan = document.createElement('span');
             autoBtnSpan.innerText = initComplete == true ? 'Start' : 'Wait...';
