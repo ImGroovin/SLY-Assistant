@@ -1788,9 +1788,6 @@
             await GM.setValue(fleetPK, JSON.stringify(fleetParsedData));
             await handleMovement(fleet);
         }
-
-        const fleetSavedData = JSON.parse(await GM.getValue(fleet.publicKey.toString(), '{}'));
-        return { ...fleet, ...fleetSavedData };
     }
 
 /**
