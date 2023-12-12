@@ -19,6 +19,7 @@
     'use strict';
     
     let provider;
+    const wallets = [ solflare ];
     let graceBlockWindow = 5;
     let enableAssistant = false;
     let initComplete = false;
@@ -35,7 +36,7 @@
 
     // load SAGE program and methods
     const sageProgramId = new solanaWeb3.PublicKey('SAGEqqFewepDHH6hMDcmWy7yjHPpyKLDnRXKb3Ki8e6');
-    const sageIDL = await anchor.Program.fetchIdl(sageProgramId, anchorProvider);
+    const sageIDL = await BrowserAnchor.anchor.Program.fetchIdl(sageProgramId, anchorProvider);
     const sageProgram = new BrowserAnchor.anchor.Program(sageIDL, sageProgramId, anchorProvider);
     console.debug('sageProgram: ', sageProgram);
     const [sageGameAcct] = await sageProgram.account.game.all();
@@ -45,13 +46,13 @@
 
     // load player profile and methods
     const profileProgramId = new solanaWeb3.PublicKey('pprofELXjL5Kck7Jn5hCpwAL82DpTkSYBENzahVtbc9');
-    const profileIDL = await anchor.Program.fetchIdl(profileProgramId, anchorProvider);
+    const profileIDL = await BrowserAnchor.anchor.Program.fetchIdl(profileProgramId, anchorProvider);
     const profileProgram = new BrowserAnchor.anchor.Program(profileIDL, profileProgramId, anchorProvider);
     console.debug('profileProgram: ', profileProgram);
 
     // load cargo program and methods
     const cargoProgramId = new solanaWeb3.PublicKey('Cargo8a1e6NkGyrjy4BQEW4ASGKs9KSyDyUrXMfpJoiH');
-    const cargoIDL = await anchor.Program.fetchIdl(cargoProgramId, anchorProvider);
+    const cargoIDL = await BrowserAnchor.anchor.Program.fetchIdl(cargoProgramId, anchorProvider);
     const cargoProgram = new BrowserAnchor.anchor.Program(cargoIDL, cargoProgramId, anchorProvider);
     const [cargoStatsDefinitionAcct] = await cargoProgram.account.cargoStatsDefinition.all();
     const cargoStatsDefSeqId = cargoStatsDefinitionAcct.account.seqId;
@@ -59,7 +60,7 @@
     console.debug('cargoStatsDefinitionAcct', cargoStatsDefinitionAcct);
 
     const profileFactionProgramId = new solanaWeb3.PublicKey('pFACSRuobDmvfMKq1bAzwj27t6d2GJhSCHb1VcfnRmq');
-    const profileFactionIDL = await anchor.Program.fetchIdl(profileFactionProgramId, anchorProvider);
+    const profileFactionIDL = await BrowserAnchor.anchor.Program.fetchIdl(profileFactionProgramId, anchorProvider);
     const profileFactionProgram = new BrowserAnchor.anchor.Program(profileFactionIDL, profileFactionProgramId, anchorProvider);
  
     // token accounts
@@ -153,12 +154,6 @@
             return pda;
         }
     }
-
-    const wallets = {
-        'solana': window.solana,
-        'solflare': window.solflare,
-        'phantom': window.phantom.solana
-    }
     
 /**
  * The function `getProvider` is an asynchronous function that takes in a `wallets` object and returns
@@ -167,13 +162,11 @@
  * names of the wallets, and the values are the corresponding wallet provider objects.
  * @returns the provider object if it exists and is connected.
  */
-    async function getProvider (wallets) {
-        const walletNames = Object.keys(wallets)
-        const walletName = walletNames.find(name => name in walletWindow)
-        if (walletName) {
-            const provider = wallets[walletName];
+    async function getProvider () {
+        const provider = wallets.find(name => typeof name !== 'undefined');
+        if (provider) {
             if (!provider.isConnected) await provider.connect();
-            return provider; 
+            return provider;
         }
     }
 
@@ -254,7 +247,7 @@
  */
     async function createProgramDerivedAccount(derived, derivedFrom1, derivedFrom2) {
         const keys = [{
-            pubkey: provider.publicKey(),
+            pubkey: provider.publicKey,
             isSigner: true,
             isWritable: true
         }, {
@@ -296,7 +289,7 @@
         {
            memcmp: {
                offset: 41,
-                bytes: SDUToken.toBase58(),
+                bytes: ResourceTokens.sdu.publicKey.toBase58(),
             },
         },
         {
@@ -346,15 +339,15 @@
 /**
  * The function `getFleetState` takes in fleet account information and returns the fleet state and any
  * additional data associated with it.
- * @param fleetAcctInfo - The `fleetAcctInfo` parameter is an object that contains information about a
+ * @param fleetAccountInfo - The `fleetAccountInfo` parameter is an object that contains information about a
  * fleet account. It has a property called `data` which is an array of numbers.
  * @returns The function `getFleetState` returns an array with two elements. The first element is the
  * fleet state, which can be one of the following values: 'StarbaseLoadingBay', 'Idle', 'MineAsteroid',
  * 'MoveWarp', 'MoveSubwarp', or 'Respawn'. The second element is an additional value that provides
  * extra information depending on the fleet state.
  */
-    function getFleetState(fleetAcctInfo) {
-        let remainingData = fleetAcctInfo.data.slice(414);
+    function getFleetState(fleetAccountInfo) {
+        let remainingData = fleetAccountInfo.data.slice(414);
         let fleetState = 'Unknown';
         let extra = null;
         switch(remainingData[0]) {
@@ -390,22 +383,23 @@
     /**
      * The `initUser` function retrieves user profiles and fleet accounts, and returns the user profile
      * and user profile faction account.
-     * @returns The function `initUser` returns an object with properties `userProfile` and
-     * `userProfileFactionAcct`.
+     * @returns The function `initUser` returns an object with properties `playerProfile` and
+     * `playerProfileFactionAcct`.
      */
     async function initUser() {
         provider = await getProvider(wallets);
+        console.debug('Provider: ', provider);
+
         let userProfiles = await solanaConnection.getProgramAccounts(profileProgramId);
 
         let playerProfiles = [];
         for (let [index, userProfile] of userProfiles.entries()) {
-            const profileData = userProfile.account.data.slice(30);
-            const profileSize = 80;
-            for (let i = 0; i < profileData.length; i += profileSize) {
-                const profile = array.slice(i, i + profileSize);
+            let profileData = userProfile.account.data.subarray(30);
+            while (profileData.length >= 80) {
+                const profile = profileData.subarray(0, 80);
                 const decodedProfile = profileProgram.coder.types.decode('ProfileKey', profile);
-
-                if (decodedProfile.key.toString() === provider.publicKey().toString()) {
+                
+                if (decodedProfile.key.toString() === provider.publicKey.toString()) {
                     const [playerNameAcct] = await solanaConnection.getProgramAccounts(
                         profileProgramId,
                         {
@@ -419,28 +413,31 @@
                             ],
                         }
                     );
-                    const playerName = playerNameAcct ? new TextDecoder().decode(playerNameAcct.account.data.slice(42)) : '';
-                    playerProfiles.push({ account: userProfile, name: playerName, index })
+                    const playerName = playerNameAcct ? new TextDecoder().decode(playerNameAcct.account.data.subarray(42)) : '';
+                    playerProfiles.push({ ...userProfile, name: playerName, index })
                 }
+                profileData = profileData.subarray(80);
             }
         }
 
-        const userProfile = playerProfiles.length > 1 ? await assistProfileToggle(playerProfiles) : playerProfiles[0];
-        const [userProfileFactionAcct] = await profileFactionProgram.account.profileFactionAccount.all([
+        const playerProfile = playerProfiles.length > 1 ? await assistProfileToggle(playerProfiles) : playerProfiles[0];
+        console.debug('User Profile: ', playerProfile);
+
+        const [playerProfileFactionAcct] = await profileFactionProgram.account.profileFactionAccount.all([
             {
                 memcmp: {
                     offset: 9,
-                    bytes: userProfile.account.toBase58(),
+                    bytes: playerProfile.pubkey.toBase58(),
                 },
             },
         ]);
-        userProfile.faction = userProfileFactionAcct;
+        playerProfile.faction = playerProfileFactionAcct;
 
         const userFleetAccts = await sageProgram.account.fleet.all([
             {
                 memcmp: {
                     offset: 41,
-                    bytes: userProfile.account.toBase58(),
+                    bytes: playerProfile.pubkey.toBase58(),
                 },
             },
         ]);
@@ -474,10 +471,11 @@
                 if (fleetDefaultData.hasOwnProperty(key)) fleetDefaultData[key] = fleetSavedData[key]
             });
             
-            let [fleetState, extra] = getFleetState(fleetAcctInfo);      
+            const fleetAccountInfo = await solanaConnection.getAccountInfo(fleet.publicKey);
+            let [fleetState, extra] = getFleetState(fleetAccountInfo);
             if (fleetState == 'Idle' && extra) {
-                for (let i = 0; i < scanBlock.length; i++) {
-                    if (extra[0] == scanBlock[i][0] && extra[1] == scanBlock[i][1]) {
+                for (let i = 0; i < fleetDefaultData.scanBlock.length; i++) {
+                    if (extra[0] == fleetDefaultData.scanBlock[i][0] && extra[1] == fleetDefaultData.scanBlock[i][1]) {
                         fleetDefaultData.scanBlockIndex = i;
                         break;
                     }
@@ -494,7 +492,7 @@
             return a.name.toUpperCase().localeCompare(b.name.toUpperCase());
         });
 
-        return { userProfile, userProfileFactionAcct };
+        return { playerProfile, playerProfileFactionAcct };
     }
 
 /**
@@ -640,16 +638,16 @@
 /**
  * The function `getStarbasePlayer` retrieves a starbase player based on the user profile and starbase
  * provided.
- * @param userProfile - The `userProfile` is the public key of the player profile.
+ * @param playerProfile - The `playerProfile` is the public key of the player profile.
  * @param starbase - The `starbase` is the public key for the given starbase. 
  * @returns the `starbasePlayer` public key.
  */
-    async function getStarbasePlayer(userProfile, starbase) {
+    async function getStarbasePlayer(playerProfile, starbase) {
         const [starbasePlayer] = await sageProgram.account.starbasePlayer.all([
             {
                 memcmp: {
                     offset: 9,
-                    bytes: userProfile.toBase58()
+                    bytes: playerProfile.pubkey.toBase58()
                 }
             },
             {
@@ -856,7 +854,7 @@
             let before = ixs.slice(0, index + 1);
             const after = ixs.slice(-(ixs.length - (index + 1)));
 
-            if (getTransactionSize(before, provider.publicKey()) > MAX_TRANSACTION_SIZE) {
+            if (getTransactionSize(before, provider.publicKey) > MAX_TRANSACTION_SIZE) {
                 before = ixs.slice(0, index);
             } else {
                 if (before.length != after.length) continue;
@@ -865,8 +863,8 @@
             before.forEach(ix => tx.add(ix.instruction));
             tx.recentBlockhash = blockhash;
             tx.lastValidBlockHeight = lastValidBlockHeight;
-            tx.feePayer = provider.publicKey();
-            tx.signer = provider.publicKey();
+            tx.feePayer = provider.publicKey;
+            tx.signer = provider.publicKey;
             txs.push(tx);
             if (after.length > 0) return batchTransactions(after, blockhash, lastValidBlockHeight, txs);
         }
@@ -909,18 +907,18 @@
 /**
  * The `execScan` triggers a scan for survey data units.
  * @param fleet - The `fleet` parameter represents the fleet object.
- * @param userProfile - The `userProfile` parameter represents the user's profile information. It
+ * @param playerProfile - The `playerProfile` parameter represents the user's profile information. It
  * includes properties such as `index`, `pubkey`, and `faction`.
  * @returns the transaction result of the scan.
  */
-    async function execScan(fleet, userProfile) {
-        const tx = { instruction: await sageProgram.methods.scanForSurveyDataUnits({keyIndex: new BrowserAnchor.anchor.BN(userProfile.index)}).accountsStrict({
+    async function execScan(fleet, playerProfile) {
+        const tx = { instruction: await sageProgram.methods.scanForSurveyDataUnits({keyIndex: new BrowserAnchor.anchor.BN(playerProfile.index)}).accountsStrict({
             gameAccountsFleetAndOwner: {
                 gameFleetAndOwner: {
                     fleetAndOwner: {
                         fleet: fleet.publicKey,
-                        owningProfile: userProfile.pubkey,
-                        owningProfileFaction: userProfile.faction.publicKey,
+                        owningProfile: playerProfile.pubkey,
+                        owningProfileFaction: playerProfile.faction.publicKey,
                         key: provider.publicKey
                     },
                     gameId: sageGameAcct.publicKey
@@ -976,15 +974,15 @@
         }
 
         const tx = { instruction: await sageProgram.methods.startSubwarp({
-            keyIndex: new BrowserAnchor.anchor.BN(userProfile.index), 
+            keyIndex: new BrowserAnchor.anchor.BN(playerProfile.index), 
             toSector: [new BrowserAnchor.anchor.BN(destX), new BrowserAnchor.anchor.BN(destY)]
         }).accountsStrict({
             gameAccountsFleetAndOwner: {
                 gameFleetAndOwner: {
                     fleetAndOwner: {
                         fleet: fleet.publicKey,
-                        owningProfile: userProfile.pubkey,
-                        owningProfileFaction: userProfile.faction.publicKey,
+                        owningProfile: playerProfile.pubkey,
+                        owningProfileFaction: playerProfile.faction.publicKey,
                         key: provider.publicKey
                     },
                     gameId: sageGameAcct.publicKey
@@ -1006,7 +1004,7 @@
             fleet: fleet.publicKey
         }).remainingAccounts([
             {
-                pubkey: userProfile.account,
+                pubkey: playerProfile.pubkey,
                 isSigner: false,
                 isWritable: true
             },
@@ -1101,13 +1099,13 @@
             return fleet.state = 'ERROR: Not enough fuel';
         }
 
-        const tx = { instruction: await sageProgram.methods.warpToCoordinate({keyIndex: new BrowserAnchor.anchor.BN(userProfile.index), toSector: [new BrowserAnchor.anchor.BN(destX), new BrowserAnchor.anchor.BN(destY)]}).accountsStrict({
+        const tx = { instruction: await sageProgram.methods.warpToCoordinate({keyIndex: new BrowserAnchor.anchor.BN(playerProfile.index), toSector: [new BrowserAnchor.anchor.BN(destX), new BrowserAnchor.anchor.BN(destY)]}).accountsStrict({
             gameAccountsFleetAndOwner: {
                 gameFleetAndOwner: {
                     fleetAndOwner: {
                         fleet: fleet.publicKey,
-                        owningProfile: userProfile.pubkey,
-                        owningProfileFaction: userProfile.faction.publicKey,
+                        owningProfile: playerProfile.pubkey,
+                        owningProfileFaction: playerProfile.faction.publicKey,
                         key: provider.publicKey
                     },
                     gameId: sageGameAcct.publicKey
@@ -1151,14 +1149,14 @@
     async function execDock(fleet, coords) {
         const [starbaseX, starbaseY] = (coords || fleet.destination.coords).split(',').map(item => item.trim());
         const starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
-        const starbasePlayer = await getStarbasePlayer(userProfile.account, starbase.publicKey);
-        const tx = { instruction: await sageProgram.methods.idleToLoadingBay(new BrowserAnchor.anchor.BN(userProfile.index)).accountsStrict({
+        const starbasePlayer = await getStarbasePlayer(playerProfile.pubkey, starbase.publicKey);
+        const tx = { instruction: await sageProgram.methods.idleToLoadingBay(new BrowserAnchor.anchor.BN(playerProfile.index)).accountsStrict({
             gameAccountsFleetAndOwner: {
                 gameFleetAndOwner: {
                     fleetAndOwner: {
                         fleet: fleet.publicKey,
-                        owningProfile: userProfile.pubkey,
-                        owningProfileFaction: userProfile.faction.publicKey,
+                        owningProfile: playerProfile.pubkey,
+                        owningProfileFaction: playerProfile.faction.publicKey,
                         key: provider.publicKey
                     },
                     gameId: sageGameAcct.publicKey
@@ -1186,14 +1184,14 @@
     async function execUndock(fleet, coords) {
         const [starbaseX, starbaseY] = (coords || fleet.origin.coords).split(',').map(item => item.trim());
         const starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
-        const starbasePlayer = await getStarbasePlayer(userProfile.account, starbase.publicKey);
-        const tx = { instruction: await sageProgram.methods.loadingBayToIdle(new BrowserAnchor.anchor.BN(userProfile.index)).accountsStrict({
+        const starbasePlayer = await getStarbasePlayer(playerProfile.pubkey, starbase.publicKey);
+        const tx = { instruction: await sageProgram.methods.loadingBayToIdle(new BrowserAnchor.anchor.BN(playerProfile.index)).accountsStrict({
             gameAccountsFleetAndOwner: {
                 gameFleetAndOwner: {
                     fleetAndOwner: {
                         fleet: fleet.publicKey,
-                        owningProfile: userProfile.pubkey,
-                        owningProfileFaction: userProfile.faction.publicKey,
+                        owningProfile: playerProfile.pubkey,
+                        owningProfileFaction: playerProfile.faction.publicKey,
                         key: provider.publicKey
                     },
                     gameId: sageGameAcct.publicKey
@@ -1249,7 +1247,7 @@
         supplies = supplies || fleet[location].supplies;
         const [starbaseX, starbaseY] = (coords || fleet[location].coords).split(',').map(item => item.trim());
         const starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
-        const starbasePlayer = await getStarbasePlayer(userProfile.account, starbase.publicKey);
+        const starbasePlayer = await getStarbasePlayer(playerProfile.pubkey, starbase.publicKey);
         const starbasePlayerCargoHolds = await cargoProgram.account.cargoPod.all([
             {
                 memcmp: {
@@ -1271,15 +1269,15 @@
                 const resourceCargoType = cargoTypes.find(item => item.account.mint.toString() == resourceString);
                 const ix = await sageProgram.methods.withdrawCargoFromFleet({
                     amount: new BrowserAnchor.anchor.BN(amount), 
-                    keyIndex: new BrowserAnchor.anchor.BN(userProfile.index)
+                    keyIndex: new BrowserAnchor.anchor.BN(playerProfile.index)
                 }).accountsStrict({
                     gameAccountsFleetAndOwner: {
                         gameFleetAndOwner: {
                             fleetAndOwner: {
                                 fleet: fleet.publicKey,
-                                owningProfile: userProfile.account,
-                                owningProfileFaction: userProfile.faction.publicKey,
-                                key: provider.publicKey()
+                                owningProfile: playerProfile.account,
+                                owningProfileFaction: playerProfile.faction.publicKey,
+                                key: provider.publicKey
                             },
                             gameId: sageGameAcct.publicKey
                         },
@@ -1296,7 +1294,7 @@
                     tokenFrom: fleet.account.cargoHold,
                     tokenTo: await ResourceTokens.getPodToken({ publicKey: resource.publicKey, pod: starbasePlayerCargoHold.publicKey }),
                     tokenMint: resourceString,
-                    fundsTo: provider.publicKey(),
+                    fundsTo: provider.publicKey,
                     cargoProgram: cargoProgramId,
                     tokenProgram
                 }).remainingAccounts([{
@@ -1332,7 +1330,7 @@
         supplies = supplies || fleet[location].supplies;
         const [starbaseX, starbaseY] = (coords || fleet[location].coords).split(',').map(item => item.trim());
         const starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
-        const starbasePlayer = await getStarbasePlayer(userProfile.account, starbase.publicKey);
+        const starbasePlayer = await getStarbasePlayer(playerProfile.pubkey, starbase.publicKey);
         const starbasePlayerCargoHolds = await cargoProgram.account.cargoPod.all([
             {
                 memcmp: {
@@ -1354,21 +1352,21 @@
                 const resourceCargoType = cargoTypes.find(item => item.account.mint.toString() == resourceString);
                 const ix = { instruction: await sageProgram.methods.depositCargoToFleet({ 
                     amount: new BrowserAnchor.anchor.BN(amount), 
-                    keyIndex: new BrowserAnchor.anchor.BN(userProfile.index) 
+                    keyIndex: new BrowserAnchor.anchor.BN(playerProfile.index) 
                 }).accountsStrict({
                     gameAccountsFleetAndOwner: {
                         gameFleetAndOwner: {
                             fleetAndOwner: {
                                 fleet: fleet.publicKey,
-                                owningProfile: userProfile.account,
-                                owningProfileFaction: userProfile.faction.publicKey,
-                                key: provider.publicKey()
+                                owningProfile: playerProfile.pubkey,
+                                owningProfileFaction: playerProfile.faction.publicKey,
+                                key: provider.publicKey
                             },
                             gameId: sageGameAcct.publicKey
                         },
                         gameState: sageGameAcct.account.gameState
                     },
-                    fundsTo: provider.publicKey(),
+                    fundsTo: provider.publicKey,
                     starbaseAndStarbasePlayer: {
                         starbase: starbase.publicKey,
                         starbasePlayer: starbasePlayer.publicKey
@@ -1461,7 +1459,7 @@
 
         const [starbaseX, starbaseY] = (coords || fleet.destination.coords).split(',').map(item => item.trim());
         const starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
-        const starbasePlayer = await getStarbasePlayer(userProfile.account, starbase.publicKey);
+        const starbasePlayer = await getStarbasePlayer(playerProfile.pubkey, starbase.publicKey);
 
         const { mineItem, planet, sageResource } = await getMiningDetails(mineResource.publicKey, [starbaseX, starbaseY]);
         const resourceHardness = mineItem.account.resourceHardness;
@@ -1480,15 +1478,15 @@
         const duration = calculateMiningDuration(mineAmount, miningRate, resourceHardness, systemRichness);
 
         const ix = { instruction: await sageProgram.methods.startMiningAsteroid({
-            keyIndex: new BrowserAnchor.anchor.BN(userProfile.index)
+            keyIndex: new BrowserAnchor.anchor.BN(playerProfile.index)
         }).accountsStrict({
             gameAccountsFleetAndOwner: {
                 gameFleetAndOwner: {
                     fleetAndOwner: {
                         fleet: fleet.publicKey,
-                        owningProfile: userProfile.account,
-                        owningProfileFaction: userProfile.faction.publicKey,
-                        key: provider.publicKey()
+                        owningProfile: playerProfile.pubkey,
+                        owningProfileFaction: playerProfile.faction.publicKey,
+                        key: provider.publicKey
                     },
                     gameId: sageGameAcct.publicKey
                 },
@@ -1534,7 +1532,7 @@
             fleet: fleet.publicKey
         }).remainingAccounts([
             {
-                pubkey: userProfile.faction.publicKey,
+                pubkey: playerProfile.faction.publicKey,
                 isSigner: false,
                 isWritable: false
             },
@@ -1636,15 +1634,15 @@
         ]).instruction()}
 
         const tx2 = { instruction: await sageProgram.methods.stopMiningAsteroid({
-            keyIndex: new BrowserAnchor.anchor.BN(userProfile.index)
+            keyIndex: new BrowserAnchor.anchor.BN(playerProfile.index)
         }).accountsStrict({
             gameAccountsFleetAndOwner: {
                 gameFleetAndOwner: {
                     fleetAndOwner: {
                         fleet: fleet.publicKey,
-                        owningProfile: userProfile.account,
-                        owningProfileFaction: userProfile.faction.publicKey,
-                        key: provider.publicKey()
+                        owningProfile: playerProfile.pubkey,
+                        owningProfileFaction: playerProfile.faction.publicKey,
+                        key: provider.publicKey
                     },
                     gameId: sageGameAcct.publicKey
                 },
@@ -1768,8 +1766,8 @@
         const { origin, destination } = JSON.parse(JSON.stringify(fleet));
         const [destX, destY] = destination;
 
-        const fleetAcctInfo = await solanaConnection.getAccountInfo(fleet.publicKey);
-        const [fleetState, extra] = getFleetState(fleetAcctInfo);
+        const fleetAccountInfo = await solanaConnection.getAccountInfo(fleet.publicKey);
+        const [fleetState, extra] = getFleetState(fleetAccountInfo);
 
         if (fleetState == 'Idle' && (extra[0] === destX || extra[1] === destY)) {
             const fleetPK = fleet.publicKey.toString();
@@ -1834,8 +1832,8 @@
             const scanResult = await execScan(fleet);
             console.log('Scan Result: ', scanResult);
 
-            const changesSDU = getBalanceChange(scanResult, fleet.sduToken.toString());
-            const changesTool = getBalanceChange(scanResult, fleet.repairKitToken.toString());
+            const changesSDU = getBalanceChange(scanResult, ResourceTokens.sdu.publicKey.toString());
+            const changesTool = getBalanceChange(scanResult, ResourceTokens.toolkit.publicKey.toString());
             let scanCondition = scanResult.meta.logMessages ? scanResult.meta.logMessages.find(item => item.startsWith("Program log: SDU probability:")) : null;
             scanCondition = scanCondition ? (Number(scanCondition.split(' ').pop())*100).toFixed(4) : 0;
             
@@ -2599,8 +2597,8 @@
             startAssistant();
             autoSpanRef.innerHTML = 'Stop';
             for (let i=0, n=userFleets.length; i < n; i++) {
-                let fleetAcctInfo = await solanaConnection.getAccountInfo(userFleets[i].publicKey);
-                let [fleetState, extra] = getFleetState(fleetAcctInfo);
+                let fleetAccountInfo = await solanaConnection.getAccountInfo(userFleets[i].publicKey);
+                let [fleetState, extra] = getFleetState(fleetAccountInfo);
                 let fleetCoords = fleetState == 'Idle' && extra ? extra : [];
                 userFleets[i].origin = fleetCoords;
                 userFleets[i].state = fleetState;
