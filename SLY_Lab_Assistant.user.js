@@ -485,7 +485,7 @@
             userFleets.push({
                 name,
                 ...fleetDefaultData,
-                account: fleet.account 
+                ...fleet
             });
         }
         userFleets.sort(function (a, b) {
