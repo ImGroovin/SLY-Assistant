@@ -3011,7 +3011,7 @@
 											//let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
 											//let resFuelMax = Math.min(currentFuelCnt, extraFuel);
 											let resFuelMax = Math.min(extraFuelToDropOffAtTarget, extraFuel);
-											console.log(`${FleetTimeStamp(userFleets[i].label)} Unloading extra fuel: ${extraFuel}`);
+											console.log(`${FleetTimeStamp(userFleets[i].label)} Unloading extra fuel: ${resFuelMax}`);
 											//if (resFuelMax > 0) {
 											await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].fuelTank, sageGameAcct.account.mints.fuel.toString(), userFleets[i].destCoord, resFuelMax);
 											await wait(2000);
