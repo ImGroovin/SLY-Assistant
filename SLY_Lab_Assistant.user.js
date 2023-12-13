@@ -241,7 +241,7 @@
  * which the `derived` account is derived.
  * @param derivedFrom2 - The parameter `derivedFrom2` is a public key that represents the account from
  * which the `derived` account is derived.
- * @returns the result of the `txSignAndSend` function, which is likely a promise that resolves to the
+ * @returns the result of the `signAndSend` function, which is likely a promise that resolves to the
  * transaction details.
  */
     async function createProgramDerivedAccount(derived, derivedFrom1, derivedFrom2) {
@@ -271,7 +271,7 @@
             isWritable: false
         }];
 
-        return await txSignAndSend({
+        return await signAndSend({
             instruction: new solanaWeb3.TransactionInstruction({
                 keys: keys,
                 programId: AssociatedTokenProgram.toString(),
@@ -874,13 +874,13 @@
     }
 
 /**
- * The function `txSignAndSend` signs and sends a batch of transactions to the Solana blockchain,
+ * The function `signAndSend` signs and sends a batch of transactions to the Solana blockchain,
  * handling errors and retries if necessary.
  * @param ixs - The parameter `ixs` is an array of instructions that you want to include in the
  * transaction. Each instruction represents an action to be performed on the Solana blockchain.
  * @returns an array of transaction results.
  */
-    async function txSignAndSend(ixs) {
+    async function signAndSend(ixs) {
         const { blockhash, lastValidBlockHeight } = await solanaConnection.getLatestBlockhash('confirmed');
         if (ixs.constructor !== Array) ixs = [ixs];
 
@@ -896,7 +896,7 @@
             console.log(confirmation);
             if ((confirmation.name == 'TransactionExpiredBlockheightExceededError' || confirmation.name == 'LudicrousTimoutError')) {
                 console.log('-----RETRY-----');
-                return txSignAndSend(ix);
+                return signAndSend(ix);
             }
 
             const txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
@@ -942,7 +942,7 @@
             recentSlothashes: RecentSlotHashes,
             instructionsSysvar: InstructionsSysVar
         }).instruction()}
-        return await txSignAndSend(tx);
+        return await signAndSend(tx);
     }
     
 /**
@@ -992,7 +992,7 @@
                 gameState: sageGameAcct.account.gameState
             },
         }).instruction()}
-        const txResult = await txSignAndSend(tx);
+        const txResult = await signAndSend(tx);
         return { duration, txResult };
     }
 
@@ -1056,7 +1056,7 @@
                 isWritable: false
             },
         ]).instruction()}
-        return await txSignAndSend(tx);
+        return await signAndSend(tx);
     }
 
 /**
@@ -1122,7 +1122,7 @@
             cargoProgram: cargoProgramId,
             tokenProgram
         }).instruction()}
-        const txResult = await txSignAndSend(tx);
+        const txResult = await signAndSend(tx);
         return { duration, warpCount, txResult };
     }
 
@@ -1135,7 +1135,7 @@
         const tx = { instruction: await sageProgram.methods.fleetStateHandler().accountsStrict({
             fleet: fleet.publicKey
         }).instruction()}
-        return await txSignAndSend(tx);
+        return await signAndSend(tx);
     }
 
 /**
@@ -1171,7 +1171,7 @@
             }
         }).instruction()}
         fleet.state = 'Docking';
-        return await txSignAndSend(tx);
+        return await signAndSend(tx);
     }
 
 /**
@@ -1210,7 +1210,7 @@
             isWritable: false
         }]).instruction()}
         fleet.state = 'Undocking';
-        return await txSignAndSend(tx);
+        return await signAndSend(tx);
     }   
 
     // @todo - documentation
@@ -1305,7 +1305,7 @@
             }
         }
         fleet.state = 'Unloading';
-        if (ixs.length > 0) await txSignAndSend(ixs);
+        if (ixs.length > 0) await signAndSend(ixs);
         fleet.state = 'Docked';
     }
 
@@ -1389,7 +1389,7 @@
             }
         }
         fleet.state = 'Loading';
-        if (ixs.length > 0) await txSignAndSend(ixs);
+        if (ixs.length > 0) await signAndSend(ixs);
         fleet.state = 'Docked';
     }
     
@@ -1478,7 +1478,7 @@
             planet: planet.publicKey,
         }).instruction()}
         fleet.state = 'Mining';
-        return await txSignAndSend(ix);
+        return await signAndSend(ix);
     }
 
 /**
@@ -1635,7 +1635,7 @@
             tokenProgram
         }).instruction()}
         fleet.state = 'Mining stopped';
-        return await txSignAndSend([tx1,tx2]);
+        return await signAndSend([tx1,tx2]);
     }
 
     // @todo - documentation
