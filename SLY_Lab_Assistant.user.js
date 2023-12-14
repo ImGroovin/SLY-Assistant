@@ -21,6 +21,7 @@
 	let enableAssistant = false;
 	let initComplete = false;
 	let extraFuelToDropOffAtTarget = 0;
+	let transportStopOnError = false;
 
 	//const solanaConnection = new solanaWeb3.Connection('https://solana-api.syndica.io/access-token/WPoEqWQ2auQQY1zHRNGJyRBkvfOLqw58FqYucdYtmy8q9Z84MBWwqtfVf8jKhcFh/rpc', 'confirmed');
 	const solanaConnection = new solanaWeb3.Connection('https://rpc.hellomoon.io/cfd5910f-fb7d-4489-9b32-f97193eceefd', 'confirmed');
@@ -3073,8 +3074,8 @@
 							userFleets[i].resupplying = false;
 					}
 
-					//Commented out to prevent stalling at target, transport should always return to starbase if possible
-					//if (errorResource.length > 0) userFleets[i].state = `ERROR: Not enough ${errorResource.toString()}`;
+					//Transport should always return to starbase if transportStopOnError == false
+					if (transportStopOnError && errorResource.length > 0) userFleets[i].state = `ERROR: Not enough ${errorResource.toString()}`;
 
 					if (userFleets[i].moveTarget !== '') {
 							let targetX = userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[0].trim() : '';
