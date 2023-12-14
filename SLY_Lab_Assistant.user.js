@@ -2337,7 +2337,8 @@
 
         for (let [i, row] of fleetRows.entries()) {
             const fleetPK = row.getAttribute('pk');
-            const fleet = userFleets.find(item => {return item.publicKey.toString() == fleetPK});
+            const fleetIndex = userFleets.findIndex(item => {return item.publicKey.toString() == fleetPK});
+            const fleet = userFleets[fleetIndex];
             const name = row.children[0].firstChild.innerText;
             const assignment = row.children[1].firstChild.value;
             const moveType = row.children[4].firstChild.checked ? 'subwarp' : 'warp';
@@ -2422,7 +2423,8 @@
             }
 
             if (error) return;
-            await GM.setValue(fleet.publicKey.toString(), JSON.stringify({ ...fleet, ...fleetData }));
+            userFleets[fleetIndex] = { ...fleet, ...fleetData };
+            await GM.setValue(fleet.publicKey.toString(), JSON.stringify(fleet));
         }
     }
 
@@ -2457,7 +2459,7 @@
     async function importConfig() {
         const importText = document.querySelector('#importText');
         const jsonConfig = JSON.parse(importText.value);
-        
+
         for (let key in jsonConfig) {
             let fleetObj = jsonConfig[key];
             let fleetJson = JSON.stringify(fleetObj);
@@ -2561,7 +2563,7 @@
                         fleetQueue.add(handleScan(fleet));
                         break;
                     default:
-                        console.log(`${ assignment } is unsupported`);
+                        console.log(`${ fleet.assignment } is unsupported`);
                 }
             }
         }
@@ -2846,7 +2848,7 @@
                     this.add(handleScan(fleet));
                     break;
                 default:
-                    console.log(`${ assignment } is unsupported`);
+                    console.log(`${ fleet.assignment } is unsupported`);
             }
             this.run();
           });
