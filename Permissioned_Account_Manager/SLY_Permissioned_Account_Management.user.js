@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Permissioned Account Management
 // @namespace    http://tampermonkey.net/
-// @version      0.2
+// @version      0.3
 // @description  try to take over the world!
 // @author       SLY
 // @match        https://labs.staratlas.com/
@@ -313,7 +313,7 @@
     // UI panel - wallet selection
     async function selectWalletToggle() {
         return new Promise(async resolve => {
-            let errElem = document.querySelector('#assist-modal-error');
+            let errElem = document.querySelector('#walletModal .assist-modal-error');
             let targetElem = document.querySelector('#walletModal');
             if (targetElem.style.display === 'none') {
                 targetElem.style.display = 'block';
@@ -377,11 +377,11 @@
     let observer = new MutationObserver(waitForLabs);
     function waitForLabs(mutations, observer){
         let elemTrigger = observer ? '#root > div:first-of-type > div:first-of-type > div > header > h1' : 'body';
-        if(document.querySelectorAll(elemTrigger).length > 0 && !document.getElementById("assistContainer")) {
-            document.getElementById("assistContainerIso") && document.getElementById("assistContainerIso").remove();
+        if(document.querySelectorAll(elemTrigger).length > 0 && !document.getElementById("accountManagerContainer")) {
+            document.getElementById("accountManagerContainerIso") && document.getElementById("accountManagerContainerIso").remove();
             observer && observer.disconnect();
             let assistCSS = document.createElement('style');
-            assistCSS.innerHTML = '.assist-modal {display: none; position: fixed; z-index: 2; padding-top: 100px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);} .assist-modal-content {position: relative; display: flex; flex-direction: column; background-color: rgb(41, 41, 48); margin: auto; padding: 0; border: 1px solid #888; width: 650px; min-width: 450px; max-width: 75%; height: auto; min-height: 50px; max-height: 85%; overflow-y: auto; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19); -webkit-animation-name: animatetop; -webkit-animation-duration: 0.4s; animation-name: animatetop; animation-duration: 0.4s;} #assist-modal-error {color: red; margin-left: 5px; margin-right: 5px; font-size: 16px;} .assist-modal-header-right {color: rgb(255, 190, 77); margin-left: auto !important; font-size: 20px;} .assist-btn {background-color: rgb(41, 41, 48); color: rgb(255, 190, 77); margin-left: 2px; margin-right: 2px;} .assist-btn:hover {background-color: rgba(255, 190, 77, 0.2);} .assist-modal-close:hover, .assist-modal-close:focus {font-weight: bold; text-decoration: none; cursor: pointer;} .assist-modal-btn {color: rgb(255, 190, 77); padding: 5px 5px; margin-right: 5px; text-decoration: none; background-color: rgb(41, 41, 48); border: none; cursor: pointer;} .assist-modal-header {display: flex; align-items: center; padding: 2px 16px; background-color: rgba(255, 190, 77, 0.2); border-bottom: 2px solid rgb(255, 190, 77); color: rgb(255, 190, 77);} .assist-modal-body {padding: 2px 16px; font-size: 12px;} .assist-modal-body > table {width: 100%;} .assist-modal-body th, .assist-modal-body td {padding-right: 5px, padding-left: 5px;} #assistStatus {background-color: rgba(0,0,0,0.4); opacity: 0.75; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1;} .assist-btn-alt { color: rgb(255, 190, 77); padding: 12px 16px; text-decoration: none; display: block; background-color: rgb(41, 41, 48); border: none; cursor: pointer; } .assist-btn-alt:hover { background-color: rgba(255, 190, 77, 0.2); }';
+            assistCSS.innerHTML = '.assist-modal {display: none; position: fixed; z-index: 2; padding-top: 100px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);} .assist-modal-content {position: relative; display: flex; flex-direction: column; background-color: rgb(41, 41, 48); margin: auto; padding: 0; border: 1px solid #888; width: 650px; min-width: 450px; max-width: 75%; height: auto; min-height: 50px; max-height: 85%; overflow-y: auto; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19); -webkit-animation-name: animatetop; -webkit-animation-duration: 0.4s; animation-name: animatetop; animation-duration: 0.4s;} .assist-modal-error {color: red; margin-left: 5px; margin-right: 5px; font-size: 16px;} .assist-modal-header-right {color: rgb(255, 190, 77); margin-left: auto !important; font-size: 20px;} .assist-btn {background-color: rgb(41, 41, 48); color: rgb(255, 190, 77); margin-left: 2px; margin-right: 2px;} .assist-btn:hover {background-color: rgba(255, 190, 77, 0.2);} .assist-modal-close:hover, .assist-modal-close:focus {font-weight: bold; text-decoration: none; cursor: pointer;} .assist-modal-btn {color: rgb(255, 190, 77); padding: 5px 5px; margin-right: 5px; text-decoration: none; background-color: rgb(41, 41, 48); border: none; cursor: pointer;} .assist-modal-header {display: flex; align-items: center; padding: 2px 16px; background-color: rgba(255, 190, 77, 0.2); border-bottom: 2px solid rgb(255, 190, 77); color: rgb(255, 190, 77);} .assist-modal-body {padding: 2px 16px; font-size: 12px;} .assist-modal-body > table {width: 100%;} .assist-modal-body th, .assist-modal-body td {padding-right: 5px, padding-left: 5px;} #assistStatus {background-color: rgba(0,0,0,0.4); opacity: 0.75; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1;} .assist-btn-alt { color: rgb(255, 190, 77); padding: 12px 16px; text-decoration: none; display: block; background-color: rgb(41, 41, 48); border: none; cursor: pointer; } .assist-btn-alt:hover { background-color: rgba(255, 190, 77, 0.2); }';
             assistCSS.innerHTML += '.lds-ring {display: inline-block; position: relative; width: 22px; height: 22px; margin-right: 20px;} .lds-ring div {box-sizing: border-box; display: block; position: absolute; width: 24px; height: 24px; margin: 4px; border: 4px solid #fff; border-radius: 50%; animation: lds-ring 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite; border-color: #fff transparent transparent transparent;} .lds-ring div:nth-child(1) {animation-delay: -0.45s;} .lds-ring div:nth-child(2) {animation-delay: -0.3s;} .lds-ring div:nth-child(3) {animation-delay: -0.15s;} @keyframes lds-ring { 0% {transform: rotate(0deg);} 100% {transform: rotate(360deg);}}'
 
             let walletModal = document.createElement('div');
@@ -393,7 +393,7 @@
             walletModalContent.classList.add('assist-modal-content');
             walletModalContent.style.width = '300px';
             walletModalContent.style.minWidth = '300px';
-            walletModalContent.innerHTML = '<div class="assist-modal-header"><span>Connect your "primary" wallet.</span><div class="assist-modal-header-right"></div><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body" style="display: flex; flex-direction: column; align-items: center;"><span id="assist-modal-error"></span><select id="walletSelection" size=3 style="padding: 2px 10px; margin: 10px 0px 10px 0px;"><option value="solflare">Solflare</option><option value="phantom">Phantom</option></select><div><button id="selectWalletBtn" class="assist-btn">Connect Wallet</button></div></div>';
+            walletModalContent.innerHTML = '<div class="assist-modal-header"><span>Connect your "primary" wallet.</span><div class="assist-modal-header-right"></div><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body" style="display: flex; flex-direction: column; align-items: center;"><span class="assist-modal-error"></span><select id="walletSelection" size=3 style="padding: 2px 10px; margin: 10px 0px 10px 0px;"><option value="solflare">Solflare</option><option value="phantom">Phantom</option></select><div><button id="selectWalletBtn" class="assist-btn">Connect Wallet</button></div></div>';
             walletModal.append(walletModalContent);
 
             let accountModal = document.createElement('div');
@@ -403,22 +403,37 @@
             accountModal.style.zIndex = 3;
             let accountModalContent = document.createElement('div');
             accountModalContent.classList.add('assist-modal-content');
-            accountModalContent.innerHTML = '<div class="assist-modal-header"><span>Manage Permissioned Accounts</span><div class="assist-modal-header-right"><div id="waiting"><div></div><div></div><div></div><div></div></div><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><div>Grant restricted access to interact with this account\'s SAGE instance from another account. Enter the public key of the restricted account below.</div><div max-width="100%"><input id="addAcctDiv" type="text" style="width: 375px;"><button id="addAcctBtn" class="assist-btn">Add Account</button></div><div max-width="100%"><div id="profileList"></div><div style="display: flex;"><button id="removeAcctBtn" class="assist-btn" style="margin-left: auto;">Remove Account</button></div></div></div>';
+            accountModalContent.innerHTML = '<div class="assist-modal-header"><span>Manage Permissioned Accounts</span><div class="assist-modal-header-right"><div id="waiting"><div></div><div></div><div></div><div></div></div><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span class="assist-modal-error"></span><div>Grant restricted access to interact with this account\'s SAGE instance from another account. Enter the public key of the restricted account below.</div><div max-width="100%"><input id="addAcctDiv" type="text" style="width: 375px;"><button id="addAcctBtn" class="assist-btn">Add Account</button></div><div max-width="100%"><div id="profileList"></div><div style="display: flex;"><button id="removeAcctBtn" class="assist-btn" style="margin-left: auto;">Remove Account</button></div></div></div>';
             accountModal.append(accountModalContent);
 
+            let accountManagerTitle = document.createElement('span');
+            accountManagerTitle.innerHTML = 'Lab Assistant';
+            accountManagerTitle.style.fontSize = '14px';
+
+            let accountManagerBtn = document.createElement('button');
+            accountManagerBtn.id = 'accountManagerBtn';
+            accountManagerBtn.classList.add('assist-btn');
+            accountManagerBtn.addEventListener('click', function(e) {initUser();});
+            accountManagerBtn.innerText = 'PAM';
+
             let targetElem = document.querySelector('body');
-            let autoContainer = document.createElement('div');
-            autoContainer.style.display = 'flex';
-            autoContainer.style.flexDirection = 'row';
+            let accountManagerContainer = document.createElement('div');
+            accountManagerContainer.style.display = 'flex';
+            accountManagerContainer.style.flexDirection = 'row';
+            accountManagerContainer.appendChild(accountManagerTitle);
+            accountManagerContainer.appendChild(accountManagerBtn);
             if (observer) {
-                autoContainer.id = 'assistContainer';
+                accountManagerContainer.id = 'accountManagerContainer';
                 targetElem = document.querySelector('#root > div:first-of-type > div:first-of-type > div > header > h1');
                 targetElem.style.fontSize = '18px';
                 targetElem.append(assistCSS);
-                targetElem.append(autoContainer);
+                let assistContainer = document.getElementById("assistContainer");
+                assistContainer ? assistContainer.append(accountManagerBtn) : targetElem.append(accountManagerContainer);
             } else {
-                autoContainer.id = 'assistContainerIso';
-                targetElem.prepend(autoContainer);
+                accountManagerContainer.id = 'accountManagerContainerIso';
+                let assistContainerIso = document.getElementById("assistContainerIso");
+                assistContainerIso ? assistContainerIso.append(accountManagerBtn) : targetElem.append(accountManagerContainer);
+                targetElem.prepend(accountManagerContainer);
                 targetElem.prepend(assistCSS);
             }
             targetElem.append(walletModal);
@@ -436,6 +451,4 @@
     }
     observer.observe(document, {childList: true, subtree: true});
     waitForLabs(null, null);
-
-    await initUser();
 })();
