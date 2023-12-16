@@ -493,11 +493,15 @@
             const fleetDefaultData = {
                 origin: {
                     coords: '',
-                    supplies: {}
+                    supplies: {
+                        'test': 0
+                    }
                 },
                 destination:  {
                     coords: '',
-                    supplies: {}
+                    supplies: {
+                        'test': 0
+                    }
                 },
                 moveType: 'warp',
                 mineResource: '',
@@ -512,10 +516,7 @@
             }
 
             const fleetSavedData = JSON.parse(await GM.getValue(fleet.publicKey.toString(), '{}'));
-            Object.keys(fleetSavedData).forEach(key => {
-                if (fleetDefaultData.hasOwnProperty(key)) fleetDefaultData[key] = fleetSavedData[key]
-            });
-            
+                      
             const { fleetState, extra } = await getCurrentFleet(fleet);
             if (fleetState == 'Idle' && extra) {
                 for (let i = 0; i < fleetDefaultData.scanBlock.length; i++) {
@@ -525,12 +526,10 @@
                     }
                 }
             }
-
-            userFleets.push({
-                name,
-                ...fleetDefaultData,
-                ...fleet
-            });
+            
+            fleet = { name, ...fleet, ...fleetDefaultData, ...fleetSavedData };
+            userFleets.push(fleet);
+            await GM.setValue(fleet.publicKey.toString(), JSON.stringify(fleet));
         }
         userFleets.sort(function (a, b) {
             return a.name.toUpperCase().localeCompare(b.name.toUpperCase());
@@ -1694,7 +1693,7 @@
         await execUndock(fleet);
 
         const fleetSavedData = JSON.parse(await GM.getValue(fleet.publicKey.toString(), '{}'));
-        return { ...fleet, ...fleetSavedData };
+        return Object.assign({}, fleet, fleetSavedData);
     }
 
 /**
@@ -1972,11 +1971,11 @@
         return { ...fleet, ...fleetSavedData };
     }
 
-    function addScanOptions(fleetRow, fleetParsedData) {
+    function addScanOptions(fleetParsedData) {
+        console.log(fleetParsedData);
         const options = document.createElement('tr');
-        options.classList.add('assist-row-options');
+        options.id = `${fleetParsedData.publicKey}-scan-options`
         options.style.display = 'table-row';
-        fleetRow.classList.add('show-top-border');
        
         const paddingTd = document.createElement('td');
         options.appendChild(paddingTd);
@@ -2022,13 +2021,12 @@
         return options;
     }
     
-    function addMineOptions(fleetRow, fleetParsedData) {
-        mineResource = ResourceTokens.findName(fleetParsedData.mineResource);
-
+    function addMineOptions(fleet) {
+        console.log(fleet);
+        const mineResource = ResourceTokens.findName(fleet.mineResource);
         const options = document.createElement('tr');
-        options.classList.add('assist-row-options');
+        options.id = `${fleet.publicKey.toString()}-mine-options`
         options.style.display = 'table-row';
-        fleetRow.classList.add('show-top-border');
 
         const paddingTd = document.createElement('td');
         options.appendChild(paddingTd);
@@ -2043,7 +2041,7 @@
         const mineResources = ['', ...ResourceTokens.names('R9')]
         const resources = document.createElement('select');
         mineResources.forEach((resource, key) => {
-            resources[key] = new Option(resource, resource == '', resource == mineResource)
+            resources[key] = new Option(resource, resource, resource == '', resource == mineResource)
         });
         td.appendChild(resources);
         options.appendChild(td);
@@ -2051,43 +2049,62 @@
         return options;
     }
 
-    function createTransportOptions(container, supplies) {
-        const resources = ['', ...ResourceTokens.names('all')]
-        const supplies = Object.entries(supplies);
+    function calculateCargoTotals(id, cargoCapacity) {
+        const fields = document.querySelectorAll(`input[id*='${id}-']`);
+        const total = [...fields].map(field => parseInt(field.value)).reduce((a,b) => a + b, 0);
+        fields.forEach(function(field) {
+            field.style.border = total > cargoCapacity ? '2px solid red' : null
+        });
+    }
 
-        supplies.forEach((transportResource, amount) => {
+    function createTransportOptions(container, transportSupplies, cargoCapacity) {
+        const resources = ['', ...ResourceTokens.names('all')];
+        const supplies = Object.entries(transportSupplies);
+        const id = container.id;
+        
+        supplies.forEach(supply => {
+            const [ transportResource, amount ] = supply;
             const div = document.createElement('div');
             const selector = document.createElement('select');
 
-            resources.forEach((resource, key) => {
-                selector[key] = new Option(resource, resource == '', resource == transportResource)
-            })
-            div.appendChild(selector);
-
             const transportAmount = document.createElement('input');
             transportAmount.setAttribute('type', 'text');
+            transportAmount.id = `${id}-${transportResource}`;
             transportAmount.placeholder = '0';
             transportAmount.style.width = '60px';
             transportAmount.style.marginRight = '10px';
             transportAmount.value = amount;
+            transportAmount.addEventListener("input", function() {
+                calculateCargoTotals(id, cargoCapacity)
+            })
             div.appendChild(transportAmount);
+
+            resources.forEach((resource, key) => {
+                selector[key] = new Option(resource, resource, resource == '', resource == transportResource)
+            })
+            div.appendChild(selector);
+
             container.appendChild(div);
         })
 
         return container;
     }
 
-    function addTransportOptions(fleetRow, fleetParsedData) {
-        const row = document.createElement('tr');
-        row.classList.add('assist-row-options');
-        row.style.display = 'table-row';
-        fleetRow.classList.add('show-top-border');
+    // @todo - do capacity check magic
+    function addTransportOptions(fleet) {
+        console.log(fleet);
+        const fleetPublicKeyString = fleet.publicKey.toString()
+        const options = document.createElement('tr');
+        options.id = `${fleetPublicKeyString}-transport-options`
+        options.style.display = 'table-row';
 
         const td = document.createElement('td');
         td.setAttribute('colspan', '8');
 
+        console.log(fleet.destination.supplies);
+
         let destinationContainer = document.createElement('div');
-        destinationContainer.classList.add('transport-to-destination');
+        destinationContainer.id = `${fleetPublicKeyString}-to-destination`;
         destinationContainer.style.display = 'flex'
         destinationContainer.style.flexDirection = 'row';
         destinationContainer.style.justifyContent = 'flex-start';
@@ -2098,49 +2115,50 @@
         toDestinationLabel.style.minWidth = '84px';
         destinationContainer.appendChild(toDestinationLabel)
 
-        destinationContainer = createTransportOptions(destinationContainer, fleetParsedData.destination.supplies);
+        destinationContainer = createTransportOptions(destinationContainer, fleet.destination.supplies, fleet.account.stats.cargoStats.cargoCapacity);
         td.appendChild(destinationContainer);
 
         let originContainer = document.createElement('div');
-        originContainer.classList.add('transport-to-origin');
+        originContainer.id = `${fleetPublicKeyString}-to-origin`;
         originContainer.style.display = 'flex'
         originContainer.style.flexDirection = 'row';
         originContainer.style.justifyContent = 'flex-start';
 
         const toOriginLabel = document.createElement('div');
-        toOriginLabel.innerHTML = 'To Dest:';
+        toOriginLabel.innerHTML = 'To Origin:';
         toOriginLabel.style.width = '84px';
         toOriginLabel.style.minWidth = '84px';
         originContainer.appendChild(toOriginLabel)
 
-        originContainer = createTransportOptions(originContainer, fleetParsedData.origin.supplies);
+        originContainer = createTransportOptions(originContainer, fleet.destination.supplies, fleet.account.stats.cargoStats.cargoCapacity);
         td.appendChild(originContainer);
         
-        row.appendChild(td);
-        return row;
+        options.appendChild(td);
+        return options;
     }
 
     async function addAssistInput(fleet) {
-        const fleetSavedData = await GM.getValue(fleet.publicKey.toString(), '{}');
-        const fleetParsedData = JSON.parse(fleetSavedData);
-        
+        const fleetPublicKeyString = fleet.publicKey.toString();
+          
         const fleetRow = document.createElement('tr');
         fleetRow.classList.add('assist-fleet-row');
-        fleetRow.setAttribute('pk', fleet.publicKey.toString());
+        fleetRow.id = `${fleetPublicKeyString}-row`;
         
         // create fleet name
         const fleetLabelTd = document.createElement('td');
         const fleetLabel = document.createElement('span');
-        fleetLabel.text = fleet.name;
+        fleetLabel.innerHTML = fleet.name;
         fleetLabelTd.appendChild(fleetLabel);
         fleetRow.appendChild(fleetLabelTd);
 
         // create assignment selector
         const fleetAssignmentTd = document.createElement('td');
         const fleetAssignment = document.createElement('select');
+        fleetAssignment.id = `${fleetPublicKeyString}-select`;
+
         const assistAssignments = ['','Scan','Mine','Transport'];
         assistAssignments.forEach((assignment, key) => {
-            fleetAssignment[key] = new Option(assignment, assignment == '', assignment == fleetParsedData.assignment)
+            fleetAssignment[key] = new Option(assignment, assignment, assignment == '', assignment == fleet.assignment)
         });
         fleetAssignmentTd.appendChild(fleetAssignment);
         fleetRow.appendChild(fleetAssignmentTd);
@@ -2151,7 +2169,7 @@
         fleetOriginField.setAttribute('type', 'text');
         fleetOriginField.placeholder = 'x, y';
         fleetOriginField.style.width = '50px';
-        fleetOriginField.value = fleetParsedData.origin.coords || '';
+        fleetOriginField.value = fleet.origin.coords || '';
         fleetOriginTd.appendChild(fleetOriginField);
         fleetRow.appendChild(fleetOriginTd);
 
@@ -2161,26 +2179,16 @@
         fleetDestinationField.setAttribute('type', 'text');
         fleetDestinationField.placeholder = 'x, y';
         fleetDestinationField.style.width = '50px';
-        fleetDestinationField.value = fleetParsedData.destination.coords || '';
+        fleetDestinationField.value = fleet.destination.coords || '';
         fleetDestinationTd.appendChild(fleetDestinationField);
         fleetRow.appendChild(fleetDestinationTd);
-
-        // create moveType selector
-        const fleetMoveTypeTd = document.createElement('td');
-        const fleetMoveType = document.createElement('select');
-        const fleetMoveTypeOptions = ['Subwarp','Warp', 'Hybrid'];
-        fleetMoveTypeOptions.forEach((type, key) => {
-            fleetMoveType[key] = new Option(type, type == 'Warp', type == fleetParsedData.moveType)
-        });
-        fleetMoveTypeTd.appendChild(fleetMoveType);
-        fleetRow.appendChild(fleetMoveTypeTd);
 
         // create fuel tank textfield
         const fleetFuelTankTd = document.createElement('td');
         const fleetFuelTank = document.createElement('input');
         fleetFuelTank.setAttribute('type', 'text');
         fleetFuelTank.placeholder = fleet.account.stats.cargoStats.fuelCapacity;
-        fleetFuelTank.style.width = '50px';
+        fleetFuelTank.setAttribute('size', fleetFuelTank.getAttribute('placeholder').length);
         fleetFuelTankTd.appendChild(fleetFuelTank);
         fleetRow.appendChild(fleetFuelTankTd);
 
@@ -2189,37 +2197,41 @@
         const fleetAmmoBank = document.createElement('input');
         fleetAmmoBank.setAttribute('type', 'text');
         fleetAmmoBank.placeholder = fleet.account.stats.cargoStats.ammoCapacity;
-        fleetAmmoBank.style.width = '50px';
+        fleetAmmoBank.setAttribute('size', fleetAmmoBank.getAttribute('placeholder').length);
         fleetAmmoBankTd.appendChild(fleetAmmoBank);
         fleetRow.appendChild(fleetAmmoBankTd);
 
-        const targetElem = document.querySelector('#assistModal .assist-modal-body table');
-        targetElem.appendChild(fleetRow);
+        // create moveType selector
+        const fleetMoveTypeTd = document.createElement('td');
+        const fleetMoveType = document.createElement('select');
+        const fleetMoveTypeOptions = ['Subwarp','Warp', 'Hybrid'];
+        fleetMoveTypeOptions.forEach((type, key) => {
+            fleetMoveType[key] = new Option(type, type == 'Warp', type == fleet.moveType)
+        });
+        fleetMoveTypeTd.appendChild(fleetMoveType);
+        fleetRow.appendChild(fleetMoveTypeTd);
 
-        // @todo - left here
-        let padRow = document.createElement('tr');
-        padRow.classList.add('assist-pad-row');
-        padRow.style.display = fleetParsedData.assignment ? 'table-row' : 'none';
-        let padRowTd = document.createElement('td');
+        const fleetContainer = document.querySelector('#assistModal .assist-modal-body table');
+        fleetContainer.appendChild(fleetRow);
+        console.log(fleet);
+        fleetContainer.appendChild(addScanOptions(fleet))
+        fleetContainer.appendChild(addMineOptions(fleet))
+        fleetContainer.appendChild(addTransportOptions(fleet))
+
+        const padRowTd = document.createElement('td');
         padRowTd.setAttribute('colspan', '7');
         padRowTd.style.height = '15px';
-        padRow.appendChild(padRowTd);
-        targetElem.appendChild(padRow);
+
+        const paddingRow = document.createElement('tr');
+        paddingRow.classList.add('assist-pad-row');
+        paddingRow.style.display = 'table-row';
+        
+        paddingRow.appendChild(padRowTd);
+        fleetContainer.appendChild(paddingRow);
 
         fleetAssignment.onchange = function() {
-            const rowOptions = document.getElementsByClassName('assist-row-options');
-            if (rowOptions) targetElem.removeChild(rowOptions);
-
-            if (fleetAssignment.value == 'Scan') {
-                targetElem.appendChild(addScanOptions(fleetRow, fleetParsedData));
-            } else if (fleetAssignment.value == 'Mine') {
-                targetElem.appendChild(addMineOptions(fleetRow, fleetParsedData));
-            } else if (fleetAssignment.value == 'Transport') {
-                targetElem.appendChild(addTransportOptions(fleetRow, fleetParsedData));
-            } else {
-                fleetRow.classList.remove('show-top-border');
-            }
-        };
+            console.log(this.value);
+        }
     }
 
     function updateAssistStatus(fleet) {
@@ -2563,7 +2575,7 @@
             let assistModalContent = document.createElement('div');
             assistModalContent.classList.add('assist-modal-content');
             let iconStr = 'data:image/png;base64,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';
-            assistModalContent.innerHTML = '<div class="assist-modal-header"><img src="' + iconStr + '" /><span style="padding-left: 15px;">SLY Lab Assistant</span><div class="assist-modal-header-right"><button id="addAcctOpen" class="assist-modal-btn">Add Restricted Account</button><button id="configImportExportBtn" class="assist-modal-btn">Import/Export</button><button class=" assist-modal-btn assist-modal-save">Save</button><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><table><tr><td>Fleet</td><td>Assignment</td><td>Target</td><td>Starbase</td><td>Subwarp</td><td>Max Cargo</td><td>Max Ammo</td><td>Max Fuel</td></tr></table></div>';
+            assistModalContent.innerHTML = '<div class="assist-modal-header"><img src="' + iconStr + '" /><span style="padding-left: 15px;">SLY Lab Assistant</span><div class="assist-modal-header-right"><button id="addAcctOpen" class="assist-modal-btn">Add Restricted Account</button><button id="configImportExportBtn" class="assist-modal-btn">Import/Export</button><button class=" assist-modal-btn assist-modal-save">Save</button><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><table><tr><td>Fleet</td><td>Assignment</td><td>Target</td><td>Starbase</td><td>Fuel</td><td>Ammo</td><td>Drive</td></tr></table></div>';
             assistModal.append(assistModalContent);
 
             let importModal = document.createElement('div');
