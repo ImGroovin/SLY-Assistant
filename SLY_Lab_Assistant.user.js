@@ -325,6 +325,7 @@
     const seqArr = seqBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "be", 2);
     const seq58 = bs58.encode(seqArr);
 
+    // @todo - pull into ResourceTokens with getCargoType function
     const [sduCargoTypeAcct] = await cargoProgram.account.cargoType.all([
         {
            memcmp: {
@@ -1971,289 +1972,231 @@
         return { ...fleet, ...fleetSavedData };
     }
 
+    function addScanOptions(fleetRow, fleetParsedData) {
+        const options = document.createElement('tr');
+        options.classList.add('assist-row-options');
+        options.style.display = 'table-row';
+        fleetRow.classList.add('show-top-border');
+       
+        const paddingTd = document.createElement('td');
+        options.appendChild(paddingTd);
+
+        // create minimum probability textfield
+        const minimumProbabilityTd = document.createElement('td');
+        const minimumProbabilityField = document.createElement('span');
+        minimumProbabilityField.innerHTML = 'Minimum Probability:';
+
+        const minimumProbability = document.createElement('input');
+        minimumProbability.setAttribute('type', 'text');
+        minimumProbability.placeholder = '10';
+        minimumProbability.style.width = '30px';
+        minimumProbability.style.marginRight = '10px';
+        minimumProbability.value = fleetParsedData.scanMin || '';
+
+        const minimumProbabilityDiv = document.createElement('div');
+        minimumProbabilityDiv.appendChild(minimumProbability);
+        minimumProbabilityDiv.appendChild(minimumProbability);
+        
+        minimumProbabilityTd.setAttribute('colspan', '3');
+        minimumProbabilityTd.appendChild(minimumProbabilityDiv);
+        options.appendChild(minimumProbabilityTd);
+
+        // create should move while scanning input
+        const moveWhileScanningTd = document.createElement('td');
+        const moveWhileScanning = document.createElement('span');
+        moveWhileScanning.innerHTML = 'Move While Scanning:';
+
+        const moveWhileScanningCB = document.createElement('input');
+        moveWhileScanningCB.setAttribute('type', 'checkbox');
+        moveWhileScanningCB.checked = fleetParsedData.scanMove || true;
+        moveWhileScanningCB.style.marginRight = '10px';
+
+        const moveWhileScanningDiv = document.createElement('div');
+        moveWhileScanningDiv.appendChild(moveWhileScanning);
+        moveWhileScanningDiv.appendChild(moveWhileScanningCB);
+
+        moveWhileScanningTd.setAttribute('colspan', '4');
+        moveWhileScanningTd.appendChild(moveWhileScanningDiv);
+        options.appendChild(moveWhileScanningTd);
+
+        return options;
+    }
+    
+    function addMineOptions(fleetRow, fleetParsedData) {
+        mineResource = ResourceTokens.findName(fleetParsedData.mineResource);
+
+        const options = document.createElement('tr');
+        options.classList.add('assist-row-options');
+        options.style.display = 'table-row';
+        fleetRow.classList.add('show-top-border');
+
+        const paddingTd = document.createElement('td');
+        options.appendChild(paddingTd);
+
+        const td = document.createElement('td');
+        td.setAttribute('colspan', '7');
+        
+        const label = document.createElement('span');
+        label.innerHTML = 'Resource to mine:';
+        td.appendChild(label);
+
+        const mineResources = ['', ...ResourceTokens.names('R9')]
+        const resources = document.createElement('select');
+        mineResources.forEach((resource, key) => {
+            resources[key] = new Option(resource, resource == '', resource == mineResource)
+        });
+        td.appendChild(resources);
+        options.appendChild(td);
+
+        return options;
+    }
+
+    function createTransportOptions(container, supplies) {
+        const resources = ['', ...ResourceTokens.names('all')]
+        const supplies = Object.entries(supplies);
+
+        supplies.forEach((transportResource, amount) => {
+            const div = document.createElement('div');
+            const selector = document.createElement('select');
+
+            resources.forEach((resource, key) => {
+                selector[key] = new Option(resource, resource == '', resource == transportResource)
+            })
+            div.appendChild(selector);
+
+            const transportAmount = document.createElement('input');
+            transportAmount.setAttribute('type', 'text');
+            transportAmount.placeholder = '0';
+            transportAmount.style.width = '60px';
+            transportAmount.style.marginRight = '10px';
+            transportAmount.value = amount;
+            div.appendChild(transportAmount);
+            container.appendChild(div);
+        })
+
+        return container;
+    }
+
+    function addTransportOptions(fleetRow, fleetParsedData) {
+        const row = document.createElement('tr');
+        row.classList.add('assist-row-options');
+        row.style.display = 'table-row';
+        fleetRow.classList.add('show-top-border');
+
+        const td = document.createElement('td');
+        td.setAttribute('colspan', '8');
+
+        let destinationContainer = document.createElement('div');
+        destinationContainer.classList.add('transport-to-destination');
+        destinationContainer.style.display = 'flex'
+        destinationContainer.style.flexDirection = 'row';
+        destinationContainer.style.justifyContent = 'flex-start';
+
+        const toDestinationLabel = document.createElement('div');
+        toDestinationLabel.innerHTML = 'To Dest:';
+        toDestinationLabel.style.width = '84px';
+        toDestinationLabel.style.minWidth = '84px';
+        destinationContainer.appendChild(toDestinationLabel)
+
+        destinationContainer = createTransportOptions(destinationContainer, fleetParsedData.destination.supplies);
+        td.appendChild(destinationContainer);
+
+        let originContainer = document.createElement('div');
+        originContainer.classList.add('transport-to-origin');
+        originContainer.style.display = 'flex'
+        originContainer.style.flexDirection = 'row';
+        originContainer.style.justifyContent = 'flex-start';
+
+        const toOriginLabel = document.createElement('div');
+        toOriginLabel.innerHTML = 'To Dest:';
+        toOriginLabel.style.width = '84px';
+        toOriginLabel.style.minWidth = '84px';
+        originContainer.appendChild(toOriginLabel)
+
+        originContainer = createTransportOptions(originContainer, fleetParsedData.origin.supplies);
+        td.appendChild(originContainer);
+        
+        row.appendChild(td);
+        return row;
+    }
+
     async function addAssistInput(fleet) {
         const fleetSavedData = await GM.getValue(fleet.publicKey.toString(), '{}');
         const fleetParsedData = JSON.parse(fleetSavedData);
-
-        let fleetRow = document.createElement('tr');
+        
+        const fleetRow = document.createElement('tr');
         fleetRow.classList.add('assist-fleet-row');
         fleetRow.setAttribute('pk', fleet.publicKey.toString());
-
-        let fleetLabel = document.createElement('span');
-        fleetLabel.innerHTML = fleet.name;
-        let fleetLabelTd = document.createElement('td');
+        
+        // create fleet name
+        const fleetLabelTd = document.createElement('td');
+        const fleetLabel = document.createElement('span');
+        fleetLabel.text = fleet.name;
         fleetLabelTd.appendChild(fleetLabel);
-
-        let assistAssignments = ['','Scan','Mine','Transport'];
-        let assignmentOptionsStr = '';
-        let fleetAssignment = document.createElement('select');
-        assistAssignments.forEach( function(assignment) {assignmentOptionsStr += '<option value="' + assignment + '">' + assignment + '</option>';});
-        fleetAssignment.innerHTML = assignmentOptionsStr;
-        fleetAssignment.value = fleetParsedData.assignment || '';
-        let fleetAssignmentTd = document.createElement('td');
-        fleetAssignmentTd.appendChild(fleetAssignment);
-
-        let fleetDestCoord = document.createElement('input');
-        fleetDestCoord.setAttribute('type', 'text');
-        fleetDestCoord.placeholder = 'x, y';
-        fleetDestCoord.style.width = '50px';
-        fleetDestCoord.value = fleetParsedData.dest || '';
-        let fleetDestCoordTd = document.createElement('td');
-        fleetDestCoordTd.appendChild(fleetDestCoord);
-
-        let fleetStarbaseCoord = document.createElement('input');
-        fleetStarbaseCoord.setAttribute('type', 'text');
-        fleetStarbaseCoord.placeholder = 'x, y';
-        fleetStarbaseCoord.style.width = '50px';
-        fleetStarbaseCoord.value = fleetParsedData.starbase || '';
-        let fleetStarbaseCoordTd = document.createElement('td');
-        fleetStarbaseCoordTd.appendChild(fleetStarbaseCoord);
-
-        let fleetSubwarpPref = document.createElement('input');
-        fleetSubwarpPref.setAttribute('type', 'checkbox');
-        fleetSubwarpPref.checked = fleetParsedData.subwarpPref || false;
-        let fleetSubwarpPrefTd = document.createElement('td');
-        fleetSubwarpPrefTd.appendChild(fleetSubwarpPref);
-
-        let fleetCargoCapacity = document.createElement('span');
-        fleetCargoCapacity.innerHTML = fleet.account.stats.cargoStats.cargoCapacity;
-        let fleetCargoCapacityTd = document.createElement('td');
-        fleetCargoCapacityTd.appendChild(fleetCargoCapacity);
-
-        let fleetAmmoCapacity = document.createElement('span');
-        fleetAmmoCapacity.innerHTML = fleet.account.stats.cargoStats.ammoCapacity;
-        let fleetAmmoCapacityTd = document.createElement('td');
-        fleetAmmoCapacityTd.appendChild(fleetAmmoCapacity);
-
-        let fleetFuelCapacity = document.createElement('span');
-        fleetFuelCapacity.innerHTML = fleet.account.stats.cargoStats.fuelCapacity;
-        let fleetFuelCapacityTd = document.createElement('td');
-        fleetFuelCapacityTd.appendChild(fleetFuelCapacity);
-
         fleetRow.appendChild(fleetLabelTd);
+
+        // create assignment selector
+        const fleetAssignmentTd = document.createElement('td');
+        const fleetAssignment = document.createElement('select');
+        const assistAssignments = ['','Scan','Mine','Transport'];
+        assistAssignments.forEach((assignment, key) => {
+            fleetAssignment[key] = new Option(assignment, assignment == '', assignment == fleetParsedData.assignment)
+        });
+        fleetAssignmentTd.appendChild(fleetAssignment);
         fleetRow.appendChild(fleetAssignmentTd);
-        fleetRow.appendChild(fleetDestCoordTd);
-        fleetRow.appendChild(fleetStarbaseCoordTd);
-        fleetRow.appendChild(fleetSubwarpPrefTd);
-        fleetRow.appendChild(fleetCargoCapacityTd);
-        fleetRow.appendChild(fleetAmmoCapacityTd);
-        fleetRow.appendChild(fleetFuelCapacityTd);
-        let targetElem = document.querySelector('#assistModal .assist-modal-body table');
+
+        // create origin textfield
+        const fleetOriginTd = document.createElement('td');
+        const fleetOriginField = document.createElement('input');
+        fleetOriginField.setAttribute('type', 'text');
+        fleetOriginField.placeholder = 'x, y';
+        fleetOriginField.style.width = '50px';
+        fleetOriginField.value = fleetParsedData.origin.coords || '';
+        fleetOriginTd.appendChild(fleetOriginField);
+        fleetRow.appendChild(fleetOriginTd);
+
+        // create destination textfield
+        const fleetDestinationTd = document.createElement('td');
+        const fleetDestinationField = document.createElement('input');
+        fleetDestinationField.setAttribute('type', 'text');
+        fleetDestinationField.placeholder = 'x, y';
+        fleetDestinationField.style.width = '50px';
+        fleetDestinationField.value = fleetParsedData.destination.coords || '';
+        fleetDestinationTd.appendChild(fleetDestinationField);
+        fleetRow.appendChild(fleetDestinationTd);
+
+        // create moveType selector
+        const fleetMoveTypeTd = document.createElement('td');
+        const fleetMoveType = document.createElement('select');
+        const fleetMoveTypeOptions = ['Subwarp','Warp', 'Hybrid'];
+        fleetMoveTypeOptions.forEach((type, key) => {
+            fleetMoveType[key] = new Option(type, type == 'Warp', type == fleetParsedData.moveType)
+        });
+        fleetMoveTypeTd.appendChild(fleetMoveType);
+        fleetRow.appendChild(fleetMoveTypeTd);
+
+        // create fuel tank textfield
+        const fleetFuelTankTd = document.createElement('td');
+        const fleetFuelTank = document.createElement('input');
+        fleetFuelTank.setAttribute('type', 'text');
+        fleetFuelTank.placeholder = fleet.account.stats.cargoStats.fuelCapacity;
+        fleetFuelTank.style.width = '50px';
+        fleetFuelTankTd.appendChild(fleetFuelTank);
+        fleetRow.appendChild(fleetFuelTankTd);
+
+        // create ammo bank textfield
+        const fleetAmmoBankTd = document.createElement('td');
+        const fleetAmmoBank = document.createElement('input');
+        fleetAmmoBank.setAttribute('type', 'text');
+        fleetAmmoBank.placeholder = fleet.account.stats.cargoStats.ammoCapacity;
+        fleetAmmoBank.style.width = '50px';
+        fleetAmmoBankTd.appendChild(fleetAmmoBank);
+        fleetRow.appendChild(fleetAmmoBankTd);
+
+        const targetElem = document.querySelector('#assistModal .assist-modal-body table');
         targetElem.appendChild(fleetRow);
 
-        let scanRow = document.createElement('tr');
-        scanRow.classList.add('assist-scan-row');
-        scanRow.style.display = fleetParsedData.assignment == 'Scan' ? 'table-row' : 'none';
-        fleetParsedData.assignment == 'Scan' && fleetRow.classList.add('show-top-border');
-        targetElem.appendChild(scanRow);
-
-        let scanPadTd = document.createElement('td');
-        scanRow.appendChild(scanPadTd);
-
-        let scanMinLabel = document.createElement('span');
-        scanMinLabel.innerHTML = 'Minimum Probability:';
-        let scanMin = document.createElement('input');
-        scanMin.setAttribute('type', 'text');
-        scanMin.placeholder = '10';
-        scanMin.style.width = '30px';
-        scanMin.style.marginRight = '10px';
-        scanMin.value = fleetParsedData.scanMin || '';
-        let scanMinDiv = document.createElement('div');
-        scanMinDiv.appendChild(scanMinLabel);
-        scanMinDiv.appendChild(scanMin);
-        let scanMinTd = document.createElement('td');
-        scanMinTd.setAttribute('colspan', '3');
-        scanMinTd.appendChild(scanMinDiv);
-        scanRow.appendChild(scanMinTd);
-
-        let scanMoveLabel = document.createElement('span');
-        scanMoveLabel.innerHTML = 'Move While Scanning:';
-        let scanMove = document.createElement('input');
-        scanMove.setAttribute('type', 'checkbox');
-        scanMove.checked = fleetParsedData.scanMove || true;
-        scanMove.style.marginRight = '10px';
-        let scanMoveDiv = document.createElement('div');
-        scanMoveDiv.appendChild(scanMoveLabel);
-        scanMoveDiv.appendChild(scanMove);
-        let scanMoveTd = document.createElement('td');
-        scanMoveTd.setAttribute('colspan', '4');
-        scanMoveTd.appendChild(scanMoveDiv);
-        scanRow.appendChild(scanMoveTd);
-        targetElem.appendChild(scanRow);
-
-        let mineRow = document.createElement('tr');
-        mineRow.classList.add('assist-mine-row');
-        mineRow.style.display = fleetParsedData.assignment == 'Mine' ? 'table-row' : 'none';
-        fleetParsedData.assignment == 'Mine' && fleetRow.classList.add('show-top-border');
-        targetElem.appendChild(mineRow);
-
-        let minePadTd = document.createElement('td');
-        mineRow.appendChild(minePadTd);
-
-        let mineResLabel = document.createElement('span');
-        mineResLabel.innerHTML = 'Resource to mine:';
-        let assistResources = ['', ...ResourceTokens.names('R9')]
-        let optionsStr = '';
-        let fleetMineRes = document.createElement('select');
-        assistResources.forEach( function(resource) {optionsStr += '<option value="' + resource + '">' + resource + '</option>';});
-        fleetMineRes.innerHTML = optionsStr;
-        fleetMineRes.value = ResourceTokens.findName(fleetParsedData.mineResource);
-        let fleetMineResTd = document.createElement('td');
-        fleetMineResTd.setAttribute('colspan', '7');
-        fleetMineResTd.appendChild(mineResLabel);
-        fleetMineResTd.appendChild(fleetMineRes);
-        mineRow.appendChild(fleetMineResTd);
-        targetElem.appendChild(mineRow);
-
-        let transportRow = document.createElement('tr');
-        transportRow.classList.add('assist-transport-row');
-        transportRow.style.display = fleetParsedData.assignment == 'Transport' ? 'table-row' : 'none';
-        fleetParsedData.assignment == 'Transport' && fleetRow.classList.add('show-top-border');
-        targetElem.appendChild(transportRow);
-
-        let transportLabel1 = document.createElement('div');
-        transportLabel1.innerHTML = 'To Target:';
-        transportLabel1.style.width = '84px';
-        transportLabel1.style.minWidth = '84px';
-
-        let transportResources = ['', ...ResourceTokens.names('R9')]
-        let transportOptStr = '';
-        transportResources.forEach( function(resource) {transportOptStr += '<option value="' + resource + '">' + resource + '</option>';});
-        let transportResource1 = document.createElement('select');
-        transportResource1.innerHTML = transportOptStr;
-        transportResource1.value = ResourceTokens.findName(fleetParsedData.transportResource1);
-        let transportResource1Perc = document.createElement('input');
-        transportResource1Perc.setAttribute('type', 'text');
-        transportResource1Perc.placeholder = '0';
-        transportResource1Perc.style.width = '60px';
-        transportResource1Perc.style.marginRight = '10px';
-        transportResource1Perc.value = fleetParsedData.transportResource1Perc || '';
-        let transportResource1Div = document.createElement('div');
-        transportResource1Div.appendChild(transportResource1);
-        transportResource1Div.appendChild(transportResource1Perc);
-
-        let transportResource2 = document.createElement('select');
-        transportResource2.innerHTML = transportOptStr;
-        transportResource2.value = ResourceTokens.findName(fleetParsedData.transportResource2);
-        let transportResource2Perc = document.createElement('input');
-        transportResource2Perc.setAttribute('type', 'text');
-        transportResource2Perc.placeholder = '0';
-        transportResource2Perc.style.width = '60px';
-        transportResource2Perc.style.marginRight = '10px';
-        transportResource2Perc.value = fleetParsedData.transportResource2Perc || '';
-        let transportResource2Div = document.createElement('div');
-        transportResource2Div.appendChild(transportResource2);
-        transportResource2Div.appendChild(transportResource2Perc);
-
-        let transportResource3 = document.createElement('select');
-        transportResource3.innerHTML = transportOptStr;
-        transportResource3.value = ResourceTokens.findName(fleetParsedData.transportResource3);
-        let transportResource3Perc = document.createElement('input');
-        transportResource3Perc.setAttribute('type', 'text');
-        transportResource3Perc.placeholder = '0';
-        transportResource3Perc.style.width = '60px';
-        transportResource3Perc.style.marginRight = '10px';
-        transportResource3Perc.value = fleetParsedData.transportResource3Perc || '';
-        let transportResource3Div = document.createElement('div');
-        transportResource3Div.appendChild(transportResource3);
-        transportResource3Div.appendChild(transportResource3Perc);
-
-        let transportResource4 = document.createElement('select');
-        transportResource4.innerHTML = transportOptStr;
-        transportResource4.value = ResourceTokens.findName(fleetParsedData.transportResource4);
-        let transportResource4Perc = document.createElement('input');
-        transportResource4Perc.setAttribute('type', 'text');
-        transportResource4Perc.placeholder = '0';
-        transportResource4Perc.style.width = '60px';
-        transportResource4Perc.value = fleetParsedData.transportResource4Perc || '';
-        let transportResource4Div = document.createElement('div');
-        transportResource4Div.appendChild(transportResource4);
-        transportResource4Div.appendChild(transportResource4Perc);
-
-        let transportLabel2 = document.createElement('div');
-        transportLabel2.innerHTML = 'To Starbase:';
-        transportLabel2.style.width = '84px';
-        transportLabel2.style.minWidth = '84px';
-
-        let transportSBResource1 = document.createElement('select');
-        transportSBResource1.innerHTML = transportOptStr;
-        transportSBResource1.value = ResourceTokens.findName(fleetParsedData.transportSBResource1);
-        let transportSBResource1Perc = document.createElement('input');
-        transportSBResource1Perc.setAttribute('type', 'text');
-        transportSBResource1Perc.placeholder = '0';
-        transportSBResource1Perc.style.width = '60px';
-        transportSBResource1Perc.style.marginRight = '10px';
-        transportSBResource1Perc.value = fleetParsedData.transportSBResource1Perc || '';
-        let transportSBResource1Div = document.createElement('div');
-        transportSBResource1Div.appendChild(transportSBResource1);
-        transportSBResource1Div.appendChild(transportSBResource1Perc);
-
-        let transportSBResource2 = document.createElement('select');
-        transportSBResource2.innerHTML = transportOptStr;
-        transportSBResource2.value = ResourceTokens.findName(fleetParsedData.transportSBResource2);
-        let transportSBResource2Perc = document.createElement('input');
-        transportSBResource2Perc.setAttribute('type', 'text');
-        transportSBResource2Perc.placeholder = '0';
-        transportSBResource2Perc.style.width = '60px';
-        transportSBResource2Perc.style.marginRight = '10px';
-        transportSBResource2Perc.value = fleetParsedData.transportSBResource2Perc || '';
-        let transportSBResource2Div = document.createElement('div');
-        transportSBResource2Div.appendChild(transportSBResource2);
-        transportSBResource2Div.appendChild(transportSBResource2Perc);
-
-        let transportSBResource3 = document.createElement('select');
-        transportSBResource3.innerHTML = transportOptStr;
-        transportSBResource3.value = ResourceTokens.findName(fleetParsedData.transportSBResource3);
-        let transportSBResource3Perc = document.createElement('input');
-        transportSBResource3Perc.setAttribute('type', 'text');
-        transportSBResource3Perc.placeholder = '0';
-        transportSBResource3Perc.style.width = '60px';
-        transportSBResource3Perc.style.marginRight = '10px';
-        transportSBResource3Perc.value = fleetParsedData.transportSBResource3Perc || '';
-        let transportSBResource3Div = document.createElement('div');
-        transportSBResource3Div.appendChild(transportSBResource3);
-        transportSBResource3Div.appendChild(transportSBResource3Perc);
-
-        let transportSBResource4 = document.createElement('select');
-        transportSBResource4.innerHTML = transportOptStr;
-        transportSBResource4.value = ResourceTokens.findName(fleetParsedData.transportSBResource2);
-        let transportSBResource4Perc = document.createElement('input');
-        transportSBResource4Perc.setAttribute('type', 'text');
-        transportSBResource4Perc.placeholder = '0';
-        transportSBResource4Perc.style.width = '60px';
-        transportSBResource4Perc.style.marginRight = '10px';
-        transportSBResource4Perc.value = fleetParsedData.transportSBResource4Perc || '';
-        let transportSBResource4Div = document.createElement('div');
-        transportSBResource4Div.appendChild(transportSBResource4);
-        transportSBResource4Div.appendChild(transportSBResource4Perc);
-
-        let transportTd = document.createElement('td');
-        transportTd.setAttribute('colspan', '8');
-        let transportTargettWrapper = document.createElement('div');
-        transportTargettWrapper.classList.add('transport-to-target');
-        transportTargettWrapper.style.display = 'flex'
-        transportTargettWrapper.style.flexDirection = 'row';
-        transportTargettWrapper.style.justifyContent = 'flex-start';
-        transportTargettWrapper.appendChild(transportLabel1);
-        transportTargettWrapper.appendChild(transportResource1Div);
-        transportTargettWrapper.appendChild(transportResource2Div);
-        transportTargettWrapper.appendChild(transportResource3Div);
-        transportTargettWrapper.appendChild(transportResource4Div);
-        let transportStarbaseWrapper = document.createElement('div');
-        transportStarbaseWrapper.classList.add('transport-to-starbase');
-        transportStarbaseWrapper.style.display = 'flex'
-        transportStarbaseWrapper.style.flexDirection = 'row';
-        transportStarbaseWrapper.style.justifyContent = 'flex-start';
-        transportStarbaseWrapper.appendChild(transportLabel2);
-        transportStarbaseWrapper.appendChild(transportSBResource1Div);
-        transportStarbaseWrapper.appendChild(transportSBResource2Div);
-        transportStarbaseWrapper.appendChild(transportSBResource3Div);
-        transportStarbaseWrapper.appendChild(transportSBResource4Div);
-        transportTd.appendChild(transportTargettWrapper);
-        transportTd.appendChild(transportStarbaseWrapper);
-        transportRow.appendChild(transportTd);
-        targetElem.appendChild(transportRow);
-
+        // @todo - left here
         let padRow = document.createElement('tr');
         padRow.classList.add('assist-pad-row');
         padRow.style.display = fleetParsedData.assignment ? 'table-row' : 'none';
@@ -2264,29 +2207,16 @@
         targetElem.appendChild(padRow);
 
         fleetAssignment.onchange = function() {
+            const rowOptions = document.getElementsByClassName('assist-row-options');
+            if (rowOptions) targetElem.removeChild(rowOptions);
+
             if (fleetAssignment.value == 'Scan') {
-                scanRow.style.display = 'table-row';
-                mineRow.style.display = 'none';
-                transportRow.style.display = 'none';
-                padRow.style.display = 'table-row';
-                fleetRow.classList.add('show-top-border');
+                targetElem.appendChild(addScanOptions(fleetRow, fleetParsedData));
             } else if (fleetAssignment.value == 'Mine') {
-                mineRow.style.display = 'table-row';
-                scanRow.style.display = 'none';
-                transportRow.style.display = 'none';
-                padRow.style.display = 'table-row';
-                fleetRow.classList.add('show-top-border');
+                targetElem.appendChild(addMineOptions(fleetRow, fleetParsedData));
             } else if (fleetAssignment.value == 'Transport') {
-                transportRow.style.display = 'table-row';
-                scanRow.style.display = 'none';
-                mineRow.style.display = 'none';
-                padRow.style.display = 'table-row';
-                fleetRow.classList.add('show-top-border');
+                targetElem.appendChild(addTransportOptions(fleetRow, fleetParsedData));
             } else {
-                scanRow.style.display = 'none';
-                mineRow.style.display = 'none';
-                transportRow.style.display = 'none';
-                padRow.style.display = 'none';
                 fleetRow.classList.remove('show-top-border');
             }
         };
@@ -2807,12 +2737,6 @@
     observer.observe(document, {childList: true, subtree: true});
     waitForLabs(null, null);
 
-    await initUser();
-    let autoSpanRef = document.querySelector('#autoScanBtn > span');
-    autoSpanRef ? autoSpanRef.innerHTML = 'Start' : null;
-    console.log('init complete');
-    console.log('Fleets: ', userFleets);
-
 
     function TaskQueue(concurrentCount = 1) {
         this.tasks = [];
@@ -2855,4 +2779,10 @@
           this.running.push({fleet: fleet.account.publicKey, promise });
         }  
     }
+
+    await initUser();
+    let autoSpanRef = document.querySelector('#autoScanBtn > span');
+    autoSpanRef ? autoSpanRef.innerHTML = 'Start' : null;
+    console.log('init complete');
+    console.log('Fleets: ', userFleets);
 })();
