@@ -2071,11 +2071,8 @@
 
         supplies.forEach(supply => {
             const [ transportResource, amount ] = supply;
-            console.log(transportResource, amount);
-
             const div = document.createElement('div');
-            const selector = document.createElement('select');
-
+          
             const transportAmount = document.createElement('input');
             transportAmount.setAttribute('type', 'text');
             transportAmount.id = `${id}-${transportResource}`;
@@ -2090,6 +2087,7 @@
             })
             div.appendChild(transportAmount);
 
+            const selector = document.createElement('select');
             resources.forEach((resource, key) => {
                 selector[key] = new Option(resource, resource, resource == '', resource == transportResource)
             })
