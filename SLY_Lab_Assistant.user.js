@@ -2101,7 +2101,6 @@
 
     // @todo - do capacity check magic
     function addTransportOptions(fleet) {
-        console.log(fleet);
         const fleetPublicKeyString = fleet.publicKey.toString()
         const options = document.createElement('tr');
         options.id = `${fleetPublicKeyString}-transport-options`
@@ -2109,8 +2108,6 @@
 
         const td = document.createElement('td');
         td.setAttribute('colspan', '8');
-
-        console.log(fleet.destination.supplies);
 
         let destinationContainer = document.createElement('div');
         destinationContainer.id = `${fleetPublicKeyString}-to-destination`;
