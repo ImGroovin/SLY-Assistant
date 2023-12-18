@@ -521,7 +521,7 @@
                 scanMove: true,             
             }
 
-            //const fleetSavedData = JSON.parse(await GM.getValue(fleet.publicKey.toString(), '{}'));
+            const fleetSavedData = JSON.parse(await GM.getValue(fleet.publicKey.toString(), '{}'));
                       
             const { fleetState, extra } = await getCurrentFleet(fleet);
             if (fleetState == 'Idle' && extra) {
@@ -533,7 +533,7 @@
                 }
             }
             
-            fleet = { name, ...fleet, ...fleetDefaultData };
+            fleet = { name, ...fleet, ...fleetDefaultData, ...fleetSavedData };
             userFleets.push(fleet);
             await GM.setValue(fleet.publicKey.toString(), JSON.stringify(fleet));
         }
