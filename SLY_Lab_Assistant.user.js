@@ -494,13 +494,19 @@
                 origin: {
                     coords: '',
                     supplies: {
-                        'test': 0
+                        'blank1': 0,
+                        'blank2': 0,
+                        'blank3': 0,
+                        'blank4': 0,
                     }
                 },
                 destination:  {
                     coords: '',
                     supplies: {
-                        'test': 0
+                        'blank1': 0,
+                        'blank2': 0,
+                        'blank3': 0,
+                        'blank4': 0,
                     }
                 },
                 moveType: 'warp',
@@ -515,7 +521,7 @@
                 scanMove: true,             
             }
 
-            const fleetSavedData = JSON.parse(await GM.getValue(fleet.publicKey.toString(), '{}'));
+            //const fleetSavedData = JSON.parse(await GM.getValue(fleet.publicKey.toString(), '{}'));
                       
             const { fleetState, extra } = await getCurrentFleet(fleet);
             if (fleetState == 'Idle' && extra) {
@@ -527,7 +533,7 @@
                 }
             }
             
-            fleet = { name, ...fleet, ...fleetDefaultData, ...fleetSavedData };
+            fleet = { name, ...fleet, ...fleetDefaultData };
             userFleets.push(fleet);
             await GM.setValue(fleet.publicKey.toString(), JSON.stringify(fleet));
         }
@@ -2051,7 +2057,8 @@
 
     function calculateCargoTotals(id, cargoCapacity) {
         const fields = document.querySelectorAll(`input[id*='${id}-']`);
-        const total = [...fields].map(field => parseInt(field.value)).reduce((a,b) => a + b, 0);
+        const total = [...fields].map(field => parseInt(field.value)).reduce((a,b) => a + (b || 0), 0);
+        console.log(fields.length, total, cargoCapacity);
         fields.forEach(function(field) {
             field.style.border = total > cargoCapacity ? '2px solid red' : null
         });
@@ -2061,9 +2068,11 @@
         const resources = ['', ...ResourceTokens.names('all')];
         const supplies = Object.entries(transportSupplies);
         const id = container.id;
-        
+
         supplies.forEach(supply => {
             const [ transportResource, amount ] = supply;
+            console.log(transportResource, amount);
+
             const div = document.createElement('div');
             const selector = document.createElement('select');
 
