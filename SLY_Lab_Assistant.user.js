@@ -2083,7 +2083,9 @@
             transportAmount.style.width = '60px';
             transportAmount.style.marginRight = '10px';
             transportAmount.value = amount;
+            transportAmount.min = 0;
             transportAmount.addEventListener("input", function() {
+                if (this.value < 0) this.value = Math.abs(this.value);
                 calculateCargoTotals(id, cargoCapacity)
             })
             div.appendChild(transportAmount);
