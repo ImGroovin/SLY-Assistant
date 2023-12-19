@@ -1929,6 +1929,8 @@
 					let fleetAssignment = row.children[1].firstChild.value;
 					//let fleetResupply = row.children[2].firstChild.checked;
 					let fleetDestCoord = row.children[2].firstChild.value;
+					//Replace accidental . with ,
+					fleetDestCoord = fleetDestCoord ? fleetDestCoord.replace('.', ',') : fleetDestCoord;
 					let fleetStarbaseCoord = row.children[3].firstChild.value;
 					let subwarpPref = row.children[4].firstChild.checked;
 					let destX = fleetDestCoord.split(',').length > 1 ? fleetDestCoord.split(',')[0].trim() : '';
