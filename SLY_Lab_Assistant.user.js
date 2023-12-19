@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         SLY Lab Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.4
+// @version      0.4.1
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
-// @match        https://labs.staratlas.com/
+// @match        https://*.labs.staratlas.com/
 // @require      https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js
 // @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/anchor-browserified.js
 // @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/buffer-browserified.js
@@ -2154,14 +2154,27 @@
         let importText = document.querySelector('#importText');
         let jsonTargets = JSON.parse(importText.value);
         for (let key in jsonTargets) {
-            let destX = jsonTargets[key].sector_target[0].toString().trim();
-            let destY = jsonTargets[key].sector_target[1].toString().trim();
+            let destXStr = jsonTargets[key].sector_target[0].toString().trim();
+            let destYStr = jsonTargets[key].sector_target[1].toString().trim();
+            let destX = Number(destXStr);
+            let destY = Number(destYStr);
+            let scanShiftX = destX > 0 ? -1 : 1;
+            let scanShiftY = destY > 0 ? -1 : 1;
+            let scanBlock = [];
+            if (destX !== '' && destY !== '') {
+                scanBlock.push([destX, destY]);
+                scanBlock.push([destX+scanShiftX, destY]);
+                scanBlock.push([destX+scanShiftX, destY+scanShiftY]);
+                scanBlock.push([destX, destY+scanShiftY]);
+            }
             let fleetSavedData = await GM.getValue(key, '{}');
             let fleetParsedData = JSON.parse(fleetSavedData);
-            fleetParsedData.dest = destX + ',' + destY;
+            fleetParsedData.dest = destXStr + ',' + destYStr;
+            fleetParsedData.scanBlock = scanBlock;
             await GM.setValue(key, JSON.stringify(fleetParsedData));
             let userFleetIndex = userFleets.findIndex(item => {return item.publicKey == key});
-            userFleets[userFleetIndex].destCoord = destX + ',' + destY;
+            userFleets[userFleetIndex].destCoord = destXStr + ',' + destYStr;
+            userFleets[userFleetIndex].scanBlock = scanBlock;
         }
         assistImportToggle();
     }
@@ -2327,12 +2340,13 @@
                 await wait(10000);
             }
             await wait(2000);
-            console.log(`[${userFleets[i].label}] Exiting Warp/Subwarp`);
             if (fleetState == 'MoveWarp') {
+                console.log(`[${userFleets[i].label}] Exiting Warp`);
                 await execExitWarp(userFleets[i]);
                 console.log(`[${userFleets[i].label}] Idle`);
                 userFleets[i].state = 'Idle';
             } else if (fleetState == 'MoveSubwarp'){
+                console.log(`[${userFleets[i].label}] Exiting Subwarp`);
                 await execExitSubwarp(userFleets[i]);
                 console.log(`[${userFleets[i].label}] Idle`);
                 userFleets[i].state = 'Idle';
@@ -2344,7 +2358,7 @@
                 let targetX = userFleets[i].moveTarget != '' && userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[0].trim() : '';
                 let targetY = userFleets[i].moveTarget != '' && userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[1].trim() : '';
                 if (extra[0] == targetX && extra[1] == targetY) {
-                    userFleets[i].moveTarget = [];
+                    userFleets[i].moveTarget = '';
                     let fleetSavedData = await GM.getValue(userFleets[i].publicKey.toString(), '{}');
                     let fleetParsedData = JSON.parse(fleetSavedData);
                     let fleetPK = userFleets[i].publicKey.toString();
@@ -2981,9 +2995,9 @@
                     console.log(`[${userFleets[i].label}] Undocking`);
                     userFleets[i].state = 'Undocking';
                     await execUndock(userFleets[i], userFleets[i].starbaseCoord);
+                    await wait(2000);
                 }
                 updateAssistStatus(userFleets[i]);
-                await wait(2000);
                 userFleets[i].moveTarget = userFleets[i].destCoord;
             }
             if (fleetCoords[0] == destX && fleetCoords[1] == destY) {
@@ -3161,6 +3175,7 @@
                     let targetX = userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[0].trim() : '';
                     let targetY = userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[1].trim() : '';
                     moveDist = calculateMovementDistance(fleetCoords, [targetX,targetY]);
+                    console.log(`[${userFleets[i].label}] Debug - moveTarget: ${userFleets[i].moveTarget}, moveDist: ${moveDist}, targetX: ${targetX}, targetY: ${targetY}`);
                     let warpCooldownFinished = await handleMovement(i, moveDist, targetX, targetY);
                 } else {
                     console.log(`[${userFleets[i].label}] Transporting - ERROR: Fleet must start at Target or Starbase`);
