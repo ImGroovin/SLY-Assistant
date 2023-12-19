@@ -245,44 +245,6 @@
 					userProfileAcct = new solanaWeb3.PublicKey(userProfile.profile);
 					userProfileKeyIdx = userProfile.idx;					
 
-					/*
-					function getUserProfileAcct(procId, roomId, sessionId) {
-							return new Promise((resolve) => {
-									let autoWS = new WebSocket(`wss://starcomm-mp.staratlas.com/${procId}/${roomId}?sessionId=${sessionId}`);
-									autoWS.binaryType = 'arraybuffer';
-									autoWS.onmessage = (event) => {
-											let tempArr = Array.from(new Uint8Array(event.data))
-											if (tempArr[0] === 14) {
-													let tempSlice = new Uint8Array(tempArr.slice(9,52));
-													userProfileAcct = new solanaWeb3.PublicKey(new TextDecoder().decode(tempSlice));
-													autoWS.close();
-													resolve();
-											}
-									};
-									autoWS.onopen = (event) => {
-											let initData = new Uint8Array(1);
-											initData[0] = 10;
-											autoWS.send(initData);
-									};
-							});
-					}
-
-					let sageRoom = await fetch("https://starcomm-mp.staratlas.com/matchmake/joinOrCreate/Sage_Account_Room", {
-							"headers": {
-									"accept": "application/json",
-									"accept-language": "en-US,en;q=0.9",
-									"content-type": "application/json",
-							},
-							"referrerPolicy": "no-referrer",
-							"body": `{"playerPublicKey":"${userPublicKey.toBase58()}"}`,
-							"method": "POST",
-							"mode": "cors",
-							"credentials": "omit"
-					});
-					let sageRoomJson = await sageRoom.json();
-					await getUserProfileAcct(sageRoomJson.room.processId, sageRoomJson.room.roomId, sageRoomJson.sessionId);
-					*/
-
 					let profileFactionProgram = new BrowserAnchor.anchor.Program(profileFactionIDL, profileFactionProgramId, anchorProvider);
 					[userProfileFactionAcct] = await profileFactionProgram.account.profileFactionAccount.all([
 							{
@@ -334,7 +296,7 @@
 							let fleetDest = fleetParsedData && fleetParsedData.dest ? fleetParsedData.dest : '';
 							let fleetScanBlock = fleetParsedData && fleetParsedData.scanBlock ? fleetParsedData.scanBlock : [];
 							let fleetScanMin = fleetParsedData && fleetParsedData.scanMin ? fleetParsedData.scanMin : 10;
-							let fleetScanMove = fleetParsedData && fleetParsedData.scanMove == 'false' ? 'false' : 'true';
+							let fleetScanMove = fleetParsedData && fleetParsedData.scanMove == 'false' || false ? false : true;
 							let fleetMineResource = fleetParsedData && fleetParsedData.mineResource ? fleetParsedData.mineResource : '';
 							let fleetStarbase = fleetParsedData && fleetParsedData.starbase ? fleetParsedData.starbase : '';
 							let fleetMoveType = fleetParsedData && fleetParsedData.moveType ? fleetParsedData.moveType : 'warp';
@@ -350,13 +312,6 @@
 							let [fleetState, extra] = getFleetState(fleetAcctInfo);
 							let fleetCoords = fleetState == 'Idle' && extra ? extra : [];
 							let fleetScanBlockIdx = 0;
-							/*
-							for (let i = 0; i < fleetScanBlock.length; i++) {
-									if (fleetCoords[0] == fleetScanBlock[i][0] && fleetCoords[1] == fleetScanBlock[i][1]) {
-											fleetScanBlockIdx = i;
-											break;
-									}
-							}*/
 							userFleets.push({publicKey: fleet.publicKey, label: fleetLabel.replace(/\0/g, ''), state: fleetState, moveTarget: fleetMoveTarget, startingCoords: fleetCoords, cargoHold: fleet.account.cargoHold, fuelTank: fleet.account.fuelTank, ammoBank: fleet.account.ammoBank, repairKitToken: fleetRepairKitToken, sduToken: fleetSduToken, fuelToken: fleetFuelToken, warpFuelConsumptionRate: fleet.account.stats.movementStats.warpFuelConsumptionRate, warpSpeed: fleet.account.stats.movementStats.warpSpeed, maxWarpDistance: fleet.account.stats.movementStats.maxWarpDistance, subwarpFuelConsumptionRate: fleet.account.stats.movementStats.subwarpFuelConsumptionRate, subwarpSpeed: fleet.account.stats.movementStats.subwarpSpeed, cargoCapacity: fleet.account.stats.cargoStats.cargoCapacity, fuelCapacity: fleet.account.stats.cargoStats.fuelCapacity, ammoCapacity: fleet.account.stats.cargoStats.ammoCapacity, scanCost: fleet.account.stats.miscStats.scanRepairKitAmount, scanCooldown: fleet.account.stats.miscStats.scanCoolDown, warpCooldown: fleet.account.stats.movementStats.warpCoolDown, miningRate: fleet.account.stats.cargoStats.miningRate, foodConsumptionRate: fleet.account.stats.cargoStats.foodConsumptionRate, ammoConsumptionRate: fleet.account.stats.cargoStats.ammoConsumptionRate, planetExitFuelAmount: fleet.account.stats.movementStats.planetExitFuelAmount, destCoord: fleetDest, starbaseCoord: fleetStarbase, scanBlock: fleetScanBlock, scanBlockIdx: fleetScanBlockIdx, scanEnd: 0, scanSkipCnt: 0, scanSectorStart: 0, scanMin: fleetScanMin, scanMove: fleetScanMove, toolCnt: currentToolCnt.account.data.parsed.info.tokenAmount.uiAmount, sduCnt: 0, fuelCnt: currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount, moveType: fleetMoveType, mineResource: fleetMineResource, minePlanet: null});
 					}
 					userFleets.sort(function (a, b) {
@@ -609,44 +564,48 @@
 			});
 	}
 	
-  function httpMonitor(connection, txHash, txn, lastValidBlockHeight, count = 0, fleetName = undefined) {
+	function httpMonitor(connection, txHash, txn, lastValidBlockHeight, count = 0, fleetName = undefined) {
 		return new Promise(async (resolve, reject) => {
-				try {
-						let { blockHeight } = await connection.getEpochInfo({ commitment: 'confirmed' });
-						if (blockHeight >= lastValidBlockHeight) reject({ name: 'LudicrousTimoutError', err: `Timed out for ${txHash}` });
+			try {
+				let confirmed = false;
+				while (!confirmed) {
+					let { blockHeight } = await connection.getEpochInfo({ commitment: 'confirmed' });
+					if (blockHeight >= lastValidBlockHeight) reject({ name: 'LudicrousTimoutError', err: `Timed out for ${txHash}` });
 
-						const recentPerformanceSamples = await connection.getRecentPerformanceSamples(1);
-						const { samplePeriodSecs, numSlots } = recentPerformanceSamples[0];
-						const lastMinAverageBlockSpeed = Math.floor(samplePeriodSecs * 1000 / numSlots);
-						const signatureStatus = await connection.getSignatureStatus(txHash);
+					const recentPerformanceSamples = await connection.getRecentPerformanceSamples(1);
+					const { samplePeriodSecs, numSlots } = recentPerformanceSamples[0];
+					const lastMinAverageBlockSpeed = Math.floor(samplePeriodSecs * 1000 / numSlots);
+					const signatureStatus = await connection.getSignatureStatus(txHash);
 
-						if (signatureStatus.err) {
-								console.log(`${FleetTimeStamp(fleetName)} HTTP error for`, txHash, signatureStatus);
-								reject(signatureStatus);
+					if (signatureStatus.err) {
+							console.log(`${FleetTimeStamp(fleetName)} HTTP error for`, txHash, signatureStatus);
+							reject(signatureStatus);
+							return;
 						} else if (signatureStatus.value === null) {
-								count++;
-								//console.log(`${FleetTimeStamp(fleetName)} HTTP not confirmed`, txHash, signatureStatus);
-								await wait(lastMinAverageBlockSpeed * graceBlockWindow);
-								if (count % 7 == 0) {
-										//console.log(`${FleetTimeStamp(fleetName)} HTTP resend (${count})`);
-										txHash = await connection.sendRawTransaction(txn, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
-								}
-								if (count < 30) {
-									resolve(await httpMonitor(connection, txHash, txn, lastValidBlockHeight, count, fleetName));
-								}
-								else {
-									//console.log(`${FleetTimeStamp(fleetName)} LudicrousTimoutError`);
-									reject({ name: 'LudicrousTimoutError', err: `Timed out for ${txHash}` });
-								}
-						} else {
-								//console.log(`${FleetTimeStamp(fleetName)} HTTP confirmed`, txHash, signatureStatus);
-								//console.log(`${FleetTimeStamp(fleetName)} HTTP confirmed (${count})`);
-								resolve({txHash, confirmation: signatureStatus});
-						}
-				} catch (error) {
-						//console.log(`${FleetTimeStamp(fleetName)} HTTP connection error: ${txHash}`, error);
-						reject(error);
+							count++;
+							//console.log(`${FleetTimeStamp(fleetName)} HTTP not confirmed`, txHash, signatureStatus);
+							await wait(lastMinAverageBlockSpeed * graceBlockWindow);
+							if (count % 7 == 0) {
+									console.log(`${FleetTimeStamp(fleetName)} RESEND ${Math.round(count/7)}`);
+									txHash = await connection.sendRawTransaction(txn, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
+							}
+							if (count >= 30) {
+								//console.log(`${FleetTimeStamp(fleetName)} LudicrousTimoutError`);
+								reject({ name: 'LudicrousTimoutError', err: `Timed out for ${txHash}` });
+								return;
+							}
+					} else {
+							//console.log(`${FleetTimeStamp(fleetName)} HTTP confirmed`, txHash, signatureStatus);
+							//console.log(`${FleetTimeStamp(fleetName)} HTTP confirmed (${count})`);
+							resolve({txHash, confirmation: signatureStatus});
+							confirmed = true;
+					}
 				}
+			} catch (error) {
+				console.log(`${FleetTimeStamp(fleetName)} SEND ERROR`, error);
+				reject(error);
+				return;
+			}
 		});
 	}
 
@@ -1669,7 +1628,7 @@
 			scanMoveLabel.innerHTML = 'Move While Scanning:';
 			let scanMove = document.createElement('input');
 			scanMove.setAttribute('type', 'checkbox');
-			scanMove.checked = fleetParsedData && fleetParsedData.scanMove && fleetParsedData.scanMove == 'false' ? false : true;
+			scanMove.checked = fleetParsedData && fleetParsedData.scanMove && fleetParsedData.scanMove == 'false' || false ? false : true;
 			scanMove.style.marginRight = '10px';
 			let scanMoveDiv = document.createElement('div');
 			scanMoveDiv.appendChild(scanMoveLabel);
@@ -1998,7 +1957,7 @@
 					}
 
 					let scanMin = parseInt(scanRows[i].children[1].children[0].children[1].value) || 0;
-					let scanMove = scanRows[i].children[2].children[0].children[1].checked ? 'true' : 'false';
+					let scanMove = scanRows[i].children[2].children[0].children[1].checked;
 
 					let fleetMineResource = mineRows[i].children[1].children[1].value;
 					fleetMineResource = fleetMineResource !== '' ? resourceTokens.find(r => r.name == fleetMineResource).token : '';
@@ -2100,7 +2059,8 @@
 							userFleets[userFleetIndex].moveType = moveType;
 							userFleets[userFleetIndex].scanBlock = scanBlock;
 							userFleets[userFleetIndex].scanMin = scanMin;
-							userFleets[userFleetIndex].scanMove = scanMove;// ? 'true' : 'false';
+							userFleets[userFleetIndex].scanMove = scanMove;
+							userFleets[userFleetIndex].scanBlockIdx = scanMove ? userFleets[userFleetIndex].scanBlockIdx : 0;
 					}
 			}
 			if (errBool === false) {
@@ -2386,12 +2346,11 @@
 									userFleets[i].scanSkipCnt = 0;
 							}
 
-							let scanMove = userFleets[i].scanMove == 'true';
 							let timeOnSector = Date.now() - userFleets[i].scanSectorStart;
 							let scanLow = scanCondition < userFleets[i].scanMin;
 							let timeUp = timeOnSector >= 60000;
 							let strike = (scanLow && timeUp) ? true : false;
-							let shouldMove = strike && scanMove;
+							let shouldMove = strike && userFleets[i].scanMove;
 							userFleets[i].scanSkipCnt = strike ? userFleets[i].scanSkipCnt + 1 : 0;
 							console.log(`${FleetTimeStamp(userFleets[i].label)} ${Math.round(scanCondition)}%${sduFound > 0 ? ` | FOUND: ${sduFound}` : ''}`);
 							let nextMoveIdx = userFleets[i].scanBlockIdx > 2 ? 0 : userFleets[i].scanBlockIdx+1;
@@ -3095,7 +3054,7 @@
 			//Calculate current scanBlockIdx
 			userFleets[i].startupScanBlockCheck = true;
 
-			if(userFleets[i].scanMove == 'true') {
+			if(userFleets[i].scanMove) {
 					console.log(`${FleetTimeStamp(userFleets[i].label)} Checking scanBlock`);
 
 					for (let s=0; s < 4; s++) {
