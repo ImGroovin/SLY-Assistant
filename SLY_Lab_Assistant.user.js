@@ -628,7 +628,6 @@
 
 	function txSignAndSend(ix, fleet, opName) {
 		return new Promise(async resolve => {
-			const debugging = opName == 'STOP MINING';
 			const fleetName =  fleet ? fleet.label : 'unknown';
 			if(fleet) fleet.busy = true;
 
@@ -956,13 +955,15 @@
 							tokenProgram: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')
 					}).instruction()}
 
+					updateFleetState(fleet, 'Warping');
+
+					let txResult = await txSignAndSend(tx, fleet, 'WARP');
+
 					const coordStr = `[${destX},${destY}]`;
 					const travelEndTime = TimeToStr(new Date(Date.now()+(moveTime * 1000 + 10000)));
 					console.log(`${FleetTimeStamp(fleet.label)} Warping to ${coordStr}`);
 					const newFleetState = `Warp ${coordStr} ${travelEndTime}`;
 					updateFleetState(fleet, newFleetState);
-
-					let txResult = await txSignAndSend(tx, fleet, 'WARP');
 
 					fleet.warpCoolDownFinish = Date.now() + fleet.warpCooldown * 1000 + 2000;
 
