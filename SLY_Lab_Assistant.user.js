@@ -4,7 +4,7 @@
 // @version      0.4.0m
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
-// @match        https://labs.staratlas.com/
+// @match        https://*.labs.staratlas.com/
 // @require      https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js
 // @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/anchor-browserified.js
 // @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/buffer-browserified.js
@@ -22,6 +22,11 @@
 	let initComplete = false;
 	let extraFuelToDropOffAtTarget = 0;
 	let transportStopOnError = false;
+	let debugLogging = false;
+
+	function cLog(toLog) {
+		if(debugLogging) console.log(toLog);
+	}
 
 	//const solanaConnection = new solanaWeb3.Connection('https://solana-api.syndica.io/access-token/WPoEqWQ2auQQY1zHRNGJyRBkvfOLqw58FqYucdYtmy8q9Z84MBWwqtfVf8jKhcFh/rpc', 'confirmed');
 	const solanaConnection = new solanaWeb3.Connection('https://rpc.hellomoon.io/cfd5910f-fb7d-4489-9b32-f97193eceefd', 'confirmed');
@@ -48,18 +53,18 @@
 	let userFleets = [];
 
 	let sageProgram = new BrowserAnchor.anchor.Program(sageIDL, sageProgramId, anchorProvider);
-	console.log('sageProgram: ', sageProgram);
+	cLog('sageProgram: ', sageProgram);
 	let [sageGameAcct] = await sageProgram.account.game.all();
-	console.log('sageGameAcct: ', sageGameAcct);
+	cLog('sageGameAcct: ', sageGameAcct);
 	let [sageSDUTrackerAcct] = await sageProgram.account.surveyDataUnitTracker.all();
-	console.log('sageSDUTrackerAcct: ', sageSDUTrackerAcct);
+	cLog('sageSDUTrackerAcct: ', sageSDUTrackerAcct);
 
 	let profileProgram = new BrowserAnchor.anchor.Program(profileIDL, profileProgramId, anchorProvider);
 	let cargoProgram = new BrowserAnchor.anchor.Program(cargoIDL, cargoProgramId, anchorProvider);
 	let [cargoStatsDefinitionAcct] = await cargoProgram.account.cargoStatsDefinition.all();
 	let cargoStatsDefSeqId = cargoStatsDefinitionAcct.account.seqId;
-	console.log('cargoProgram', cargoProgram);
-	console.log('cargoStatsDefinitionAcct', cargoStatsDefinitionAcct);
+	cLog('cargoProgram', cargoProgram);
+	cLog('cargoStatsDefinitionAcct', cargoStatsDefinitionAcct);
 	let seqBN = new BrowserAnchor.anchor.BN(cargoStatsDefSeqId);
 	let seqArr = seqBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "be", 2);
 	let seq58 = bs58.encode(seqArr);
@@ -211,7 +216,7 @@
 					let userProfiles = await solanaConnection.getProgramAccounts(profileProgramId);
 
 					let foundProf = [];
-					console.log(userProfiles[0]);
+					cLog(userProfiles[0]);
 					for (let userProf of userProfiles) {
 							let userProfData = userProf.account.data.subarray(30);
 							let iter = 0;
@@ -263,7 +268,7 @@
 									},
 							},
 					]);
-					console.log(userFleetAccts);
+					cLog(userFleetAccts);
 
 					for (let fleet of userFleetAccts) {
 							let fleetLabel = new TextDecoder("utf-8").decode(new Uint8Array(fleet.account.fleetLabel));
@@ -555,8 +560,8 @@
 						}, 'confirmed');
 						response = confirmation;
 					} catch (err) {
-							//console.log('ERROR: ', err);
-							//console.log(`${FleetTimeStamp(fleetName)} ${err.name}`);
+							//cLog('ERROR: ', err);
+							//cLog(`${FleetTimeStamp(fleetName)} ${err.name}`);
 							console.log(`${FleetTimeStamp(fleetName)}`, err);
 							response = err;
 					}
@@ -578,31 +583,31 @@
 					const signatureStatus = await connection.getSignatureStatus(txHash);
 
 					if (signatureStatus.err) {
-							console.log(`${FleetTimeStamp(fleetName)} HTTP error for`, txHash, signatureStatus);
+							cLog(`${FleetTimeStamp(fleetName)} HTTP error for`, txHash, signatureStatus);
 							reject(signatureStatus);
 							return;
 						} else if (signatureStatus.value === null) {
 							count++;
-							//console.log(`${FleetTimeStamp(fleetName)} HTTP not confirmed`, txHash, signatureStatus);
+							//cLog(`${FleetTimeStamp(fleetName)} HTTP not confirmed`, txHash, signatureStatus);
 							await wait(lastMinAverageBlockSpeed * graceBlockWindow);
 							if (count % 7 == 0) {
-									console.log(`${FleetTimeStamp(fleetName)} RESEND ${Math.round(count/7)}`);
+									cLog(`${FleetTimeStamp(fleetName)} RESEND ${Math.round(count/7)}`);
 									txHash = await connection.sendRawTransaction(txn, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
 							}
 							if (count >= 30) {
-								//console.log(`${FleetTimeStamp(fleetName)} LudicrousTimoutError`);
+								//cLog(`${FleetTimeStamp(fleetName)} LudicrousTimoutError`);
 								reject({ name: 'LudicrousTimoutError', err: `Timed out for ${txHash}` });
 								return;
 							}
 					} else {
-							//console.log(`${FleetTimeStamp(fleetName)} HTTP confirmed`, txHash, signatureStatus);
-							//console.log(`${FleetTimeStamp(fleetName)} HTTP confirmed (${count})`);
+							//cLog(`${FleetTimeStamp(fleetName)} HTTP confirmed`, txHash, signatureStatus);
+							//cLog(`${FleetTimeStamp(fleetName)} HTTP confirmed (${count})`);
 							resolve({txHash, confirmation: signatureStatus});
 							confirmed = true;
 					}
 				}
 			} catch (error) {
-				console.log(`${FleetTimeStamp(fleetName)} SEND ERROR`, error);
+				cLog(`${FleetTimeStamp(fleetName)} SEND ERROR`, error);
 				reject(error);
 				return;
 			}
@@ -628,7 +633,7 @@
 			if(fleet) fleet.busy = true;
 
 			let tx = new solanaWeb3.Transaction();
-			//console.log(ix);
+			//cLog(ix);
 			if (ix.constructor === Array) {
 					ix.forEach(item => tx.add(item.instruction))
 			} else {
@@ -655,26 +660,26 @@
 			} else {
 				txHash = await solanaConnection.sendRawTransaction(txSerialized, {skipPreflight: true, preflightCommitment: 'confirmed'});
 				console.log(`${FleetTimeStamp(fleetName)} <${opName}> SENT ${Date.now() - opStart}ms`);
-				//console.log('---TXHASH---', txHash);
+				//cLog('---TXHASH---', txHash);
 				confirmation = await waitForTxConfirmation(txHash, blockhash, lastValidBlockHeight, fleetName);
 			}			
 
 			console.log(`${FleetTimeStamp(fleetName)} <${opName}> ${confirmation.err ? 'CONFIRM-BAD' : 'CONFIRM-GOOD'} ${Date.now() - opStart}ms`);
-			if(debugging) console.log(`${FleetTimeStamp(fleetName)} Pulling txResult ...`);
+			cLog(`${FleetTimeStamp(fleetName)} Pulling txResult ...`);
 			let txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
-			if(debugging) console.log(`${FleetTimeStamp(fleetName)} Got`, txResult);
+			cLog(`${FleetTimeStamp(fleetName)} Got`, txResult);
 
 			//Bad confirmation
-			if(debugging) console.log(`${FleetTimeStamp(fleetName)} Bad confirmation check`);
+			cLog(`${FleetTimeStamp(fleetName)} Bad confirmation check`);
 			if((confirmation.name == 'LudicrousTimoutError') || (!txResult && confirmation.name == 'TransactionExpiredBlockheightExceededError')) {
 				console.log(`${FleetTimeStamp(fleetName)} <${opName}> RETRY`);
 				txResult = await txSignAndSend(ix, fleet, opName);
 			}
 
 			//Good confirmation - fetch fully confirmed tx
-			if(debugging) console.log(`${FleetTimeStamp(fleetName)} Good confirmation check`);
+			cLog(`${FleetTimeStamp(fleetName)} Good confirmation check`);
 			if (!confirmation.name) {
-				if(!txResult) console.log(`${FleetTimeStamp(fleetName)} RE-FETCHING TXRESULT`);
+				if(!txResult) cLog(`${FleetTimeStamp(fleetName)} RE-FETCHING TXRESULT`);
 				let tryCount = 0;
 				while (!txResult) {
 					if(tryCount > 9) break;
@@ -684,7 +689,7 @@
 				}
 
 				//Something went wrong, start again
-				if(debugging) console.log(`${FleetTimeStamp(fleetName)} Final txResult check`, txResult);
+				cLog(`${FleetTimeStamp(fleetName)} Final txResult check`, txResult);
 				if(!txResult) {
 					console.log(`${FleetTimeStamp(fleetName)} <${opName}> RETRY`);
 					txResult = await txSignAndSend(ix, fleet, opName);
@@ -694,7 +699,7 @@
 			//console.log('txResult: ', txResult);
 			if(fleet) fleet.busy = false;
 
-			if(debugging) console.log(`${FleetTimeStamp(fleetName)} Resolving with`, txResult);
+			cLog(`${FleetTimeStamp(fleetName)} Resolving with`, txResult);
 			resolve(txResult);
 		});
 	}
@@ -729,7 +734,7 @@
 				(input[2][5] ? 1 << 5 : 0) |
 				(input[2][6] ? 1 << 6 : 0) |
 				(input[2][7] ? 1 << 7 : 0));
-		console.log('out: ', out);
+		cLog('out: ', out);
 		return out;
 	}
 
@@ -1358,11 +1363,11 @@
 					let fleetAmmoAcct = currentAmmo ? currentAmmo.pubkey : fleetAmmoToken;
 
 					const accInfo = await solanaConnection.getAccountInfo(fleetResourceToken);
-					console.log(`${FleetTimeStamp(fleet.label)} Mining getAccountInfo result`,accInfo);
+					cLog(`${FleetTimeStamp(fleet.label)} Mining getAccountInfo result`,accInfo);
 					if(!accInfo) {
 						const cpda = await createProgramDerivedAccount(fleetResourceToken, fleet.cargoHold, resourceToken, fleet);
 
-						console.log(`${FleetTimeStamp(fleet.label)} Mining createProgramDerivedAccount result`, cpda);
+						cLog(`${FleetTimeStamp(fleet.label)} Mining createProgramDerivedAccount result`, cpda);
 					}
 					let foodCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.food);
 					let ammoCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.ammo);
@@ -2078,7 +2083,7 @@
 					let importText = document.querySelector('#importText');
 					importText.value = '{';
 					let fleetKeys = GM_listValues();
-					console.log(fleetKeys);
+					cLog(fleetKeys);
 					for (let i in fleetKeys) {
 							let fleetSavedData = await GM.getValue(fleetKeys[i], '{}');
 							//let fleetParsedData = JSON.parse(fleetSavedData);
@@ -2152,7 +2157,7 @@
 						profileSelect.innerHTML = transportOptStr;
 						contentElem.append(profileSelect);
 						profileSelect.onchange = function() {
-								console.log(profileSelect.value);
+								cLog(profileSelect.value);
 								let selected = profiles.find(o => o.profile === profileSelect.value);
 								assistProfileToggle(null);
 								resolve(selected);
@@ -2301,8 +2306,7 @@
 									let starbaseY = userFleets[i].starbaseCoord.split(',')[1].trim();
 									let furthestPoint = userFleets[i].scanBlock.reduce((max, val) => calculateMovementDistance(max, [starbaseX,starbaseY]) > calculateMovementDistance(val, [starbaseX,starbaseY]) ? max : val);
 									let distToStarbase = Math.max(calculateMovementDistance(fleetCoords, [starbaseX,starbaseY]), calculateMovementDistance(furthestPoint, [starbaseX,starbaseY]));
-									//console.log(`${FleetTimeStamp(userFleets[i].label)} DEBUG`);
-									//console.log(`${FleetTimeStamp(userFleets[i].label)} distToStarbase: ${distToStarbase}`);
+									//cLog(`${FleetTimeStamp(userFleets[i].label)} distToStarbase: ${distToStarbase}`);
 									let fuelNeeded = 0;
 									let exactFuelNeeded = 0;
 									if (userFleets[i].moveType == 'warp') {
@@ -2312,8 +2316,8 @@
 											fuelNeeded = calculateSubwarpFuelBurn(userFleets[i], distToStarbase) + calculateSubwarpFuelBurn(userFleets[i], 2);
 											exactFuelNeeded = calculateSubwarpFuelBurn(userFleets[i], distToStarbase);
 									}
-									//console.log(`${FleetTimeStamp(userFleets[i].label)} currentFuelCnt: ${currentFuelCnt}`);
-									//console.log(`${FleetTimeStamp(userFleets[i].label)} fuelNeeded: ${exactFuelNeeded}`);
+									//cLog(`${FleetTimeStamp(userFleets[i].label)} currentFuelCnt: ${currentFuelCnt}`);
+									//cLog(`${FleetTimeStamp(userFleets[i].label)} fuelNeeded: ${exactFuelNeeded}`);
 									let fuelReadout = `${FleetTimeStamp(userFleets[i].label)} Fuel: ${Math.round(fuelNeeded)} / ${Math.round(currentFuelCnt)}`;
 									if (currentFuelCnt > fuelNeeded) {
 											console.log(fuelReadout);
@@ -2374,12 +2378,12 @@
 							updateAssistStatus(userFleets[i]);
 
 							const newToolCount = currentToolCnt - userFleets[i].scanCost;
-							//console.log(`${FleetTimeStamp(userFleets[i].label)} Tools: ${userFleets[i].toolCnt} | ${newToolCount}`);
+							//cLog(`${FleetTimeStamp(userFleets[i].label)} Tools: ${userFleets[i].toolCnt} | ${newToolCount}`);
 							if(newToolCount < userFleets[i].scanCost)
 							{
 								//Start resupply immediately rather than waiting for scan cooldown
 								userFleets[i].scanEnd = Date.now();
-								//console.log(`${FleetTimeStamp(userFleets[i].label)} Starting resupply`);
+								//cLog(`${FleetTimeStamp(userFleets[i].label)} Starting resupply`);
 							}
 					}
 			} else {
@@ -2597,11 +2601,11 @@
 							ammoForDuration = Math.ceil(miningDuration * (userFleets[i].ammoConsumptionRate / 10000));
 							ammoForDuration = Math.min(userFleets[i].ammoCapacity, ammoForDuration);
 
-							console.log(`${FleetTimeStamp(userFleets[i].label)} Calculated miningDuration: ${miningDuration}`);
-							console.log(`${FleetTimeStamp(userFleets[i].label)} fuel: ${currentFuelCnt}/${fuelNeeded}`);
-							console.log(`${FleetTimeStamp(userFleets[i].label)} ammo: ${currentAmmoCnt}/${ammoForDuration}`);
-							console.log(`${FleetTimeStamp(userFleets[i].label)} ammoForDuration: ${ammoForDuration} = miningDuration ${miningDuration} * (ammoConsumptionRate ${userFleets[i].ammoConsumptionRate} / 10000)`);
-							console.log(`${FleetTimeStamp(userFleets[i].label)} food: ${currentFoodCnt}/${foodForDuration}`);
+							cLog(`${FleetTimeStamp(userFleets[i].label)} Calculated miningDuration: ${miningDuration}`);
+							cLog(`${FleetTimeStamp(userFleets[i].label)} fuel: ${currentFuelCnt}/${fuelNeeded}`);
+							cLog(`${FleetTimeStamp(userFleets[i].label)} ammo: ${currentAmmoCnt}/${ammoForDuration}`);
+							cLog(`${FleetTimeStamp(userFleets[i].label)} ammoForDuration: ${ammoForDuration} = miningDuration ${miningDuration} * (ammoConsumptionRate ${userFleets[i].ammoConsumptionRate} / 10000)`);
+							cLog(`${FleetTimeStamp(userFleets[i].label)} food: ${currentFoodCnt}/${foodForDuration}`);
 
 							if (fleetCoords[0] == starbaseX && fleetCoords[1] == starbaseY) {
 									await execDock(userFleets[i], userFleets[i].starbaseCoord);
@@ -2735,7 +2739,7 @@
 			);
 
 			if (fleetState === 'Idle') {
-					//console.log(`${FleetTimeStamp(userFleets[i].label)} Transporting`);
+					//cLog(`${FleetTimeStamp(userFleets[i].label)} Transporting`);
 					let fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 					let errorResource = [];
 					if (fleetCoords[0] == starbaseX && fleetCoords[1] == starbaseY) { // Fleet at starbase?
@@ -2908,11 +2912,11 @@
 											if(!useSubwarp) console.log('NOT ENOUGH FUEL TO WARP');
 											extraFuel = currentFuelCnt - Math.ceil(subwarpCost);
 									}
-									console.log(`${FleetTimeStamp(userFleets[i].label)} Current Fuel: ${currentFuelCnt}`);
-									console.log(`${FleetTimeStamp(userFleets[i].label)} Current Cargo Fuel: ${currentCargoFuelCnt}`);
-									console.log(`${FleetTimeStamp(userFleets[i].label)} Warp Cost: ${warpCost}`);
-									console.log(`${FleetTimeStamp(userFleets[i].label)} Subwarp Cost: ${subwarpCost}`);
-									console.log(`${FleetTimeStamp(userFleets[i].label)} Extra Fuel: ${extraFuel}`);
+									cLog(`${FleetTimeStamp(userFleets[i].label)} Current Fuel: ${currentFuelCnt}`);
+									cLog(`${FleetTimeStamp(userFleets[i].label)} Current Cargo Fuel: ${currentCargoFuelCnt}`);
+									cLog(`${FleetTimeStamp(userFleets[i].label)} Warp Cost: ${warpCost}`);
+									cLog(`${FleetTimeStamp(userFleets[i].label)} Subwarp Cost: ${subwarpCost}`);
+									cLog(`${FleetTimeStamp(userFleets[i].label)} Extra Fuel: ${extraFuel}`);
 
 									//Unloading
 									let extraAmmo = 0;
@@ -3002,7 +3006,7 @@
 							for (let [j, resource] of starbaseResources.entries()) {
 									let resourceAmount = starbaseResourceAmounts[j];
 									if (resource !== '' && resourceAmount > 0) {
-											//console.log(`${FleetTimeStamp(userFleets[i].label)} Loading ${resource}`);
+											//cLog(`${FleetTimeStamp(userFleets[i].label)} Loading ${resource}`);
 											let [fleetResourceToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
 													[
 															userFleets[i].cargoHold.toBuffer(),
@@ -3057,7 +3061,7 @@
 			userFleets[i].startupScanBlockCheck = true;
 
 			if(userFleets[i].scanMove) {
-					console.log(`${FleetTimeStamp(userFleets[i].label)} Checking scanBlock`);
+					cLog(`${FleetTimeStamp(userFleets[i].label)} Checking scanBlock`);
 
 					for (let s=0; s < 4; s++) {
 							const testCoords = userFleets[i].scanBlock[s];
@@ -3065,7 +3069,7 @@
 							{
 									if(userFleets[i].scanBlockIdx != s) {
 											userFleets[i].scanBlockIdx = s;
-											console.log(`${FleetTimeStamp(userFleets[i].label)} Resuming scanBlockIdx: ${s}`);
+											cLog(`${FleetTimeStamp(userFleets[i].label)} Resuming scanBlockIdx: ${s}`);
 									}
 									break;
 							}
@@ -3097,7 +3101,7 @@
 				if(!fleetParsedData.assignment) return;
 
 				userFleets[i].iterCnt++;
-				console.log(`${FleetTimeStamp(userFleets[i].label)} <getAccountInfo> (${userFleets[i].state})`);
+				cLog(`${FleetTimeStamp(userFleets[i].label)} <getAccountInfo> (${userFleets[i].state})`);
 				let fleetAcctInfo = await solanaConnection.getAccountInfo(userFleets[i].publicKey);
 				let [fleetState, extra] = getFleetState(fleetAcctInfo);
 				let fleetCoords = fleetState == 'Idle' ? extra : [];
