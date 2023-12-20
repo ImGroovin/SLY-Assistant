@@ -2109,6 +2109,35 @@
 			assistImportToggle();
 	}
 
+	async function saveTargetsImport() {
+		let importText = document.querySelector('#importText');
+		let jsonTargets = JSON.parse(importText.value);
+		for (let key in jsonTargets) {
+				let destXStr = jsonTargets[key].sector_target[0].toString().trim();
+				let destYStr = jsonTargets[key].sector_target[1].toString().trim();
+				let destX = Number(destXStr);
+				let destY = Number(destYStr);
+				let scanShiftX = destX > 0 ? -1 : 1;
+				let scanShiftY = destY > 0 ? -1 : 1;
+				let scanBlock = [];
+				if (destX !== '' && destY !== '') {
+						scanBlock.push([destX, destY]);
+						scanBlock.push([destX+scanShiftX, destY]);
+						scanBlock.push([destX+scanShiftX, destY+scanShiftY]);
+						scanBlock.push([destX, destY+scanShiftY]);
+				}
+				let fleetSavedData = await GM.getValue(key, '{}');
+				let fleetParsedData = JSON.parse(fleetSavedData);
+				fleetParsedData.dest = destXStr + ',' + destYStr;
+				fleetParsedData.scanBlock = scanBlock;
+				await GM.setValue(key, JSON.stringify(fleetParsedData));
+				let userFleetIndex = userFleets.findIndex(item => {return item.publicKey == key});
+				userFleets[userFleetIndex].destCoord = destXStr + ',' + destYStr;
+				userFleets[userFleetIndex].scanBlock = scanBlock;
+		}
+		assistImportToggle();
+}	
+
 	function assistModalToggle() {
 			let targetElem = document.querySelector('#assistModal');
 			if (targetElem.style.display === 'none') {
@@ -3233,7 +3262,7 @@
 					importModal.style.zIndex = 3;
 					let importModalContent = document.createElement('div');
 					importModalContent.classList.add('assist-modal-content');
-					importModalContent.innerHTML = '<div class="assist-modal-header"><span>Config Import/Export</span><div class="assist-modal-header-right"><button id="importConfigBtn" class="assist-modal-btn assist-modal-save">Import Config</button><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><div></div><span>Copy the text below to save your raw Lab Assistant configuration. To restore your previous configuration, enter configuration text in the text box below then click the Import Config button.</span><div></div><textarea id="importText" rows="4" cols="80" max-width="100%"></textarea></div>';
+					importModalContent.innerHTML = '<div class="assist-modal-header"><span>Config Import/Export</span><div class="assist-modal-header-right"><button id="importTargetsBtn" class="assist-modal-btn assist-modal-save">Import Fleet Targets</button><button id="importConfigBtn" class="assist-modal-btn assist-modal-save">Import Config</button><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><div></div><div><ul><li>Copy the text below to save your raw Lab Assistant configuration.</li><li>To restore your previous configuration, enter configuration text in the text box below then click the Import Config button.</li><li>To import new Target coordinates for fleets, paste the exported text from EveEye in the text box below then click the Import Fleet Targets button.</li></ul></div><div></div><textarea id="importText" rows="4" cols="80" max-width="100%"></textarea></div>';
 					importModal.append(importModalContent);
 
 					let profileModal = document.createElement('div');
@@ -3369,6 +3398,8 @@
 					configImportExport.addEventListener('click', function(e) {assistImportToggle();});
 					let configImport = document.querySelector('#importConfigBtn');
 					configImport.addEventListener('click', function(e) {saveConfigImport();});
+					let targetsImport = document.querySelector('#importTargetsBtn');
+					targetsImport.addEventListener('click', function(e) {saveTargetsImport();});
 					let addAcctOpen = document.querySelector('#addAcctOpen');
 					addAcctOpen.addEventListener('click', function(e) {assistAddAcctToggle();});
 					let addAcctBtn = document.querySelector('#addAcctBtn');
