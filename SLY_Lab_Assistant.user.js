@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         SLY Lab Assistant
+// @name         SLY Lab Assistant 1.0
 // @namespace    http://tampermonkey.net/
 // @version      0.5.0
 // @description  try to take over the world!
@@ -17,7 +17,7 @@
 
 (async function() {
     'use strict';
-    
+
     let provider;
     const wallets = [ solflare, solana, phantom ];
     let graceBlockWindow = 5;
@@ -26,6 +26,7 @@
 
     // in memory storage
     let userFleets = [];
+    let playerProfile;
     const GLOBAL_SCALE_DECIMALS_2 = 100;
     const GLOBAL_SCALE_DECIMALS_6 = 1000000;
 
@@ -60,7 +61,7 @@
     const profileFactionProgramId = new solanaWeb3.PublicKey('pFACSRuobDmvfMKq1bAzwj27t6d2GJhSCHb1VcfnRmq');
     const profileFactionIDL = await BrowserAnchor.anchor.Program.fetchIdl(profileFactionProgramId, anchorProvider);
     const profileFactionProgram = new BrowserAnchor.anchor.Program(profileFactionIDL, profileFactionProgramId, anchorProvider);
- 
+
     // token accounts
     const tokenProgram = new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
     const AssociatedTokenProgram = new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
@@ -180,7 +181,7 @@
         exists(resource) {
             const names = this.names().map(name => name.toLowerCase().trim());
             const publicKeys = this.publicKeys().map(pbk => pbk.toString());
-            
+
             if (typeof resource === 'object') {
                 resource = resource.toString() || '';
             }
@@ -193,7 +194,7 @@
             return this.exists(resource) ? this[resource].name : '';
         }
     }
-    
+
     // @todo - redo documentation
 /**
  * The function `getProvider` is an asynchronous function that takes in a `wallets` object and returns
@@ -258,9 +259,9 @@
             lengthToCompact16size(instruction.data.length) + // num ix bytes
             instruction.data.length; // ix bytes
         });
-    
+
       // console.log({ uniqueSigners, uniqueKeys, ixSizes });
-    
+
       return (
         lengthToCompact16size(uniqueSigners.size) + // num sigs
         uniqueSigners.size * 64 + // Sigs
@@ -443,7 +444,7 @@
             while (profileData.length >= 80) {
                 const profile = profileData.subarray(0, 80);
                 const decodedProfile = profileProgram.coder.types.decode('ProfileKey', profile);
-                
+
                 if (decodedProfile.key.toString() === provider.publicKey.toString()) {
                     const [playerNameAcct] = await solanaConnection.getProgramAccounts(
                         profileProgramId,
@@ -465,7 +466,7 @@
             }
         }
 
-        const playerProfile = playerProfiles.length > 1 ? await assistProfileToggle(playerProfiles) : playerProfiles[0];
+        playerProfile = playerProfiles.length > 1 ? await assistProfileToggle(playerProfiles) : playerProfiles[0];
         console.debug('User Profile: ', playerProfile);
 
         const [playerProfileFactionAcct] = await profileFactionProgram.account.profileFactionAccount.all([
@@ -489,7 +490,7 @@
 
         for (let fleet of userFleetAccts) {
             const name = new TextDecoder("utf-8").decode(new Uint8Array(fleet.account.fleetLabel)).replace(/\0/g, '');
-                     
+
             const fleetDefaultData = {
                 origin: {
                     coords: '',
@@ -513,16 +514,16 @@
                 mineResource: '',
                 minePlanet: null,
                 scanMinimumProbability: 10,
-                scanSkipCnt: 0, 
+                scanSkipCnt: 0,
                 scanSectorStart: 0,
-                scanSectorEnd: 0, 
+                scanSectorEnd: 0,
                 scanBlock: [],
                 scanBlockIndex: 0,
-                scanMove: true,             
+                scanMove: true,
             }
 
             const fleetSavedData = JSON.parse(await GM.getValue(fleet.publicKey.toString(), '{}'));
-                      
+
             const { fleetState, extra } = await getCurrentFleet(fleet);
             if (fleetState == 'Idle' && extra) {
                 for (let i = 0; i < fleetDefaultData.scanBlock.length; i++) {
@@ -532,7 +533,7 @@
                     }
                 }
             }
-            
+
             fleet = { name, ...fleet, ...fleetDefaultData, ...fleetSavedData };
             userFleets.push(fleet);
             await GM.setValue(fleet.publicKey.toString(), JSON.stringify(fleet));
@@ -691,7 +692,7 @@
  * The function `getStarbasePlayer` retrieves a starbase player based on the user profile and starbase
  * provided.
  * @param playerProfile - The `playerProfile` is the public key of the player profile.
- * @param starbase - The `starbase` is the public key for the given starbase. 
+ * @param starbase - The `starbase` is the public key for the given starbase.
  * @returns the `starbasePlayer` public key.
  */
     async function getStarbasePlayer(playerProfile, starbase) {
@@ -809,7 +810,7 @@
             loadingMessage.innerText = 'Error fetching fleet information';
         }
     }
-    
+
 /**
  * The function `httpMonitor` is an asynchronous function that monitors the status of a transaction.
  * @param connection - The `connection` parameter is an object that represents the connection to the
@@ -891,7 +892,7 @@
 /**
  * The function `batchTransactions` is an asynchronous function that takes an array of instructions
  * (`ixs`) and batches them into multiple transactions based on a maximum transaction size.
- * @param ixs - An array of instructions (ixs) to be batched together. Each instruction represents 
+ * @param ixs - An array of instructions (ixs) to be batched together. Each instruction represents
  * a specific action to be performed on the Solana blockchain.
  * @param [txs] - The `txs` parameter is an array that stores the transactions that have been batched
  * so far. It is an optional parameter and is initially an empty array. Each transaction is added to
@@ -996,16 +997,16 @@
         }).instruction()}
         return await signAndSend(tx);
     }
-    
+
 /**
  * The `execSubwarp` function calculates the distance between two coordinates, checks if the fleet has
  * enough fuel to subwarp, and if it does then initiates a subwarp to the destination coordinates.
  * @param fleet - The `fleet` parameter represents a fleet of ships that will be used for the subwarp
  * operation. It contains information about the fleet, such as its origin and destination coordinates,
  * maximum warp distance, and fuel tank account.
- * @param origin - The `origin` parameter is optional, it is the origin point for the subwarp. 
+ * @param origin - The `origin` parameter is optional, it is the origin point for the subwarp.
  * Defaults to the origin in the fleet's config file. It is an array containing the X and Y coordinates.
- * @param destination - The `destination` parameter is optional, it is the destination point for the subwarp. 
+ * @param destination - The `destination` parameter is optional, it is the destination point for the subwarp.
  * Defaults to the destination in the fleet's config file. It is an array containing the X and Y coordinates.
  * @returns the duration for subwarp and the transaction result from Solana for entering subwarp.
  */
@@ -1017,7 +1018,7 @@
         const moveDistance = calculateMovementDistance([originX, originY], [destX, destY]);
         const duration = subwarpSpeed > 0 ? (moveDistance / subwarpSpeed / GLOBAL_SCALE_DECIMALS_6) : 0;
         const subwarpCost = calculateSubwarpFuelBurn(fleet, moveDistance);
-    
+
         const fleetCurrentFuelTank = await solanaConnection.getParsedTokenAccountsByOwner(fleet.account.fuelTank, { programId: tokenProgram });
         let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
         currentFuel = currentFuel.account.data.parsed.info.tokenAmount.uiAmount || 0;
@@ -1028,7 +1029,7 @@
         }
 
         const tx = { instruction: await sageProgram.methods.startSubwarp({
-            keyIndex: new BrowserAnchor.anchor.BN(playerProfile.index), 
+            keyIndex: new BrowserAnchor.anchor.BN(playerProfile.index),
             toSector: [new BrowserAnchor.anchor.BN(destX), new BrowserAnchor.anchor.BN(destY)]
         }).accountsStrict({
             gameAccountsFleetAndOwner: {
@@ -1117,9 +1118,9 @@
  * @param fleet - The fleet parameter represents a fleet of ships that will be used for the warp
  * operation. It contains information about the fleet, such as its origin and destination coordinates,
  * maximum warp distance, and fuel tank account.
- * @param origin - The `origin` parameter is optional, it is the origin point for the warp. 
+ * @param origin - The `origin` parameter is optional, it is the origin point for the warp.
  * Defaults to the origin in the fleet's config file. It is an array containing the X and Y coordinates.
- * @param destination - The `destination` parameter is optional, it is the destination point for the warp. 
+ * @param destination - The `destination` parameter is optional, it is the destination point for the warp.
  * Defaults to the destination in the fleet's config file. It is an array containing the X and Y coordinates.
  * @returns the duration for warp and the transaction result from Solana for entering warp.
  */
@@ -1132,18 +1133,18 @@
         let warpCount = 0;
         if (moveDistance > (maxWarpDistance / 100)) {
             warpCount = maxWarpDistance > 0 ? (moveDistance / maxWarpDistance / GLOBAL_SCALE_DECIMALS_2) : 1;
-            const warpX = Math.trunc((destX - originX) / warpCount);            
+            const warpX = Math.trunc((destX - originX) / warpCount);
             const warpY = Math.trunc((destY - originY) / warpCount);
-            
+
             destX = originX + warpX;
             destY = originY + warpY;
-            
+
             moveDistance = calculateMovementDistance([originX, originY], [destX,destY]);
         }
 
         const duration = warpSpeed > 0 ? (moveDistance / warpSpeed / GLOBAL_SCALE_DECIMALS_6) : 0;
         const warpCost = calculateWarpFuelBurn(fleet, moveDist);
-  
+
         const fleetCurrentFuelTank = await solanaConnection.getParsedTokenAccountsByOwner(fleet.account.fuelTank, { programId: tokenProgram });
         let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
         currentFuel = currentFuel.account.data.parsed.info.tokenAmount.uiAmount || 0;
@@ -1195,7 +1196,7 @@
  * player associated with the coordinates, and then executes a transaction to dock the fleet at the
  * starbase.  Should be called before {@link handleReturnTrip} function.
  * @param fleet - The `fleet` parameter is an object that represents a fleet.
- * @param coords - The `coords` parameter is an optional string representing the coordinates of a starbase. 
+ * @param coords - The `coords` parameter is an optional string representing the coordinates of a starbase.
  * Defaults to `fleet.destination.coords`. It is in the format "x,y" where `x` and `y` are the x and y coordinates
  * respectively.
  * @returns the transaction result from Solana for docking.
@@ -1231,7 +1232,7 @@
  * function.
  * @param fleet - The `fleet` parameter is an object that represents a fleet.
  * @param coords - The `coords` parameter is an optional string representing the coordinates of a starbase.
- * Defaults to `fleet.origin.coords`. It is in the format "x,y" where `x` and `y` are the x and y coordinates 
+ * Defaults to `fleet.origin.coords`. It is in the format "x,y" where `x` and `y` are the x and y coordinates
  * respectively.
  * @returns the transaction result from Solana for undocking.
  */
@@ -1263,11 +1264,11 @@
         }]).instruction()}
         fleet.state = 'Undocking';
         return await signAndSend(tx);
-    }   
+    }
 
     // @todo - documentation
     async function determineDefaultLocation(fleet, extra, reverse) {
-        let location = 'destination'; // default location               
+        let location = 'destination'; // default location
         for (const [key, value] of Object.entries(fleet)) {
             if (value.coords && value.coords == `"${extra[0]},${extra[1]}"`){
                 location = key;
@@ -1275,8 +1276,8 @@
             }
         }
 
-        return reverse ? (location == 'destination' ? 'origin' : 'destination') : location; 
-    } 
+        return reverse ? (location == 'destination' ? 'origin' : 'destination') : location;
+    }
 
     // @todo - redo documentation
     // @todo - implement fuel and ammo logic
@@ -1286,8 +1287,8 @@
  * fleet, such as its account, destination coordinates, and cargo hold.
  * @param options - The `options` parameter is an object that contains the following properties:
  * `coords`, `resupply`, and `supplies`. `coords` is an optional parameter, defaults to `fleet.destination.coords`,
- * in the format "x,y" where `x` and `y` are the x and y coordinates respectively. `resupply` is an optional 
- * parameter, a boolean if set will default `supplies` to that on the `fleet` object. `supplies` is an optional 
+ * in the format "x,y" where `x` and `y` are the x and y coordinates respectively. `resupply` is an optional
+ * parameter, a boolean if set will default `supplies` to that on the `fleet` object. `supplies` is an optional
  * parameter which is an object "{'fueL3hBZjLLLJHiFH9cqZoozTG3XQZ53diwFPwbzNim': amount}"
  * @returns the transaction result from Solana for transferring cargo from a fleet to a starbase.
  */
@@ -1320,7 +1321,7 @@
             if (amount > 0) {
                 const resourceCargoType = cargoTypes.find(item => item.account.mint.toString() == resourceString);
                 const ix = await sageProgram.methods.withdrawCargoFromFleet({
-                    amount: new BrowserAnchor.anchor.BN(amount), 
+                    amount: new BrowserAnchor.anchor.BN(amount),
                     keyIndex: new BrowserAnchor.anchor.BN(playerProfile.index)
                 }).accountsStrict({
                     gameAccountsFleetAndOwner: {
@@ -1370,8 +1371,8 @@
  * fleet, such as its account, destination coordinates, and cargo hold.
  * @param options - The `options` parameter is an object that contains the following properties:
  * `coords`, `resupply`, and `supplies`. `coords` is an optional parameter, defaults to `fleet.destination.coords`,
- * in the format "x,y" where `x` and `y` are the x and y coordinates respectively. `resupply` is an optional 
- * parameter, a boolean if set will default `supplies` to that on the `fleet` object. `supplies` is an optional 
+ * in the format "x,y" where `x` and `y` are the x and y coordinates respectively. `resupply` is an optional
+ * parameter, a boolean if set will default `supplies` to that on the `fleet` object. `supplies` is an optional
  * parameter which is an object "{'fueL3hBZjLLLJHiFH9cqZoozTG3XQZ53diwFPwbzNim': amount}"
  * @returns the transaction result(s) from Solana for transferring cargo from a starbase to a fleet.
  */
@@ -1403,9 +1404,9 @@
             const amount = Math.min(supplies[resourceString] || 0, resource.account.data.parsed.info.tokenAmount.uiAmount || 0);
             if (amount > 0) {
                 const resourceCargoType = cargoTypes.find(item => item.account.mint.toString() == resourceString);
-                const ix = { instruction: await sageProgram.methods.depositCargoToFleet({ 
-                    amount: new BrowserAnchor.anchor.BN(amount), 
-                    keyIndex: new BrowserAnchor.anchor.BN(playerProfile.index) 
+                const ix = { instruction: await sageProgram.methods.depositCargoToFleet({
+                    amount: new BrowserAnchor.anchor.BN(amount),
+                    keyIndex: new BrowserAnchor.anchor.BN(playerProfile.index)
                 }).accountsStrict({
                     gameAccountsFleetAndOwner: {
                         gameFleetAndOwner: {
@@ -1445,7 +1446,7 @@
         if (ixs.length > 0) await signAndSend(ixs);
         fleet.state = 'Docked';
     }
-    
+
 /**
  * The `getMiningDetails` function retrieves mining details based on the mine resource and coordinates
  * provided.
@@ -1502,7 +1503,7 @@
      * - `mineResource` is the name of the resource you want to mine.
      * Defaults to `fleet.mineResource`.
      * - `amount` is the amount you want to mine. If `amount` > `maxCargoCapacity`, `maxCargoCapacity`
-     * is used. Defaults to the `maxCargoCapacity`. 
+     * is used. Defaults to the `maxCargoCapacity`.
      * @returns an object containing `duration` and the transaction result from Solana.
      */
     async function execStartMining(fleet, options) {
@@ -1711,10 +1712,11 @@
     async function handleMovement(fleet, options) {
         const { coords } = options;
         const [destX, destY] = (coords || fleet.destination.coords).split(',').map(item => item.trim());
-    
+
         const { fleetData, fleetState, extra }= getCurrentFleet(fleet);
         const warpCooldownExpiresAt = (fleetData.warpCooldownExpiresAt.toNumber() || 0) * 1000;
 
+        let warpArrival, subwarpArrival;
         switch (fleetState) {
             case 'Idle':
                 if (extra[0] !== destX || extra[1] !== destY) {
@@ -1735,13 +1737,13 @@
                 }
                 break;
             case 'MoveWarp':
-                const warpArrival = extra.warpFinish.toNumber() * 1000;
+                warpArrival = extra.warpFinish.toNumber() * 1000;
                 if (warpArrival > Date.now()) fleet.state = 'Move [' + new Date(warpArrival).toLocaleTimeString() + ']';
                 await wait(warpArrival);
                 await execExitWarp(fleet);
                 break;
             case 'MoveSubwarp':
-                const subwarpArrival = fleet.moveType == 'warp' ? warpCooldownExpiresAt : extra.arrivalTime.toNumber() * 1000;
+                subwarpArrival = fleet.moveType == 'warp' ? warpCooldownExpiresAt : extra.arrivalTime.toNumber() * 1000;
                 if (subwarpArrival > Date.now()) fleet.state = 'Move [' + new Date(subwarpArrival).toLocaleTimeString() + ']';
                 await wait(subwarpArrival);
                 await execExitSubwarp(fleet);
@@ -1757,7 +1759,7 @@
     // @todo - documentation
     async function prepareToMine(fleetObject, options) {
         let { coords, mineResource, amount } = options;
-        
+
         const { foodConsumptionRate, ammoConsumptionRate } = fleet.account.stats.cargoStats;
         mineResource = ResourceTokens[mineResource || fleet.mineResource];
 
@@ -1780,7 +1782,7 @@
         }
 
         const duration = calculateMiningDuration(mineAmount, miningRate, resourceHardness, systemRichness);
-        
+
         fleet.origin.supplies[mineResource.publicKey.toString()] = mineAmount;
         fleet.destination.supplies[ResourceTokens.ammo.publicKey.toString()] = Math.floor(duration * ammoConsumptionRate);
         fleet.destination.supplies[ResourceTokens.food.publicKey.toString()] = Math.floor(duration * foodConsumptionRate);
@@ -1812,7 +1814,7 @@
             await handleMovement(fleet, { coords: fleet.origin.coords });
             await handleResupply(fleet, true);
         }
-        
+
         return { fleet, skip: false };
     }
 
@@ -1844,7 +1846,7 @@
     }
 
 /**
- * The `handleScan` function is responsible for scanning and determining the next action based on the scan 
+ * The `handleScan` function is responsible for scanning and determining the next action based on the scan
  * results and fleet conditions.
  * @param fleet - The `fleet` parameter represents an object that contains information about a fleet.
  * @param options - The `options` is an object that contains the following optional parameters:
@@ -1872,7 +1874,7 @@
 
         const currentToolkit = fleetCurrentCargo.value.find(item => item.pubkey.toString() === repairKitToken.toString());
         const currentToolkitCount = currentToolkit.account.data.parsed.info.delegatedAmount.uiAmount || 0;
-        
+
         if ((cargoStats.cargoCapacity - currentCargoCount) < (cargoHoldBuffer || 100)) {
             await handleReturnTrip(fleet);
             return;
@@ -1891,10 +1893,10 @@
             const changesTool = getBalanceChange(scanResult, ResourceTokens.toolkit.publicKey.toString());
             let scanCondition = scanResult.meta.logMessages ? scanResult.meta.logMessages.find(item => item.startsWith("Program log: SDU probability:")) : null;
             scanCondition = scanCondition ? (Number(scanCondition.split(' ').pop())*100).toFixed(4) : 0;
-            
+
             console.log(`[${fleet.label}] ${new Date(Date.now()).toISOString()}`);
             console.log(`[${fleet.label}] ${scanCondition}`);
-            
+
             if (changesSDU.postBalance != changesSDU.preBalance) {
                 console.log(`[${fleet.label}] FOUND: ${changesSDU.postBalance - changesSDU.preBalance}`);
                 fleet.scanSkipCnt = 0;
@@ -1902,7 +1904,7 @@
             } else {
                 console.log(`[${fleet.label}] Whomp whomp`);
             }
-            
+
             if (scanCondition < fleet.scanMin) {
                 if (fleet.scanSectorStart == 0) fleet.scanSectorStart = Date.now();
                 if (Date.now() - fleet.scanSectorStart >= (scanSectorAge || 120) * 1000) {
@@ -1913,9 +1915,9 @@
                     }
                 }
             }
-            
+
             console.log(`[${fleet.label}] Tools Remaining: ${changesTool.postBalance}`);
-            
+
             if (fleet.scanSkipCnt < 4) {
                 fleet.state = `Scanning [${scanCondition}%]`;
                 fleet.scanEnd = Date.now() + (scanCooldown * 1000);
@@ -1932,10 +1934,10 @@
     }
 
     async function handleMining(fleetObject) {
-        const {  
-            duration: miningDuration, 
-            starbase, 
-            starbasePlayer, 
+        const {
+            duration: miningDuration,
+            starbase,
+            starbasePlayer,
             planet
         } = prepareToMine(fleetObject, options);
         const { fleet, skip } = await prepareForTrip(fleetObject);
@@ -1958,7 +1960,7 @@
 
         const duration = Math.min(miningDuration, maxAmmoDuration, maxFoodDuration);
         fleet.state = 'Mine [' + new Date(Date.now() + (duration * 1000)).toLocaleTimeString() + ']';
-        
+
         await wait(duration);
         await execStopMining(fleet);
         await handleReturnTrip(fleet);
@@ -1982,7 +1984,7 @@
         const options = document.createElement('tr');
         options.id = `${fleetParsedData.publicKey}-scan-options`
         options.style.display = 'table-row';
-       
+
         const paddingTd = document.createElement('td');
         options.appendChild(paddingTd);
 
@@ -2001,7 +2003,7 @@
         const minimumProbabilityDiv = document.createElement('div');
         minimumProbabilityDiv.appendChild(minimumProbability);
         minimumProbabilityDiv.appendChild(minimumProbability);
-        
+
         minimumProbabilityTd.setAttribute('colspan', '3');
         minimumProbabilityTd.appendChild(minimumProbabilityDiv);
         options.appendChild(minimumProbabilityTd);
@@ -2026,7 +2028,7 @@
 
         return options;
     }
-    
+
     function addMineOptions(fleet) {
         console.log(fleet);
         const mineResource = ResourceTokens.findName(fleet.mineResource);
@@ -2039,7 +2041,7 @@
 
         const td = document.createElement('td');
         td.setAttribute('colspan', '7');
-        
+
         const label = document.createElement('span');
         label.innerHTML = 'Resource to mine:';
         td.appendChild(label);
@@ -2072,7 +2074,7 @@
         supplies.forEach(supply => {
             const [ transportResource, amount ] = supply;
             const div = document.createElement('div');
-          
+
             const transportAmount = document.createElement('input');
             transportAmount.setAttribute('type', 'text');
             transportAmount.id = `${id}-${transportResource}`;
@@ -2138,18 +2140,18 @@
 
         originContainer = createTransportOptions(originContainer, fleet.destination.supplies, fleet.account.stats.cargoStats.cargoCapacity);
         td.appendChild(originContainer);
-        
+
         options.appendChild(td);
         return options;
     }
 
     async function addAssistInput(fleet) {
         const fleetPublicKeyString = fleet.publicKey.toString();
-          
+
         const fleetRow = document.createElement('tr');
         fleetRow.classList.add('assist-fleet-row');
         fleetRow.id = `${fleetPublicKeyString}-row`;
-        
+
         // create fleet name
         const fleetLabelTd = document.createElement('td');
         const fleetLabel = document.createElement('span');
@@ -2231,7 +2233,7 @@
         const paddingRow = document.createElement('tr');
         paddingRow.classList.add('assist-pad-row');
         paddingRow.style.display = 'table-row';
-        
+
         paddingRow.appendChild(padRowTd);
         fleetContainer.appendChild(paddingRow);
 
@@ -2300,7 +2302,7 @@
                 coords: row.children[2].firstChild.value,
                 supplies: {}
             }
-            
+
             const origin = {
                 coords: row.children[3].firstChild.value,
                 supplies: {}
@@ -2461,6 +2463,7 @@
         }
     }
 
+    // TODO - need to test to see if it works with the new playerProfile object
     async function assistProfileToggle(profiles) {
         return new Promise(async resolve => {
             let targetElem = document.querySelector('#profileModal');
@@ -2468,7 +2471,7 @@
                 targetElem.style.display = 'block';
                 let contentElem = document.querySelector('#profileDiv');
                 let transportOptStr = '';
-                profiles.forEach( function(profile) {transportOptStr += '<option value="' + profile.profile + '">' + profile.name + '  [' + profile.profile + ']</option>';});
+                profiles.forEach( function(profile) {transportOptStr += '<option value="' + profile.pubkey.toString() + '">' + profile.name + '  [' + profile.pubkey.toString() + ']</option>';});
                 let profileSelect = document.createElement('select');
                 profileSelect.size = profiles.length + 1;
                 profileSelect.style.padding = '2px 10px';
@@ -2717,7 +2720,7 @@
             // status modal buttons
             let assistStatusClose = document.querySelector('#assistStatus .assist-modal-close');
             assistStatusClose.addEventListener('click', function(e) {assistStatusToggle();});
-            
+
             // surveillance modal buttons
             let assistSurveillanceFleetBtn = document.querySelector('#checkFleetBtn');
             assistSurveillanceFleetBtn.addEventListener('click', function(e) {getFleetCountAtCoords();});
@@ -2795,7 +2798,7 @@
             this.run();
           });
           this.running.push({fleet: fleet.account.publicKey, promise });
-        }  
+        }
     }
 
     await initUser();
