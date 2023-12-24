@@ -632,74 +632,83 @@
 			if(fleet) fleet.busy = true;
 
 			let tx = new solanaWeb3.Transaction();
-			//cLog(ix);
+			tx.feePayer = userPublicKey;
+			tx.signer = userPublicKey;
+
 			if (ix.constructor === Array) {
 					ix.forEach(item => tx.add(item.instruction))
 			} else {
 					tx.add(ix.instruction);
 			}
-			let { blockhash, lastValidBlockHeight } = await solanaConnection.getLatestBlockhash('confirmed');
-			tx.recentBlockhash = blockhash;
-			tx.lastValidBlockHeight = lastValidBlockHeight;
-			tx.feePayer = userPublicKey;
-			tx.signer = userPublicKey;
-			let txSigned = null;
-			if (typeof solflare === 'undefined') {
-				txSigned = await solana.signAllTransactions([tx]);
-			} else {
-				txSigned = await solflare.signAllTransactions([tx]);
-			}
-			let txSerialized = txSigned[0].serialize();
-			let opStart = Date.now();
-			let txHash, confirmation;
 
-			if (ludicrousMode) {
-				console.log(`${FleetTimeStamp(fleetName)} <${opName}> SEND`);
-				({ txHash, confirmation} = await sendLudicrousTransaction(txSerialized, lastValidBlockHeight, solanaConnection, fleetName));
-			} else {
-				txHash = await solanaConnection.sendRawTransaction(txSerialized, {skipPreflight: true, preflightCommitment: 'confirmed'});
-				console.log(`${FleetTimeStamp(fleetName)} <${opName}> SENT ${Date.now() - opStart}ms`);
-				//cLog('---TXHASH---', txHash);
-				confirmation = await waitForTxConfirmation(txHash, blockhash, lastValidBlockHeight, fleetName);
-			}			
-
-			console.log(`${FleetTimeStamp(fleetName)} <${opName}> ${confirmation.err ? 'CONFIRM-BAD' : 'CONFIRM-GOOD'} ${Date.now() - opStart}ms`);
-			cLog(`${FleetTimeStamp(fleetName)} Pulling txResult ...`);
-			let txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
-			cLog(`${FleetTimeStamp(fleetName)} Got`, txResult);
-
-			//Bad confirmation check
-			//cLog(`${FleetTimeStamp(fleetName)} Bad confirmation check`);
-			if((confirmation.name == 'LudicrousTimoutError') || (!txResult && confirmation.name == 'TransactionExpiredBlockheightExceededError')) {
-				console.log(`${FleetTimeStamp(fleetName)} <${opName}> RETRY`);
-				txResult = await txSignAndSend(ix, fleet, opName);
-			}
-
-			//Good confirmation check - fetch fully confirmed tx
-			//cLog(`${FleetTimeStamp(fleetName)} Good confirmation check`);
-			if (!confirmation.name) {
-				if(!txResult) cLog(`${FleetTimeStamp(fleetName)} RE-FETCHING TXRESULT`);
-				let tryCount = 0;
-				while (!txResult) {
-					if(tryCount > 9) break;
-					await wait(2000);
-					txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
-					tryCount++;
+			let confirmed = false;
+			while (!confirmed) {
+				let { blockhash, lastValidBlockHeight } = await solanaConnection.getLatestBlockhash('confirmed');
+				tx.recentBlockhash = blockhash;
+				tx.lastValidBlockHeight = lastValidBlockHeight;
+				let txSigned = null;
+				if (typeof solflare === 'undefined') {
+					txSigned = await solana.signAllTransactions([tx]);
+				} else {
+					txSigned = await solflare.signAllTransactions([tx]);
 				}
+				let txSerialized = txSigned[0].serialize();
+				let opStart = Date.now();
+				let txHash, confirmation;
 
-				//Something went wrong, start again
-				cLog(`${FleetTimeStamp(fleetName)} Final txResult check`, txResult);
-				if(!txResult) {
+				if (ludicrousMode) {
+					console.log(`${FleetTimeStamp(fleetName)} <${opName}> SEND`);
+					({ txHash, confirmation} = await sendLudicrousTransaction(txSerialized, lastValidBlockHeight, solanaConnection, fleetName));
+				} else {
+					txHash = await solanaConnection.sendRawTransaction(txSerialized, {skipPreflight: true, preflightCommitment: 'confirmed'});
+					console.log(`${FleetTimeStamp(fleetName)} <${opName}> SENT ${Date.now() - opStart}ms`);
+					//cLog('---TXHASH---', txHash);
+					confirmation = await waitForTxConfirmation(txHash, blockhash, lastValidBlockHeight, fleetName);
+				}			
+
+				console.log(`${FleetTimeStamp(fleetName)} <${opName}> ${confirmation.err ? 'CONFIRM-BAD' : 'CONFIRM-GOOD'} ${Date.now() - opStart}ms`);
+				cLog(`${FleetTimeStamp(fleetName)} Pulling txResult ...`);
+				let txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
+				cLog(`${FleetTimeStamp(fleetName)} Got`, txResult);
+
+				//Bad confirmation check
+				//cLog(`${FleetTimeStamp(fleetName)} Bad confirmation check`);
+				if((confirmation.name == 'LudicrousTimoutError') || (!txResult && confirmation.name == 'TransactionExpiredBlockheightExceededError')) {
 					console.log(`${FleetTimeStamp(fleetName)} <${opName}> RETRY`);
-					txResult = await txSignAndSend(ix, fleet, opName);
+					continue;  //Restart while loop to try again
+					//txResult = await txSignAndSend(ix, fleet, opName);
 				}
+
+				//Good confirmation check - fetch fully confirmed tx
+				//cLog(`${FleetTimeStamp(fleetName)} Good confirmation check`);
+				if (!confirmation.name) {
+					if(!txResult) cLog(`${FleetTimeStamp(fleetName)} RE-FETCHING TXRESULT`);
+					let tryCount = 0;
+					while (!txResult) {
+						if(tryCount > 9) break;
+						await wait(2000);
+						txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
+						tryCount++;
+					}
+
+					//Something went wrong, start again
+					cLog(`${FleetTimeStamp(fleetName)} Final txResult check`, txResult);
+					if(!txResult) {
+						console.log(`${FleetTimeStamp(fleetName)} <${opName}> RETRY`);
+						continue;  //Restart while loop to try again
+						//txResult = await txSignAndSend(ix, fleet, opName);
+					}
+				}
+
+				//console.log('txResult: ', txResult);
+				if(fleet) fleet.busy = false;
+				confirmed = true;
+
+				cLog(`${FleetTimeStamp(fleetName)} Resolving with`, txResult);
+				resolve(txResult);
+
+				return;
 			}
-
-			//console.log('txResult: ', txResult);
-			if(fleet) fleet.busy = false;
-
-			cLog(`${FleetTimeStamp(fleetName)} Resolving with`, txResult);
-			resolve(txResult);
 		});
 	}
 
