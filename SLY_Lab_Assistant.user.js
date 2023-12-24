@@ -22,10 +22,10 @@
 	let initComplete = false;
 	let extraFuelToDropOffAtTarget = 0;
 	let transportStopOnError = false;
-	let debugLogging = false;
+	let debugLogging = true;
 
-	function cLog(toLog) {
-		if(debugLogging) console.log(toLog);
+	function cLog(...args) {
+		if(debugLogging) console.log(...args);
 	}
 
 	//const solanaConnection = new solanaWeb3.Connection('https://solana-api.syndica.io/access-token/WPoEqWQ2auQQY1zHRNGJyRBkvfOLqw58FqYucdYtmy8q9Z84MBWwqtfVf8jKhcFh/rpc', 'confirmed');
@@ -668,15 +668,15 @@
 			let txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
 			cLog(`${FleetTimeStamp(fleetName)} Got`, txResult);
 
-			//Bad confirmation
-			cLog(`${FleetTimeStamp(fleetName)} Bad confirmation check`);
+			//Bad confirmation check
+			//cLog(`${FleetTimeStamp(fleetName)} Bad confirmation check`);
 			if((confirmation.name == 'LudicrousTimoutError') || (!txResult && confirmation.name == 'TransactionExpiredBlockheightExceededError')) {
 				console.log(`${FleetTimeStamp(fleetName)} <${opName}> RETRY`);
 				txResult = await txSignAndSend(ix, fleet, opName);
 			}
 
-			//Good confirmation - fetch fully confirmed tx
-			cLog(`${FleetTimeStamp(fleetName)} Good confirmation check`);
+			//Good confirmation check - fetch fully confirmed tx
+			//cLog(`${FleetTimeStamp(fleetName)} Good confirmation check`);
 			if (!confirmation.name) {
 				if(!txResult) cLog(`${FleetTimeStamp(fleetName)} RE-FETCHING TXRESULT`);
 				let tryCount = 0;
@@ -2581,15 +2581,13 @@
 
 			let distToTarget = calculateMovementDistance(fleetCoords, [destX,destY]);
 			let distReturn = calculateMovementDistance([destX,destY], [starbaseX,starbaseY]);
-			let fuelNeeded = userFleets[i].planetExitFuelAmount;
 			let warpCost = calculateWarpFuelBurn(userFleets[i], distToTarget) + calculateWarpFuelBurn(userFleets[i], distReturn) + userFleets[i].planetExitFuelAmount;
 			let halfWarpCost = calculateWarpFuelBurn(userFleets[i], distToTarget) + calculateSubwarpFuelBurn(userFleets[i], distReturn) + userFleets[i].planetExitFuelAmount;
 			let subwarpCost = calculateSubwarpFuelBurn(userFleets[i], distToTarget) + calculateSubwarpFuelBurn(userFleets[i], distReturn) + userFleets[i].planetExitFuelAmount;
+			let fuelNeeded = userFleets[i].planetExitFuelAmount;
 			if (userFleets[i].moveType == 'warp') {
-					fuelNeeded = userFleets[i].fuelCapacity < warpCost ? userFleets[i].fuelCapacity < halfWarpCost ? subwarpCost : halfWarpCost : warpCost;
-			} else {
-					fuelNeeded = subwarpCost;
-			}
+					fuelNeeded += userFleets[i].fuelCapacity < warpCost ? userFleets[i].fuelCapacity < halfWarpCost ? subwarpCost : halfWarpCost : warpCost;
+			} else fuelNeeded += subwarpCost;
 
 			async function handleMineMovement() {
 					if (userFleets[i].moveTarget && userFleets[i].moveTarget !== '') {
@@ -2625,7 +2623,7 @@
 					if (needSupplies) {
 							console.log(`${FleetTimeStamp(userFleets[i].label)} Need resupply`);
 
-							//Recalulate requirements
+							//Recalulate requirements based on total cargo cap
 							miningDuration = calculateMiningDuration(userFleets[i].cargoCapacity, userFleets[i].miningRate, resourceHardness, systemRichness);
 							foodForDuration = Math.ceil(miningDuration * (userFleets[i].foodConsumptionRate / 10000));
 							ammoForDuration = Math.ceil(miningDuration * (userFleets[i].ammoConsumptionRate / 10000));
@@ -2646,7 +2644,8 @@
 											await wait(2000);
 									}
 
-									if (currentFuelCnt < userFleets[i].fuelCapacity) {
+									//if (currentFuelCnt < userFleets[i].fuelCapacity) {
+									if (currentFuelCnt < fuelNeeded) {
 											console.log(`${FleetTimeStamp(userFleets[i].label)} Loading fuel`);
 											updateFleetState(userFleets[i], `Loading fuel`);
 											let fuelResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, fleetFuelAcct, sageGameAcct.account.mints.fuel.toString(), fuelCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].fuelCapacity - currentFuelCnt);
@@ -2655,7 +2654,7 @@
 													errorResource.push('fuel');
 											}
 											await wait(2000);
-									} else { console.log(`${FleetTimeStamp(userFleets[i].label)} Fuel loading skipped: ${currentFuelCnt} / ${userFleets[i].fuelCapacity}`); }
+									} else { console.log(`${FleetTimeStamp(userFleets[i].label)} Fuel loading skipped: ${currentFuelCnt} / ${fuelNeeded}`); }
 
 									if (currentAmmoCnt < ammoForDuration) {
 											console.log(`${FleetTimeStamp(userFleets[i].label)} Loading ammo`);
