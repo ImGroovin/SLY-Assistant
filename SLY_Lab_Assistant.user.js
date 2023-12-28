@@ -708,14 +708,14 @@
 					confirmation = await waitForTxConfirmation(txHash, blockhash, lastValidBlockHeight, fleetName);
 				}			
 
-				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> ${confirmation.err ? 'CONFIRM-BAD' : 'CONFIRM-GOOD'} ${Date.now() - microOpStart}ms`);
+				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> ${confirmation && confirmation.err ? 'CONFIRM-BAD' : 'CONFIRM-GOOD'} ${Date.now() - microOpStart}ms`);
 				cLog(3, `${FleetTimeStamp(fleetName)} Pulling txResult ...`);
 				let txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
 				cLog(3, `${FleetTimeStamp(fleetName)} Got`, txResult);
 
 				//Bad confirmation check
 				//cLog(3,`${FleetTimeStamp(fleetName)} Bad confirmation check`);
-				if((confirmation.name == 'LudicrousTimoutError') || (!txResult && confirmation.name == 'TransactionExpiredBlockheightExceededError')) {
+				if(!confirmation || (confirmation.name == 'LudicrousTimoutError') || (!txResult && confirmation.name == 'TransactionExpiredBlockheightExceededError')) {
 					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> RETRY`);
 					continue;  //Restart while loop to try again
 					//txResult = await txSignAndSend(ix, fleet, opName);
