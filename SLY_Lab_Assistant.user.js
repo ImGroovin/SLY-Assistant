@@ -22,7 +22,7 @@
 	let debugLogLevel = 1; //How much console logging you want to see (higher number = more, 0 = none)
 	let extraFuelToDropOffAtTarget = 0; //How much excess fuel to leave at target during transport assignments
 	let transportStopOnError = true; //Should transport fleet stop completely if there's an error (example: not enough resource/fuel/etc.)
-	let ludicrousMode = true; //Rapid and persistant retrying of transactions until success
+	let ludicrousMode = false; //Rapid and persistant retrying of transactions until success
 	let graceBlockWindow = 5; //Advanced rapid retry option (only change this if you know what you're doing!)
 
 	function cLog(level, ...args) {
@@ -711,7 +711,7 @@
 				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> ${confirmation && confirmation.err ? 'CONFIRM-BAD' : 'CONFIRM-GOOD'} ${Date.now() - microOpStart}ms`);
 				cLog(3, `${FleetTimeStamp(fleetName)} Pulling txResult ...`);
 				let txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
-				cLog(3, `${FleetTimeStamp(fleetName)} Got`, txResult);
+				cLog(3, `${FleetTimeStamp(fleetName)} Got`, txResult, confirmation);
 
 				//Bad confirmation check
 				//cLog(3,`${FleetTimeStamp(fleetName)} Bad confirmation check`);
