@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant Modded
 // @namespace    http://tampermonkey.net/
-// @version      0.4.0m
+// @version      0.4.1m
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
 // @match        https://*.labs.staratlas.com/
@@ -46,19 +46,19 @@
 									try {
 											result = await origMethod.apply(target, args);
 									} catch (error1) {
-											console.log('CONNECTION ERROR: ', error1);
+											cLog(2, 'CONNECTION ERROR: ', error1);
 											if ((error1 instanceof TypeError && error1.message === 'Failed to fetch') || (error1 instanceof Error && Number(error1.message.slice(0,3)) > 299)) {
 													let success = false;
 													let rpcIdx = 1;
 													while (!success && rpcIdx < rpcEndpoints.length) {
-															console.log('rpcIdx: ', rpcIdx, ', success: ', success);
+														cLog(2, 'rpcIdx: ', rpcIdx, ', success: ', success);
 															const newConnection = new solanaWeb3.Connection(rpcEndpoints[rpcIdx], 'confirmed');
 															try {
 																	result = await origMethod.apply(newConnection, args);
 																	success = true;
-																	console.log('NEW: ', result);
+																	cLog(2, 'NEW: ', result);
 															} catch (error2) {
-																	console.log('INNER ERROR: ', error2);
+																	cLog(2, 'INNER ERROR: ', error2);
 																	if (!(error2 instanceof TypeError && error2.message === 'Failed to fetch') && !(error2 instanceof Error && Number(error2.message.slice(0,3)) > 299)) {
 																			return error2;
 																	}
