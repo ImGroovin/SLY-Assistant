@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant Modded
 // @namespace    http://tampermonkey.net/
-// @version      0.4.1m
+// @version      0.4.1.1m
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
 // @match        https://*.labs.staratlas.com/
@@ -24,18 +24,16 @@
 	let transportStopOnError = true; //Should transport fleet stop completely if there's an error (example: not enough resource/fuel/etc.)
 	let ludicrousMode = false; //Rapid and persistant retrying of transactions until success
 	let graceBlockWindow = 5; //Advanced rapid retry option (only change this if you know what you're doing!)
-
-	function cLog(level, ...args) {
-		if(level <= debugLogLevel) console.log(...args);
-	}
-
-	let enableAssistant = false;
-	let initComplete = false;
-
+	//List of RPCs to use - top = primary, the rest are tried in the event of an error
 	let rpcEndpoints = [
 		'https://solana-api.syndica.io/access-token/WPoEqWQ2auQQY1zHRNGJyRBkvfOLqw58FqYucdYtmy8q9Z84MBWwqtfVf8jKhcFh/rpc',
 		'https://rpc.hellomoon.io/cfd5910f-fb7d-4489-9b32-f97193eceefd',
 	];
+
+	let enableAssistant = false;
+	let initComplete = false;
+
+	function cLog(level, ...args) {	if(level <= debugLogLevel) console.log(...args); }
 
 	const connectionProxy = {
 			get(target, key, receiver) {
@@ -212,6 +210,21 @@
 			});
 	}
 
+	async function getAccountInfo(fleetName, reason, params) {
+		//This call is crucial to smoothe operation
+		//Retry a few times before concluding
+		let result = null;
+		let tries = 0;
+		while(!result && tries < 3) {
+			tries++;
+			result = await solanaConnection.getAccountInfo(params);
+			if(!result)	await wait(500);
+		}
+
+		cLog(3, `${FleetTimeStamp(fleetName)} get ${reason} x${tries}`);
+		return result;
+	}
+
 	function getFleetState(fleetAcctInfo) {
 			let remainingData = fleetAcctInfo.data.subarray(414);
 			let fleetState = 'Unknown';
@@ -314,7 +327,8 @@
 					cLog(1, 'initUser: userFleetAccts', userFleetAccts);
 
 					for (let fleet of userFleetAccts) {
-							let fleetLabel = new TextDecoder("utf-8").decode(new Uint8Array(fleet.account.fleetLabel));
+							let fleetLabel = (new TextDecoder("utf-8").decode(new Uint8Array(fleet.account.fleetLabel))).replace(/\0/g, '');
+
 							let [fleetRepairKitToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
 									[
 											fleet.account.cargoHold.toBuffer(),
@@ -349,18 +363,18 @@
 							let fleetStarbase = fleetParsedData && fleetParsedData.starbase ? fleetParsedData.starbase : '';
 							let fleetMoveType = fleetParsedData && fleetParsedData.moveType ? fleetParsedData.moveType : 'warp';
 							let fleetMoveTarget = fleetParsedData && fleetParsedData.moveTarget ? fleetParsedData.moveTarget : '';
-							await solanaConnection.getAccountInfo(fleetSduToken) || await createProgramDerivedAccount(fleetSduToken, fleet.account.cargoHold, new solanaWeb3.PublicKey('SDUsgfSZaDhhZ76U3ZgvtFiXsfnHbf2VrzYxjBZ5YbM'), fleet);
-							await solanaConnection.getAccountInfo(fleetRepairKitToken) || await createProgramDerivedAccount(fleetRepairKitToken, fleet.account.cargoHold, new solanaWeb3.PublicKey('tooLsNYLiVqzg8o4m3L2Uetbn62mvMWRqkog6PQeYKL'), fleet);
-							await solanaConnection.getAccountInfo(fleetFuelToken) || await createProgramDerivedAccount(fleetFuelToken, fleet.account.fuelTank, new solanaWeb3.PublicKey('fueL3hBZjLLLJHiFH9cqZoozTG3XQZ53diwFPwbzNim'), fleet);
+							await getAccountInfo(fleetLabel, 'fleet SDU token', fleetSduToken) || await createProgramDerivedAccount(fleetSduToken, fleet.account.cargoHold, new solanaWeb3.PublicKey('SDUsgfSZaDhhZ76U3ZgvtFiXsfnHbf2VrzYxjBZ5YbM'), fleet);
+							await getAccountInfo(fleetLabel, 'fleet Repair Kit token', fleetRepairKitToken) || await createProgramDerivedAccount(fleetRepairKitToken, fleet.account.cargoHold, new solanaWeb3.PublicKey('tooLsNYLiVqzg8o4m3L2Uetbn62mvMWRqkog6PQeYKL'), fleet);
+							await getAccountInfo(fleetLabel, 'fleet Fuel token', fleetFuelToken) || await createProgramDerivedAccount(fleetFuelToken, fleet.account.fuelTank, new solanaWeb3.PublicKey('fueL3hBZjLLLJHiFH9cqZoozTG3XQZ53diwFPwbzNim'), fleet);
 							let fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(fleet.account.cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 							let currentToolCnt = fleetCurrentCargo.value.find(item => item.pubkey.toString() === fleetRepairKitToken.toString());
 							let fleetCurrentFuel = await solanaConnection.getParsedTokenAccountsByOwner(fleet.account.fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 							let currentFuelCnt = fleetCurrentFuel.value.find(item => item.pubkey.toString() === fleetFuelToken.toString());
-							let fleetAcctInfo = await solanaConnection.getAccountInfo(fleet.publicKey);
+							let fleetAcctInfo = await getAccountInfo(fleetLabel, 'Full Account Info', fleet.publicKey);
 							let [fleetState, extra] = getFleetState(fleetAcctInfo);
 							let fleetCoords = fleetState == 'Idle' && extra ? extra : [];
 							let fleetScanBlockIdx = 0;
-							userFleets.push({publicKey: fleet.publicKey, label: fleetLabel.replace(/\0/g, ''), state: fleetState, moveTarget: fleetMoveTarget, startingCoords: fleetCoords, cargoHold: fleet.account.cargoHold, fuelTank: fleet.account.fuelTank, ammoBank: fleet.account.ammoBank, repairKitToken: fleetRepairKitToken, sduToken: fleetSduToken, fuelToken: fleetFuelToken, warpFuelConsumptionRate: fleet.account.stats.movementStats.warpFuelConsumptionRate, warpSpeed: fleet.account.stats.movementStats.warpSpeed, maxWarpDistance: fleet.account.stats.movementStats.maxWarpDistance, subwarpFuelConsumptionRate: fleet.account.stats.movementStats.subwarpFuelConsumptionRate, subwarpSpeed: fleet.account.stats.movementStats.subwarpSpeed, cargoCapacity: fleet.account.stats.cargoStats.cargoCapacity, fuelCapacity: fleet.account.stats.cargoStats.fuelCapacity, ammoCapacity: fleet.account.stats.cargoStats.ammoCapacity, scanCost: fleet.account.stats.miscStats.scanRepairKitAmount, scanCooldown: fleet.account.stats.miscStats.scanCoolDown, warpCooldown: fleet.account.stats.movementStats.warpCoolDown, miningRate: fleet.account.stats.cargoStats.miningRate, foodConsumptionRate: fleet.account.stats.cargoStats.foodConsumptionRate, ammoConsumptionRate: fleet.account.stats.cargoStats.ammoConsumptionRate, planetExitFuelAmount: fleet.account.stats.movementStats.planetExitFuelAmount, destCoord: fleetDest, starbaseCoord: fleetStarbase, scanBlock: fleetScanBlock, scanBlockIdx: fleetScanBlockIdx, scanEnd: 0, scanSkipCnt: 0, scanSectorStart: 0, scanMin: fleetScanMin, scanMove: fleetScanMove, toolCnt: currentToolCnt.account.data.parsed.info.tokenAmount.uiAmount, sduCnt: 0, fuelCnt: currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount, moveType: fleetMoveType, mineResource: fleetMineResource, minePlanet: null});
+							userFleets.push({publicKey: fleet.publicKey, label: fleetLabel, state: fleetState, moveTarget: fleetMoveTarget, startingCoords: fleetCoords, cargoHold: fleet.account.cargoHold, fuelTank: fleet.account.fuelTank, ammoBank: fleet.account.ammoBank, repairKitToken: fleetRepairKitToken, sduToken: fleetSduToken, fuelToken: fleetFuelToken, warpFuelConsumptionRate: fleet.account.stats.movementStats.warpFuelConsumptionRate, warpSpeed: fleet.account.stats.movementStats.warpSpeed, maxWarpDistance: fleet.account.stats.movementStats.maxWarpDistance, subwarpFuelConsumptionRate: fleet.account.stats.movementStats.subwarpFuelConsumptionRate, subwarpSpeed: fleet.account.stats.movementStats.subwarpSpeed, cargoCapacity: fleet.account.stats.cargoStats.cargoCapacity, fuelCapacity: fleet.account.stats.cargoStats.fuelCapacity, ammoCapacity: fleet.account.stats.cargoStats.ammoCapacity, scanCost: fleet.account.stats.miscStats.scanRepairKitAmount, scanCooldown: fleet.account.stats.miscStats.scanCoolDown, warpCooldown: fleet.account.stats.movementStats.warpCoolDown, miningRate: fleet.account.stats.cargoStats.miningRate, foodConsumptionRate: fleet.account.stats.cargoStats.foodConsumptionRate, ammoConsumptionRate: fleet.account.stats.cargoStats.ammoConsumptionRate, planetExitFuelAmount: fleet.account.stats.movementStats.planetExitFuelAmount, destCoord: fleetDest, starbaseCoord: fleetStarbase, scanBlock: fleetScanBlock, scanBlockIdx: fleetScanBlockIdx, scanEnd: 0, scanSkipCnt: 0, scanSectorStart: 0, scanMin: fleetScanMin, scanMove: fleetScanMove, toolCnt: currentToolCnt.account.data.parsed.info.tokenAmount.uiAmount, sduCnt: 0, fuelCnt: currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount, moveType: fleetMoveType, mineResource: fleetMineResource, minePlanet: null});
 					}
 					userFleets.sort(function (a, b) {
 							return a.label.toUpperCase().localeCompare(b.label.toUpperCase());
@@ -664,8 +678,23 @@
 			return Promise.any([http]).then((result) => {
 				return result;
 			}, (error) => { 
-				return { txHash, confirmation: { name: 'LudicrousTimoutError', err: error } } 
+				cLog(2,`${FleetTimeStamp(fleetName)} LudicrousTimoutError`, error);
+				return { txHash, confirmation: null };
+				//return { txHash, confirmation: { name: 'LudicrousTimoutError', err: error } } 
 			});
+	}
+
+	async function getTxResult(txHash) {
+		let txResult = null;
+		let tryCount = 0;
+
+		while (!txResult && tryCount < 10) {
+			txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
+			tryCount++;
+			await wait(2000);
+		}
+
+		return { txResult, tryCount };
 	}
 
 	function txSignAndSend(ix, fleet, opName) {
@@ -709,47 +738,32 @@
 					confirmation = await waitForTxConfirmation(txHash, blockhash, lastValidBlockHeight, fleetName);
 				}			
 
-				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> ${confirmation && confirmation.err ? 'CONFIRM-BAD' : 'CONFIRM-GOOD'} ${Date.now() - microOpStart}ms`);
-				cLog(3, `${FleetTimeStamp(fleetName)} Pulling txResult ...`);
-				let txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
-				cLog(3, `${FleetTimeStamp(fleetName)} Got`, txResult, confirmation);
-
-				//Bad confirmation check
-				//cLog(3,`${FleetTimeStamp(fleetName)} Bad confirmation check`);
-				if(!confirmation || (confirmation.name == 'LudicrousTimoutError') || (!txResult && confirmation.name == 'TransactionExpiredBlockheightExceededError')) {
-					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> RETRY`);
+				//Confirmation check
+				const confirmationTimeStr = `${Date.now() - microOpStart}ms`;
+				if(!confirmation) {
+					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM❌ ${confirmationTimeStr}`);
+					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> Retrying`);
 					continue;  //Restart while loop to try again
-					//txResult = await txSignAndSend(ix, fleet, opName);
 				}
 
-				//Good confirmation check - fetch fully confirmed tx
-				//cLog(3,`${FleetTimeStamp(fleetName)} Good confirmation check`);
-				if (!confirmation.name) {
-					if(!txResult) cLog(3,`${FleetTimeStamp(fleetName)} RE-FETCHING TXRESULT`);
-					let tryCount = 0;
-					while (!txResult) {
-						if(tryCount > 9) break;
-						await wait(2000);
-						txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
-						tryCount++;
-					}
+				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM✅ ${confirmationTimeStr}`);
 
-					//Something went wrong, start again
-					//cLog(3,`${FleetTimeStamp(fleetName)} Final txResult check`, txResult);
-					if(!txResult) {
-						cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> RETRY`);
-						continue;  //Restart while loop to try again
-						//txResult = await txSignAndSend(ix, fleet, opName);
-					}
+				//Tx Result check
+				let { txResult, tryCount } = await getTxResult(txHash);
+				cLog(3, `${FleetTimeStamp(fleetName)} Got txResult in ${tryCount} tries`, txResult);
+
+				//Retry if something went wrong
+				if(!txResult) {
+					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> BAD RESULT - Retrying`);
+					continue;  //Restart loop
 				}
 
-				//cLog(1,'txResult: ', txResult);
 				if(fleet) fleet.busy = false;
 				confirmed = true;
 
 				const fullMsTaken = Date.now() - macroOpStart;
 				const secondsTaken = Math.round(fullMsTaken / 1000);
-				cLog(3,`${FleetTimeStamp(fleetName)} Resolving with`, txResult);
+				//cLog(3,`${FleetTimeStamp(fleetName)} Resolving with`, txResult);
 				cLog(1,`${FleetTimeStamp(fleetName)} <${opName}> Completed in ${secondsTaken}s`);
 				resolve(txResult);
 
@@ -1141,7 +1155,7 @@
 				userFleets[i].starbaseCoord.split(',')[0].trim(),
 				userFleets[i].starbaseCoord.split(',')[1].trim()
 			];
-			handleResupply(i, fleetsCoords);
+			await handleResupply(i, fleetsCoords);
 		}
 
 		cLog(1,`${FleetTimeStamp(userFleets[i].label)} Undock Startup Complete`);
@@ -1182,7 +1196,7 @@
 					let currentResource = fleetCurrentPod.value.find(item => item.account.data.parsed.info.mint === tokenMint);
 					let fleetResourceAcct = currentResource ? currentResource.pubkey : fleetResourceToken;
 					let resourceCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == tokenMint);
-					await solanaConnection.getAccountInfo(starbaseCargoToken) || await createProgramDerivedAccount(starbaseCargoToken, starbasePlayerCargoHold.publicKey, new solanaWeb3.PublicKey(tokenMint), fleet);
+					await getAccountInfo(fleet.label, 'Starbase cargo token', starbaseCargoToken) || await createProgramDerivedAccount(starbaseCargoToken, starbasePlayerCargoHold.publicKey, new solanaWeb3.PublicKey(tokenMint), fleet);
 					let tx = { instruction: await sageProgram.methods.withdrawCargoFromFleet({ amount: new BrowserAnchor.anchor.BN(amount), keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx) }).accountsStrict({
 							gameAccountsFleetAndOwner: {
 									gameFleetAndOwner: {
@@ -1222,7 +1236,7 @@
 
 	async function execCargoFromStarbaseToFleet(fleet, cargoPodTo, tokenTo, tokenMint, cargoType, dockCoords, amount) {
 			return new Promise(async resolve => {
-					await solanaConnection.getAccountInfo(tokenTo) || await createProgramDerivedAccount(tokenTo, cargoPodTo, new solanaWeb3.PublicKey(tokenMint), fleet);
+					await getAccountInfo(fleet.label, 'fleet cargo token', tokenTo) || await createProgramDerivedAccount(tokenTo, cargoPodTo, new solanaWeb3.PublicKey(tokenMint), fleet);
 					let starbaseX = dockCoords.split(',')[0].trim();
 					let starbaseY = dockCoords.split(',')[1].trim();
 					let starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
@@ -1263,7 +1277,7 @@
 							],
 							new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
 					);
-					await solanaConnection.getAccountInfo(starbaseCargoToken) || await createProgramDerivedAccount(starbaseCargoToken, starbasePlayerCargoHold.publicKey, new solanaWeb3.PublicKey(tokenMint), fleet);
+					await getAccountInfo(fleet.label, 'Starbase cargo token', starbaseCargoToken) || await createProgramDerivedAccount(starbaseCargoToken, starbasePlayerCargoHold.publicKey, new solanaWeb3.PublicKey(tokenMint), fleet);
 					let tx = { instruction: await sageProgram.methods.depositCargoToFleet({ amount: new BrowserAnchor.anchor.BN(amount), keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx) }).accountsStrict({
 							gameAccountsFleetAndOwner: {
 									gameFleetAndOwner: {
@@ -1326,9 +1340,9 @@
 							],
 							new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
 					);
-					await solanaConnection.getAccountInfo(fleetSduToken) || await createProgramDerivedAccount(fleetSduToken, fleet.cargoHold, new solanaWeb3.PublicKey('SDUsgfSZaDhhZ76U3ZgvtFiXsfnHbf2VrzYxjBZ5YbM'), fleet);
-					await solanaConnection.getAccountInfo(fleetRepairKitToken) || await createProgramDerivedAccount(fleetRepairKitToken, fleet.cargoHold, new solanaWeb3.PublicKey('tooLsNYLiVqzg8o4m3L2Uetbn62mvMWRqkog6PQeYKL'), fleet);
-					await solanaConnection.getAccountInfo(fleetFuelToken) || await createProgramDerivedAccount(fleetFuelToken, fleet.fuelTank, new solanaWeb3.PublicKey('fueL3hBZjLLLJHiFH9cqZoozTG3XQZ53diwFPwbzNim')), fleet;
+					await getAccountInfo(fleet.label, 'fleet SDU token', fleetSduToken) || await createProgramDerivedAccount(fleetSduToken, fleet.cargoHold, new solanaWeb3.PublicKey('SDUsgfSZaDhhZ76U3ZgvtFiXsfnHbf2VrzYxjBZ5YbM'), fleet);
+					await getAccountInfo(fleet.label, 'fleet repair kit token', fleetRepairKitToken) || await createProgramDerivedAccount(fleetRepairKitToken, fleet.cargoHold, new solanaWeb3.PublicKey('tooLsNYLiVqzg8o4m3L2Uetbn62mvMWRqkog6PQeYKL'), fleet);
+					await getAccountInfo(fleet.label, 'fleet fuel token', fleetFuelToken) || await createProgramDerivedAccount(fleetFuelToken, fleet.fuelTank, new solanaWeb3.PublicKey('fueL3hBZjLLLJHiFH9cqZoozTG3XQZ53diwFPwbzNim')), fleet;
 					var userFleetIndex = userFleets.findIndex(item => {return item.publicKey === fleet.publicKey});
 					userFleets[userFleetIndex].sduToken = fleetSduToken;
 					userFleets[userFleetIndex].repairKitToken = fleetRepairKitToken;
@@ -1365,6 +1379,10 @@
 							resource: sageResource.publicKey,
 							planet: planet.publicKey,
 					}).instruction()}
+
+					cLog(1,`${FleetTimeStamp(fleet.label)} Mining Start ...`);
+					updateFleetState(fleet, 'Mine Starting')
+
 					let txResult = await txSignAndSend(tx, fleet, 'START MINING');
 					resolve(txResult);
 			});
@@ -1418,7 +1436,7 @@
 					let currentAmmo = fleetCurrentAmmoBank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.ammo.toString());
 					let fleetAmmoAcct = currentAmmo ? currentAmmo.pubkey : fleetAmmoToken;
 
-					const accInfo = await solanaConnection.getAccountInfo(fleetResourceToken);
+					const accInfo = await getAccountInfo(fleet.label, 'fleet resource token', fleetResourceToken);
 					cLog(2, `${FleetTimeStamp(fleet.label)} Mining getAccountInfo result`,accInfo);
 					if(!accInfo) {
 						const cpda = await createProgramDerivedAccount(fleetResourceToken, fleet.cargoHold, resourceToken, fleet);
@@ -2271,7 +2289,7 @@
 			return new Promise(async resolve => {
 					let moveTime = 1;
 					let warpCooldownFinished = 0;
-					let fleetAcctInfo = await solanaConnection.getAccountInfo(userFleets[i].publicKey);
+					let fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
 					let [fleetState, extra] = getFleetState(fleetAcctInfo);
 					if (fleetState == 'Idle' && extra.length > 1 && moveDist && moveX !== null && moveX !== '' && moveY != null && moveY !== '') {
 						if (extra[0] !== moveX || extra[1] !== moveY) {
@@ -2329,7 +2347,7 @@
 					}
 
 					await wait(moveTime * 1000);
-					fleetAcctInfo = await solanaConnection.getAccountInfo(userFleets[i].publicKey);
+					fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
 					[fleetState, extra] = getFleetState(fleetAcctInfo);
 					let warpFinish = fleetState == 'MoveWarp' ? extra.warpFinish.toNumber() * 1000 : 0;
 					let subwarpFinish = fleetState == 'MoveSubwarp' ? extra.arrivalTime.toNumber() * 1000 : 0;
@@ -2348,7 +2366,7 @@
 						await execExitSubwarp(userFleets[i]);
 					}
 
-					fleetAcctInfo = await solanaConnection.getAccountInfo(userFleets[i].publicKey);
+					fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
 					[fleetState, extra] = getFleetState(fleetAcctInfo);
 					if (fleetState == 'Idle' && extra) {
 							let targetX = userFleets[i].moveTarget != '' && userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[0].trim() : '';
@@ -2413,9 +2431,12 @@
 											let moveDist = calculateMovementDistance(fleetCoords, destCoords);
 											if (moveDist > 0) {
 													moved = true;
+													const scanEndsIn = Math.max(0, userFleets[i].scanEnd - Date.now());
+													//Clamp the scan end time to the cooldown if it is higher (due to paused scanning)
+													userFleets[i].scanEnd = scanEndsIn > userFleets[i].scanCooldown ? userFleets[i].scanCooldown : scanEndsIn;
 													let warpCooldownFinished = await handleMovement(i, moveDist, destCoords[0], destCoords[1]);
 													cLog(1,`${FleetTimeStamp(userFleets[i].label)} Movement finished`);
-													userFleets[i].scanSectorStart = Date.now()
+													userFleets[i].scanSectorStart = Date.now();
 											} else {
 													cLog(1,`${FleetTimeStamp(userFleets[i].label)} Skipping movement`);
 											}
@@ -2476,7 +2497,7 @@
 							}
 					}
 			} else {
-					handleResupply(i, fleetCoords)
+					await handleResupply(i, fleetCoords)
 			}
 	}
 
@@ -2754,15 +2775,14 @@
 									//userFleets[i].moveTarget = userFleets[i].destCoord;
 							} else {
 									userFleets[i].moveTarget = userFleets[i].starbaseCoord;
-									handleMineMovement();
+									await handleMineMovement();
 							}
 					} else if (fleetCoords[0] == destX && fleetCoords[1] == destY) {
-							cLog(1,`${FleetTimeStamp(userFleets[i].label)} Mining Start`);
-							updateFleetState(userFleets[i], 'Mine [' + TimeToStr(new Date(Date.now()+(miningDuration * 1000))) + ']')
 							await execStartMining(userFleets[i], mineItem, sageResource, planet);
+							updateFleetState(userFleets[i], 'Mine [' + TimeToStr(new Date(Date.now()+(miningDuration * 1000))) + ']')
 					} else {
 							userFleets[i].moveTarget = userFleets[i].destCoord;
-							handleMineMovement();
+							await handleMineMovement();
 					}
 			} else if (userFleets[i].state.slice(0, 4) === 'Mine') {
 					const mineEndGrace = 0;  //Extra time added to ensure mining isn't stopped with leftover materials
@@ -3190,7 +3210,7 @@
 
 				userFleets[i].iterCnt++;
 				cLog(2, `${FleetTimeStamp(userFleets[i].label)} <getAccountInfo> (${userFleets[i].state})`);
-				let fleetAcctInfo = await solanaConnection.getAccountInfo(userFleets[i].publicKey);
+				let fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
 				let [fleetState, extra] = getFleetState(fleetAcctInfo);
 				let fleetCoords = fleetState == 'Idle' ? extra : [];
 				let fleetMining = fleetState == 'MineAsteroid' ? extra : [];
@@ -3201,17 +3221,17 @@
 						await execStartupUndock(i, fleetParsedData.assignment);
 				}
 				else if (userFleets[i].state == 'MoveWarp' || userFleets[i].state == 'MoveSubwarp') {
-					handleMovement(i, null, null, null);
+					await handleMovement(i, null, null, null);
 				}
 				else if (fleetParsedData.assignment == 'Scan' && fleetState == 'Idle') {
 					updateFleetState(userFleets[i], fleetState);
 					startupScanBlockCheck(i, fleetCoords);
 					let destCoords = userFleets[i].scanBlock[userFleets[i].scanBlockIdx];
-					handleScan(i, fleetCoords, destCoords);
+					await handleScan(i, fleetCoords, destCoords);
 				} else if (fleetParsedData.assignment == 'Mine') {
-					handleMining(i, userFleets[i].state, fleetCoords, fleetMining);
+					await handleMining(i, userFleets[i].state, fleetCoords, fleetMining);
 				} else if (fleetParsedData.assignment == 'Transport') {
-					handleTransport(i, userFleets[i].state, fleetCoords, fleetParsedData.resupply);
+					await handleTransport(i, userFleets[i].state, fleetCoords, fleetParsedData.resupply);
 				}
 		} catch (err) {
 				cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR`, err);
@@ -3255,7 +3275,7 @@
 					startAssistant();
 					autoSpanRef.innerHTML = 'Stop';
 					for (let i=0, n=userFleets.length; i < n; i++) {
-							let fleetAcctInfo = await solanaConnection.getAccountInfo(userFleets[i].publicKey);
+							let fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
 							let [fleetState, extra] = getFleetState(fleetAcctInfo);
 							let fleetCoords = fleetState == 'Idle' && extra ? extra : [];
 							userFleets[i].startingCoords = fleetCoords;
