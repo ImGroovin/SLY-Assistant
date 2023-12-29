@@ -33,8 +33,8 @@
 	let initComplete = false;
 
 	let rpcEndpoints = [
+		'https://solana-api.syndica.io/access-token/WPoEqWQ2auQQY1zHRNGJyRBkvfOLqw58FqYucdYtmy8q9Z84MBWwqtfVf8jKhcFh/rpc',
 		'https://rpc.hellomoon.io/cfd5910f-fb7d-4489-9b32-f97193eceefd',
-		'https://solana-api.syndica.io/access-token/WPoEqWQ2auQQY1zHRNGJyRBkvfOLqw58FqYucdYtmy8q9Z84MBWwqtfVf8jKhcFh/rpc'
 	];
 
 	const connectionProxy = {
@@ -610,9 +610,10 @@
 			});
 	}
 	
-	function httpMonitor(connection, txHash, txn, lastValidBlockHeight, count = 0, fleetName = undefined) {
+	function httpMonitor(connection, txHash, txn, lastValidBlockHeight, fleetName = undefined) {
 		return new Promise(async (resolve, reject) => {
 			try {
+				let count = 0;
 				let confirmed = false;
 				while (!confirmed) {
 					let { blockHeight } = await connection.getEpochInfo({ commitment: 'confirmed' });
@@ -658,7 +659,7 @@
 	async function sendLudicrousTransaction(txn, lastValidBlockHeight, connection, fleetName) {
 			let txHash = await connection.sendRawTransaction(txn, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
 
-			const http = httpMonitor(connection, txHash, txn, lastValidBlockHeight, 0, fleetName);
+			const http = httpMonitor(connection, txHash, txn, lastValidBlockHeight, fleetName);
 
 			return Promise.any([http]).then((result) => {
 				return result;
@@ -734,7 +735,7 @@
 					}
 
 					//Something went wrong, start again
-					cLog(3,`${FleetTimeStamp(fleetName)} Final txResult check`, txResult);
+					//cLog(3,`${FleetTimeStamp(fleetName)} Final txResult check`, txResult);
 					if(!txResult) {
 						cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> RETRY`);
 						continue;  //Restart while loop to try again
