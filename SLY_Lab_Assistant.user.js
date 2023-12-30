@@ -697,7 +697,7 @@
 		return { txResult, tryCount };
 	}
 
-	async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash) {
+	async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName) {
 		let {blockHeight: curBlockHeight} = await solanaConnection.getEpochInfo({ commitment: 'confirmed' });
 		let interimBlockHeight = curBlockHeight;
 		if (curBlockHeight > lastValidBlockHeight) return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
@@ -705,18 +705,22 @@
 		//console.log('txHash: ', txHash);
 		//console.log('blockDiff: ', curBlockHeight - lastValidBlockHeight);
 		while ((curBlockHeight - interimBlockHeight) < 30) {
-				let epochInfo = await solanaConnection.getEpochInfo({ commitment: 'confirmed' });
-				curBlockHeight = epochInfo.blockHeight;
 				const signatureStatus = await solanaConnection.getSignatureStatus(txHash);
 				if (signatureStatus.value && ['confirmed','finalized'].includes(signatureStatus.value.confirmationStatus)) {
 						return {txHash, confirmation: signatureStatus};
 				} else if (signatureStatus.err) {
+						cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> Err`,signatureStatus.err);
 						//console.log('returning error: ', signatureStatus.err);
 						return {txHash, confirmation: signatureStatus}
 				}
+
 				await wait(2000);
+				let epochInfo = await solanaConnection.getEpochInfo({ commitment: 'confirmed' });
+				curBlockHeight = epochInfo.blockHeight;
 		}
-		return await sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash);
+
+		cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> S&C RETRY`);
+		return await sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName);
 	}
 
 	function txSignAndSend(ix, fleet, opName) {
@@ -748,7 +752,7 @@
 
 				let microOpStart = Date.now();
 				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> SEND`);
-				let response = await sendAndConfirmTx(txSerialized, tx.lastValidBlockHeight, null);
+				let response = await sendAndConfirmTx(txSerialized, tx.lastValidBlockHeight, null, fleet, opName);
 				//console.log('txResponse: ', response);
 				let txHash = response.txHash;
 				let confirmation = response.confirmation;
@@ -759,7 +763,7 @@
 				if (confirmation.name == 'TransactionExpiredBlockheightExceededError' && !txResult) {
 					//console.log('-----RETRY-----');
 					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM❌ ${confirmationTimeStr}`);
-					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> Retrying`);
+					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> S&S Retrying`);
 					//txResult = await txSignAndSend(ix);
 					continue;  //retart loop to try again
 				}
