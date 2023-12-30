@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant Modded
 // @namespace    http://tampermonkey.net/
-// @version      0.4.1.1m
+// @version      0.4.1.2m
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
 // @match        https://*.labs.staratlas.com/
@@ -27,7 +27,7 @@
 	//List of RPCs to use - top = primary, the rest are tried in the event of an error
 	let rpcEndpoints = [
 		'https://solana-api.syndica.io/access-token/WPoEqWQ2auQQY1zHRNGJyRBkvfOLqw58FqYucdYtmy8q9Z84MBWwqtfVf8jKhcFh/rpc',
-		'https://rpc.hellomoon.io/cfd5910f-fb7d-4489-9b32-f97193eceefd',
+		//'https://rpc.hellomoon.io/cfd5910f-fb7d-4489-9b32-f97193eceefd',
 	];
 
 	let enableAssistant = false;
@@ -36,39 +36,39 @@
 	function cLog(level, ...args) {	if(level <= debugLogLevel) console.log(...args); }
 
 	const connectionProxy = {
-			get(target, key, receiver) {
-					const origMethod = target[key];
-					if(typeof origMethod === 'function'){
-							return async function (...args) {
-									let result;
-									try {
-											result = await origMethod.apply(target, args);
-									} catch (error1) {
-											cLog(2, 'CONNECTION ERROR: ', error1);
-											if ((error1 instanceof TypeError && error1.message === 'Failed to fetch') || (error1 instanceof Error && Number(error1.message.slice(0,3)) > 299)) {
-													let success = false;
-													let rpcIdx = 1;
-													while (!success && rpcIdx < rpcEndpoints.length) {
-														cLog(2, 'rpcIdx: ', rpcIdx, ', success: ', success);
-															const newConnection = new solanaWeb3.Connection(rpcEndpoints[rpcIdx], 'confirmed');
-															try {
-																	result = await origMethod.apply(newConnection, args);
-																	success = true;
-																	cLog(2, 'NEW: ', result);
-															} catch (error2) {
-																	cLog(2, 'INNER ERROR: ', error2);
-																	if (!(error2 instanceof TypeError && error2.message === 'Failed to fetch') && !(error2 instanceof Error && Number(error2.message.slice(0,3)) > 299)) {
-																			return error2;
-																	}
-															}
-															rpcIdx = rpcIdx+1 < rpcEndpoints.length ? rpcIdx+1 : 0;
-													}
-											}
+		get(target, key, receiver) {
+			const origMethod = target[key];
+			if(typeof origMethod === 'function'){
+				return async function (...args) {
+					let result;
+					try {
+						result = await origMethod.apply(target, args);
+					} catch (error1) {
+						cLog(2, 'CONNECTION ERROR: ', error1);
+						if ((error1 instanceof TypeError && error1.message === 'Failed to fetch') || (error1 instanceof Error && Number(error1.message.slice(0,3)) > 299)) {
+							let success = false;
+							let rpcIdx = 1;
+							while (!success && rpcIdx < rpcEndpoints.length) {
+								cLog(2, 'rpcIdx: ', rpcIdx, ', success: ', success);
+								const newConnection = new solanaWeb3.Connection(rpcEndpoints[rpcIdx], 'confirmed');
+								try {
+									result = await origMethod.apply(newConnection, args);
+									success = true;
+									cLog(2, 'NEW: ', result);
+								} catch (error2) {
+									cLog(2, 'INNER ERROR: ', error2);
+									if (!(error2 instanceof TypeError && error2.message === 'Failed to fetch') && !(error2 instanceof Error && Number(error2.message.slice(0,3)) > 299)) {
+											return error2;
 									}
-									return result;
+								}
+								rpcIdx = rpcIdx+1 < rpcEndpoints.length ? rpcIdx+1 : 0;
 							}
+						}
 					}
-			},
+					return result;
+				}
+			}
+		},
 	}
 
 	const rawSolanaConnection = new solanaWeb3.Connection(rpcEndpoints[0], 'confirmed');
@@ -168,7 +168,7 @@
 			new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
 	);
 
-	function TimeToStr(date) { return date.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" }); }
+	function TimeToStr(date) { return date.toLocaleTimeString("en-GB", { hour12: false, hour: "2-digit", minute: "2-digit" }); }
 	function TimeStamp() { return `[${TimeToStr(new Date(Date.now()))}]`; }
 	function FleetTimeStamp(fleetName) { return `[${fleetName}] ${TimeStamp()}` }
 	function BoolToStr(bool) { return bool ? 'Y' : 'N' };
@@ -363,9 +363,9 @@
 							let fleetStarbase = fleetParsedData && fleetParsedData.starbase ? fleetParsedData.starbase : '';
 							let fleetMoveType = fleetParsedData && fleetParsedData.moveType ? fleetParsedData.moveType : 'warp';
 							let fleetMoveTarget = fleetParsedData && fleetParsedData.moveTarget ? fleetParsedData.moveTarget : '';
-							await getAccountInfo(fleetLabel, 'fleet SDU token', fleetSduToken) || await createProgramDerivedAccount(fleetSduToken, fleet.account.cargoHold, new solanaWeb3.PublicKey('SDUsgfSZaDhhZ76U3ZgvtFiXsfnHbf2VrzYxjBZ5YbM'), fleet);
-							await getAccountInfo(fleetLabel, 'fleet Repair Kit token', fleetRepairKitToken) || await createProgramDerivedAccount(fleetRepairKitToken, fleet.account.cargoHold, new solanaWeb3.PublicKey('tooLsNYLiVqzg8o4m3L2Uetbn62mvMWRqkog6PQeYKL'), fleet);
-							await getAccountInfo(fleetLabel, 'fleet Fuel token', fleetFuelToken) || await createProgramDerivedAccount(fleetFuelToken, fleet.account.fuelTank, new solanaWeb3.PublicKey('fueL3hBZjLLLJHiFH9cqZoozTG3XQZ53diwFPwbzNim'), fleet);
+							//await getAccountInfo(fleetLabel, 'fleet SDU token', fleetSduToken) || await createProgramDerivedAccount(fleetSduToken, fleet.account.cargoHold, new solanaWeb3.PublicKey('SDUsgfSZaDhhZ76U3ZgvtFiXsfnHbf2VrzYxjBZ5YbM'), fleet);
+							//await getAccountInfo(fleetLabel, 'fleet Repair Kit token', fleetRepairKitToken) || await createProgramDerivedAccount(fleetRepairKitToken, fleet.account.cargoHold, new solanaWeb3.PublicKey('tooLsNYLiVqzg8o4m3L2Uetbn62mvMWRqkog6PQeYKL'), fleet);
+							//await getAccountInfo(fleetLabel, 'fleet Fuel token', fleetFuelToken) || await createProgramDerivedAccount(fleetFuelToken, fleet.account.fuelTank, new solanaWeb3.PublicKey('fueL3hBZjLLLJHiFH9cqZoozTG3XQZ53diwFPwbzNim'), fleet);
 							let fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(fleet.account.cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 							let currentToolCnt = fleetCurrentCargo.value.find(item => item.pubkey.toString() === fleetRepairKitToken.toString());
 							let fleetCurrentFuel = await solanaConnection.getParsedTokenAccountsByOwner(fleet.account.fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
@@ -697,10 +697,96 @@
 		return { txResult, tryCount };
 	}
 
+	async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash) {
+		let {blockHeight: curBlockHeight} = await solanaConnection.getEpochInfo({ commitment: 'confirmed' });
+		let interimBlockHeight = curBlockHeight;
+		if (curBlockHeight > lastValidBlockHeight) return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
+		txHash = await solanaConnection.sendRawTransaction(txSerialized, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
+		//console.log('txHash: ', txHash);
+		//console.log('blockDiff: ', curBlockHeight - lastValidBlockHeight);
+		while ((curBlockHeight - interimBlockHeight) < 30) {
+				let epochInfo = await solanaConnection.getEpochInfo({ commitment: 'confirmed' });
+				curBlockHeight = epochInfo.blockHeight;
+				const signatureStatus = await solanaConnection.getSignatureStatus(txHash);
+				if (signatureStatus.value && ['confirmed','finalized'].includes(signatureStatus.value.confirmationStatus)) {
+						return {txHash, confirmation: signatureStatus};
+				} else if (signatureStatus.err) {
+						//console.log('returning error: ', signatureStatus.err);
+						return {txHash, confirmation: signatureStatus}
+				}
+				await wait(2000);
+		}
+		return await sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash);
+	}
+
 	function txSignAndSend(ix, fleet, opName) {
 		return new Promise(async resolve => {
 			const fleetName =  fleet ? fleet.label : 'unknown';
-			if(fleet) fleet.busy = true;
+			let macroOpStart = Date.now();
+
+			let confirmed = false;
+			while (!confirmed) {
+				let tx = new solanaWeb3.Transaction();	
+				if (ix.constructor === Array) {
+					ix.forEach(item => tx.add(item.instruction))
+				} else {
+					tx.add(ix.instruction);
+				}
+
+				let latestBH = await solanaConnection.getLatestBlockhash('confirmed');
+				tx.recentBlockhash = latestBH.blockhash;
+				tx.lastValidBlockHeight = latestBH.lastValidBlockHeight-150;
+				tx.feePayer = userPublicKey;
+				tx.signer = userPublicKey;
+				let txSigned = null;
+				if (typeof solflare === 'undefined') {
+					txSigned = await solana.signAllTransactions([tx]);
+				} else {
+					txSigned = await solflare.signAllTransactions([tx]);
+				}
+				let txSerialized = txSigned[0].serialize();
+
+				let microOpStart = Date.now();
+				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> SEND`);
+				let response = await sendAndConfirmTx(txSerialized, tx.lastValidBlockHeight, null);
+				//console.log('txResponse: ', response);
+				let txHash = response.txHash;
+				let confirmation = response.confirmation;
+				let txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
+				
+				const confirmationTimeStr = `${Date.now() - microOpStart}ms`;
+
+				if (confirmation.name == 'TransactionExpiredBlockheightExceededError' && !txResult) {
+					//console.log('-----RETRY-----');
+					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM❌ ${confirmationTimeStr}`);
+					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> Retrying`);
+					//txResult = await txSignAndSend(ix);
+					continue;  //retart loop to try again
+				}
+				let tryCount = 1;
+				if (!confirmation.name) {
+					while (!txResult) {
+						tryCount++;
+						await wait(2000);
+						txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
+					}
+				}
+
+				cLog(3, `${FleetTimeStamp(fleetName)} Got txResult in ${tryCount} tries`, txResult);
+				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM✅ ${confirmationTimeStr}`);
+				confirmed = true;
+
+				const fullMsTaken = Date.now() - macroOpStart;
+				const secondsTaken = Math.round(fullMsTaken / 1000);
+				cLog(1,`${FleetTimeStamp(fleetName)} <${opName}> Completed in ${secondsTaken}s`);
+				resolve(txResult);
+			}
+		});
+	}
+
+	function old_txSignAndSend(ix, fleet, opName) {
+		return new Promise(async resolve => {
+			const fleetName =  fleet ? fleet.label : 'unknown';
 
 			let tx = new solanaWeb3.Transaction();
 			tx.feePayer = userPublicKey;
@@ -758,7 +844,6 @@
 					continue;  //Restart loop
 				}
 
-				if(fleet) fleet.busy = false;
 				confirmed = true;
 
 				const fullMsTaken = Date.now() - macroOpStart;
@@ -3199,7 +3284,7 @@
 		const mining  = userFleets[i].mineEnd && userFleets[i].state.includes('Mine') && (Date.now() < userFleets[i].mineEnd);
 		const onTarget = userFleets[i].lastScanCoord == userFleets[i].destCoord;
 		const waitingForScan = userFleets[i].scanEnd && (Date.now() <= userFleets[i].scanEnd);
-		if(userFleets[i].busy || userFleets[i].resupplying || moving || mining) return;
+		if(userFleets[i].resupplying || moving || mining) return;
 		if(!onTarget && waitingForWarpCD) return;
 		if(scanning && onTarget && waitingForScan) return;
 
