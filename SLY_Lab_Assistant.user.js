@@ -689,9 +689,9 @@
 		let tryCount = 0;
 
 		while (!txResult && tryCount < 10) {
-			txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
 			tryCount++;
-			await wait(2000);
+			txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
+			if(!txResult) await wait(2000);
 		}
 
 		return { txResult, tryCount };
@@ -736,7 +736,7 @@
 					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> SENT ${Date.now() - microOpStart}ms`);
 					//cLog(3, '---TXHASH---', txHash);
 					confirmation = await waitForTxConfirmation(txHash, blockhash, lastValidBlockHeight, fleetName);
-				}			
+				}
 
 				//Confirmation check
 				const confirmationTimeStr = `${Date.now() - microOpStart}ms`;
