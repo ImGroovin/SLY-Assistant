@@ -3260,6 +3260,8 @@
 			//Initialize iteration counter
 			userFleets[i].iterCnt = 0;
 
+			if(enableAssistant && userFleets[i].assignment != '') updateFleetState(userFleets[i], 'Starting');
+
 			//Stagger fleet starts by 500ms to avoid overloading the RPC
 			setTimeout(() => { startFleet(i);	}, 500 * (i + 1));
 		}
