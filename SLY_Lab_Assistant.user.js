@@ -25,6 +25,7 @@
 	let ludicrousMode = false; //Rapid and persistant retrying of transactions until success
 	let graceBlockWindow = 5; //Advanced rapid retry option (only change this if you know what you're doing!)
 	//List of RPCs to use - top = primary, the rest are tried in the event of an error
+	let readRpc = 'https://rpc.hellomoon.io/cfd5910f-fb7d-4489-9b32-f97193eceefd';
 	let rpcEndpoints = [
 		'https://solana-api.syndica.io/access-token/WPoEqWQ2auQQY1zHRNGJyRBkvfOLqw58FqYucdYtmy8q9Z84MBWwqtfVf8jKhcFh/rpc',
 		//'https://rpc.hellomoon.io/cfd5910f-fb7d-4489-9b32-f97193eceefd',
@@ -71,6 +72,7 @@
 		},
 	}
 
+	const solanaReadConnection = new solanaWeb3.Connection(readRpc, 'confirmed');
 	const rawSolanaConnection = new solanaWeb3.Connection(rpcEndpoints[0], 'confirmed');
 	const solanaConnection = new Proxy(rawSolanaConnection, connectionProxy);
 	const anchorProvider = new BrowserAnchor.anchor.AnchorProvider(solanaConnection, null, null);
@@ -217,7 +219,7 @@
 		let tries = 0;
 		while(!result && tries < 3) {
 			tries++;
-			result = await solanaConnection.getAccountInfo(params);
+			result = await solanaReadConnection.getAccountInfo(params);
 			if(!result)	await wait(500);
 		}
 
@@ -269,7 +271,7 @@
 							userPublicKey = solflare.publicKey;
 					}
 
-					let userProfiles = await solanaConnection.getProgramAccounts(profileProgramId);
+					let userProfiles = await solanaReadConnection.getProgramAccounts(profileProgramId);
 
 					let foundProf = [];
 					cLog(2, 'initUser: userProfiles[0]', userProfiles[0]);
@@ -280,7 +282,7 @@
 									let currProf = userProfData.subarray(0, 80);
 									let profDecoded = profileProgram.coder.types.decode('ProfileKey', currProf);
 									if (profDecoded.key.toString() === userPublicKey.toString()) {
-											let [playerNameAcct] = await solanaConnection.getProgramAccounts(
+											let [playerNameAcct] = await solanaReadConnection.getProgramAccounts(
 													profileProgramId,
 													{
 															filters: [
@@ -366,9 +368,9 @@
 							//await getAccountInfo(fleetLabel, 'fleet SDU token', fleetSduToken) || await createProgramDerivedAccount(fleetSduToken, fleet.account.cargoHold, new solanaWeb3.PublicKey('SDUsgfSZaDhhZ76U3ZgvtFiXsfnHbf2VrzYxjBZ5YbM'), fleet);
 							//await getAccountInfo(fleetLabel, 'fleet Repair Kit token', fleetRepairKitToken) || await createProgramDerivedAccount(fleetRepairKitToken, fleet.account.cargoHold, new solanaWeb3.PublicKey('tooLsNYLiVqzg8o4m3L2Uetbn62mvMWRqkog6PQeYKL'), fleet);
 							//await getAccountInfo(fleetLabel, 'fleet Fuel token', fleetFuelToken) || await createProgramDerivedAccount(fleetFuelToken, fleet.account.fuelTank, new solanaWeb3.PublicKey('fueL3hBZjLLLJHiFH9cqZoozTG3XQZ53diwFPwbzNim'), fleet);
-							let fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(fleet.account.cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+							let fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(fleet.account.cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 							let currentToolCnt = fleetCurrentCargo.value.find(item => item.pubkey.toString() === fleetRepairKitToken.toString());
-							let fleetCurrentFuel = await solanaConnection.getParsedTokenAccountsByOwner(fleet.account.fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+							let fleetCurrentFuel = await solanaReadConnection.getParsedTokenAccountsByOwner(fleet.account.fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 							let currentFuelCnt = fleetCurrentFuel.value.find(item => item.pubkey.toString() === fleetFuelToken.toString());
 							let fleetAcctInfo = await getAccountInfo(fleetLabel, 'Full Account Info', fleet.publicKey);
 							let [fleetState, extra] = getFleetState(fleetAcctInfo);
@@ -531,7 +533,7 @@
 									let yArr = yBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, 'le', 8);
 									let y58 = bs58.encode(yArr);
 
-									let fleetAccts = await solanaConnection.getProgramAccounts(sageProgramId, {
+									let fleetAccts = await solanaReadConnection.getProgramAccounts(sageProgramId, {
 											filters: [
 													{ memcmp: { offset: 415, bytes: x58 } },
 													{ memcmp: { offset: 423, bytes: y58 } },
@@ -702,15 +704,13 @@
 		let interimBlockHeight = curBlockHeight;
 		if (curBlockHeight > lastValidBlockHeight) return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
 		txHash = await solanaConnection.sendRawTransaction(txSerialized, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
-		//console.log('txHash: ', txHash);
-		//console.log('blockDiff: ', curBlockHeight - lastValidBlockHeight);
+
 		while ((curBlockHeight - interimBlockHeight) < 30) {
 				const signatureStatus = await solanaConnection.getSignatureStatus(txHash);
 				if (signatureStatus.value && ['confirmed','finalized'].includes(signatureStatus.value.confirmationStatus)) {
 						return {txHash, confirmation: signatureStatus};
 				} else if (signatureStatus.err) {
 						cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> Err`,signatureStatus.err);
-						//console.log('returning error: ', signatureStatus.err);
 						return {txHash, confirmation: signatureStatus}
 				}
 
@@ -1281,7 +1281,7 @@
 							],
 							new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
 					);
-					let fleetCurrentPod = await solanaConnection.getParsedTokenAccountsByOwner(fleetCargoPod, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+					let fleetCurrentPod = await solanaReadConnection.getParsedTokenAccountsByOwner(fleetCargoPod, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 					let currentResource = fleetCurrentPod.value.find(item => item.account.data.parsed.info.mint === tokenMint);
 					let fleetResourceAcct = currentResource ? currentResource.pubkey : fleetResourceToken;
 					let resourceCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == tokenMint);
@@ -1342,7 +1342,7 @@
 					let mostFound = 0;
 					for (let cargoHold of starbasePlayerCargoHolds) {
 							if (cargoHold.account && cargoHold.account.openTokenAccounts > 0) {
-									let cargoHoldTokens = await solanaConnection.getParsedTokenAccountsByOwner(cargoHold.publicKey, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+									let cargoHoldTokens = await solanaReadConnection.getParsedTokenAccountsByOwner(cargoHold.publicKey, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 									let cargoHoldFound = cargoHoldTokens.value.find(item => item.account.data.parsed.info.mint === tokenMint && item.account.data.parsed.info.tokenAmount.uiAmount >= amount);
 									if (cargoHoldFound) {
 											starbasePlayerCargoHold = cargoHold;
@@ -1517,11 +1517,11 @@
 							],
 							new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
 					);
-					let fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(fleet.cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+					let fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(fleet.cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 					let currentFood = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.food.toString());
 					let fleetFoodAcct = currentFood ? currentFood.pubkey : fleetFoodToken;
 
-					let fleetCurrentAmmoBank = await solanaConnection.getParsedTokenAccountsByOwner(fleet.ammoBank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+					let fleetCurrentAmmoBank = await solanaReadConnection.getParsedTokenAccountsByOwner(fleet.ammoBank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 					let currentAmmo = fleetCurrentAmmoBank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.ammo.toString());
 					let fleetAmmoAcct = currentAmmo ? currentAmmo.pubkey : fleetAmmoToken;
 
@@ -2384,11 +2384,11 @@
 						if (extra[0] !== moveX || extra[1] !== moveY) {
 							let warpCost = calculateWarpFuelBurn(userFleets[i], moveDist);
 							let subwarpCost = calculateSubwarpFuelBurn(userFleets[i], moveDist);
-							let fleetCurrentFuelTank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+							let fleetCurrentFuelTank = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 							let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
 							let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
 
-							let fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+							let fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 							let currentCargoFuel = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
 							let currentCargoFuelCnt = currentCargoFuel ? currentCargoFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
 							if (userFleets[i].moveType == 'warp' && (currentFuelCnt + currentCargoFuelCnt) >= warpCost) {
@@ -2475,7 +2475,7 @@
 	}
 
 	async function handleScan(i, fleetCoords, destCoords) {
-			let fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+			let fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 			let cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
 			let currentToolAcct = fleetCurrentCargo.value.find(item => item.pubkey.toString() === userFleets[i].repairKitToken.toString());
 			let currentToolCnt = currentToolAcct.account.data.parsed.info.delegatedAmount ? currentToolAcct.account.data.parsed.info.delegatedAmount.uiAmount : 0;
@@ -2495,7 +2495,7 @@
 					let moved = false;
 					if ((fleetCoords[0] !== destCoords[0] || fleetCoords[1] !== destCoords[1])) {
 							if (!userFleets[i].state.includes('Warp C/D')) {
-									let fleetCurrentFuelTank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+									let fleetCurrentFuelTank = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 									let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
 									let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
 									let starbaseX = userFleets[i].starbaseCoord.split(',')[0].trim();
@@ -2601,7 +2601,7 @@
 					
 					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading`);
 					updateFleetState(userFleets[i], 'Unloading');
-					let fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+					let fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 					let currentSduCnt = fleetCurrentCargo.value.find(item => item.pubkey.toString() === userFleets[i].sduToken.toString())
 					if (currentSduCnt && currentSduCnt.account.data.parsed.info.tokenAmount.uiAmount > 0) {
 							await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, 'SDUsgfSZaDhhZ76U3ZgvtFiXsfnHbf2VrzYxjBZ5YbM', userFleets[i].starbaseCoord, currentSduCnt.account.data.parsed.info.tokenAmount.uiAmount);
@@ -2611,12 +2611,12 @@
 					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loading`);
 					updateFleetState(userFleets[i], 'Loading');
 					let currentToolCnt = fleetCurrentCargo.value.find(item => item.pubkey.toString() === userFleets[i].repairKitToken.toString())
-					let fleetCurrentFuel = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+					let fleetCurrentFuel = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 					let currentFuelCnt = fleetCurrentFuel.value.find(item => item.pubkey.toString() === userFleets[i].fuelToken.toString())
 					if (userFleets[i].scanCost > 0) {
 							await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, userFleets[i].repairKitToken, 'tooLsNYLiVqzg8o4m3L2Uetbn62mvMWRqkog6PQeYKL', repairKitCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].cargoCapacity - currentToolCnt.account.data.parsed.info.tokenAmount.uiAmount);
 					}
-					fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+					fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 					let currentTool = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === 'tooLsNYLiVqzg8o4m3L2Uetbn62mvMWRqkog6PQeYKL');
 					userFleets[i].toolCnt = currentTool ? currentTool.account.data.parsed.info.tokenAmount.uiAmount : 0;
 					await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, userFleets[i].fuelToken, 'fueL3hBZjLLLJHiFH9cqZoozTG3XQZ53diwFPwbzNim', fuelCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].fuelCapacity - currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount);
@@ -2725,11 +2725,11 @@
 					new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
 			);
 
-			let fleetCurrentFuelTank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+			let fleetCurrentFuelTank = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 			let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
 			let fleetFuelAcct = currentFuel ? currentFuel.pubkey : fleetFuelToken;
 			let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
-			let fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+			let fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 			let cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
 			let currentFood = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.food.toString());
 			let fleetFoodAcct = currentFood ? currentFood.pubkey : fleetFoodToken;
@@ -2737,7 +2737,7 @@
 			let currentResource = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === userFleets[i].mineResource);
 			let fleetResourceAcct = currentResource ? currentResource.pubkey : fleetResourceToken;
 			let currentResourceCnt = currentResource ? currentResource.account.data.parsed.info.tokenAmount.uiAmount : 0;
-			let fleetCurrentAmmoBank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].ammoBank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+			let fleetCurrentAmmoBank = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].ammoBank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 			let currentAmmo = fleetCurrentAmmoBank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.ammo.toString());
 			let fleetAmmoAcct = currentAmmo ? currentAmmo.pubkey : fleetAmmoToken;
 			let currentAmmoCnt = currentAmmo ? currentAmmo.account.data.parsed.info.tokenAmount.uiAmount : 0;
@@ -2837,7 +2837,7 @@
 											await wait(2000);
 									} else { cLog(1,`${FleetTimeStamp(userFleets[i].label)} Ammo loading skipped: ${currentAmmoCnt} / ${ammoForDuration}`); }
 
-									fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+									fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 									cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
 									miningDuration = calculateMiningDuration(userFleets[i].cargoCapacity - cargoCnt, userFleets[i].miningRate, resourceHardness, systemRichness);
 									foodForDuration = Math.ceil(miningDuration * (userFleets[i].foodConsumptionRate / 10000));
@@ -2937,7 +2937,7 @@
 
 			if (fleetState === 'Idle') {
 					//cLog(2, `${FleetTimeStamp(userFleets[i].label)} Transporting`);
-					let fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+					let fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 					let errorResource = [];
 					if (fleetCoords[0] == starbaseX && fleetCoords[1] == starbaseY) { // Fleet at starbase?
 							userFleets[i].resupplying = true;
@@ -2966,7 +2966,7 @@
 									}
 
 									if (extraFuel > 0) {
-											let fleetCurrentFuelTank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+											let fleetCurrentFuelTank = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 											let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
 											let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
 											let resFuelMax = Math.min(currentFuelCnt, extraFuel);
@@ -2977,7 +2977,7 @@
 									}
 
 									if (extraAmmo > 0) {
-											let fleetCurrentAmmoBank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].ammoBank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+											let fleetCurrentAmmoBank = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].ammoBank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 											let currentAmmo = fleetCurrentAmmoBank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.ammo.toString());
 											let currentAmmoCnt = currentAmmo ? currentAmmo.account.data.parsed.info.tokenAmount.uiAmount : 0;
 											let resAmmoMax = Math.min(currentAmmoCnt, extraAmmo);
@@ -2989,7 +2989,7 @@
 							}
 							cLog(1,`${FleetTimeStamp(userFleets[i].label)} Refueling`);
 							updateFleetState(userFleets[i], 'Refueling');
-							let fleetCurrentFuelTank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+							let fleetCurrentFuelTank = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 							let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
 							let fleetFuelAcct = currentFuel ? currentFuel.pubkey : fleetFuelToken;
 							let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
@@ -3007,7 +3007,7 @@
 							} else {
 									fuelNeeded = calculateSubwarpFuelBurn(userFleets[i], moveDist) * 2;
 							}
-							fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+							fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 							let cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
 							let cargoSpace = userFleets[i].cargoCapacity - cargoCnt;
 							if (fuelNeeded > userFleets[i].fuelCapacity) {
@@ -3033,7 +3033,7 @@
 									let resAmmo = targetResources.indexOf(sageGameAcct.account.mints.ammo.toString());
 									let extraAmmo = 0;
 									if (resAmmo > -1) {
-											let fleetCurrentAmmoBank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].ammoBank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+											let fleetCurrentAmmoBank = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].ammoBank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 											let currentAmmo = fleetCurrentAmmoBank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.ammo.toString());
 											let ammoCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.ammo);
 											let fleetAmmoAcct = currentAmmo ? currentAmmo.pubkey : fleetAmmoToken;
@@ -3094,9 +3094,9 @@
 							if (targetResourceAmounts[0] > 0 || targetResourceAmounts[1] > 0 || targetResourceAmounts[2] > 0 || targetResourceAmounts[3] > 0) {
 									updateFleetState(userFleets[i], 'Unloading');
 
-									let fleetCurrentFuelTank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+									let fleetCurrentFuelTank = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 									let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
-									fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+									fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 									let currentCargoFuel = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
 									let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
 									let currentCargoFuelCnt = currentCargoFuel ? currentCargoFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
@@ -3136,7 +3136,7 @@
 
 									//Unload extra fuel from tank
 									if (extraFuel > 0) {
-											//let fleetCurrentFuelTank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+											//let fleetCurrentFuelTank = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 											//let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
 											//let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
 											//let resFuelMax = Math.min(currentFuelCnt, extraFuel);
@@ -3153,7 +3153,7 @@
 
 										cLog(1,`${FleetTimeStamp(userFleets[i].label)} Refueling`);
 										updateFleetState(userFleets[i], 'Refueling');
-										let fleetCurrentFuelTank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+										let fleetCurrentFuelTank = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 										let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
 										let fleetFuelAcct = currentFuel ? currentFuel.pubkey : fleetFuelToken;
 										let fuelResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, fleetFuelAcct, sageGameAcct.account.mints.fuel.toString(), fuelCargoTypeAcct, userFleets[i].starbaseCoord, fuelToPickup);
@@ -3165,7 +3165,7 @@
 									}
 
 									if (extraAmmo > 0) {
-											let fleetCurrentAmmoBank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].ammoBank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+											let fleetCurrentAmmoBank = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].ammoBank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 											let currentAmmo = fleetCurrentAmmoBank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.ammo.toString());
 											let currentAmmoCnt = currentAmmo ? currentAmmo.account.data.parsed.info.tokenAmount.uiAmount : 0;
 											let resAmmoMax = Math.min(currentAmmoCnt, extraAmmo);
@@ -3180,7 +3180,7 @@
 							let resAmmo = starbaseResources.indexOf(sageGameAcct.account.mints.ammo.toString());
 							let extraAmmo = 0;
 							if (resAmmo > -1) {
-									let fleetCurrentAmmoBank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].ammoBank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+									let fleetCurrentAmmoBank = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].ammoBank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 									let currentAmmo = fleetCurrentAmmoBank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.ammo.toString());
 									let ammoCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.ammo);
 									let fleetAmmoAcct = currentAmmo ? currentAmmo.pubkey : fleetAmmoToken;
@@ -3195,7 +3195,7 @@
 									if (resAmmoMax < resAmmoAmt) extraAmmo = resAmmoAmt - resAmmoMax;
 							}
 
-							fleetCurrentCargo = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+							fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 							let cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
 							let cargoSpace = userFleets[i].cargoCapacity - cargoCnt;
 
