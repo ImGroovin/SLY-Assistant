@@ -607,13 +607,13 @@
 	}
 
 	async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName) {
-		let {blockHeight: curBlockHeight} = await solanaConnection.getEpochInfo({ commitment: 'confirmed' });
+		let {blockHeight: curBlockHeight} = await solanaReadConnection.getEpochInfo({ commitment: 'confirmed' });
 		let interimBlockHeight = curBlockHeight;
 		if (curBlockHeight > lastValidBlockHeight) return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
 		txHash = await solanaConnection.sendRawTransaction(txSerialized, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
 
 		while ((curBlockHeight - interimBlockHeight) < 30) {
-				const signatureStatus = await solanaConnection.getSignatureStatus(txHash);
+				const signatureStatus = await solanaReadConnection.getSignatureStatus(txHash);
 				if (signatureStatus.value && ['confirmed','finalized'].includes(signatureStatus.value.confirmationStatus)) {
 						return {txHash, confirmation: signatureStatus};
 				} else if (signatureStatus.err) {
@@ -622,7 +622,7 @@
 				}
 
 				await wait(2000);
-				let epochInfo = await solanaConnection.getEpochInfo({ commitment: 'confirmed' });
+				let epochInfo = await solanaReadConnection.getEpochInfo({ commitment: 'confirmed' });
 				curBlockHeight = epochInfo.blockHeight;
 		}
 
@@ -644,7 +644,7 @@
 					tx.add(ix.instruction);
 				}
 
-				let latestBH = await solanaConnection.getLatestBlockhash('confirmed');
+				let latestBH = await solanaReadConnection.getLatestBlockhash('confirmed');
 				tx.recentBlockhash = latestBH.blockhash;
 				tx.lastValidBlockHeight = latestBH.lastValidBlockHeight-150;
 				tx.feePayer = userPublicKey;
@@ -663,7 +663,7 @@
 				//console.log('txResponse: ', response);
 				let txHash = response.txHash;
 				let confirmation = response.confirmation;
-				let txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
+				let txResult = await solanaReadConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
 				
 				const confirmationTimeStr = `${Date.now() - microOpStart}ms`;
 
@@ -679,7 +679,7 @@
 					while (!txResult) {
 						tryCount++;
 						await wait(2000);
-						txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
+						txResult = await solanaReadConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
 					}
 				}
 
