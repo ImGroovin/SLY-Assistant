@@ -18,13 +18,11 @@
 (async function() {
 	'use strict';
 
-	//Configurable Options (TODO: Make UI for this)
+	//Configurable Options
 	let debugLogLevel = 1; //How much console logging you want to see (higher number = more, 0 = none)
 	let extraFuelToDropOffAtTarget = 0; //How much excess fuel to leave at target during transport assignments
 	let transportStopOnError = true; //Should transport fleet stop completely if there's an error (example: not enough resource/fuel/etc.)
-	let ludicrousMode = false; //Rapid and persistant retrying of transactions until success
-	let graceBlockWindow = 5; //Advanced rapid retry option (only change this if you know what you're doing!)
-	//List of RPCs to use - top = primary, the rest are tried in the event of an error
+
 	let readRpc = 'https://rpc.hellomoon.io/cfd5910f-fb7d-4489-9b32-f97193eceefd';
 	let rpcEndpoints = [
 		'https://solana-api.syndica.io/access-token/WPoEqWQ2auQQY1zHRNGJyRBkvfOLqw58FqYucdYtmy8q9Z84MBWwqtfVf8jKhcFh/rpc',
@@ -608,97 +606,6 @@
 			}
 	}
 
-	function waitForTxConfirmation(txHash, blockhash, lastValidBlockHeight, fleetName) {
-			return new Promise(async resolve => {
-					let response = null;
-					try {
-						let confirmation = await solanaConnection.confirmTransaction({
-							blockhash,
-							lastValidBlockHeight,
-							signature: txHash
-						}, 'confirmed');
-						response = confirmation;
-					} catch (err) {
-							cLog(1,`${FleetTimeStamp(fleetName)}`, err);
-							response = err;
-					}
-					resolve(response);
-			});
-	}
-	
-	function httpMonitor(connection, txHash, txn, lastValidBlockHeight, fleetName = undefined) {
-		return new Promise(async (resolve, reject) => {
-			try {
-				let count = 0;
-				let confirmed = false;
-				while (!confirmed) {
-					let { blockHeight } = await connection.getEpochInfo({ commitment: 'confirmed' });
-					if (blockHeight >= lastValidBlockHeight) reject({ name: 'LudicrousTimoutError', err: `Timed out for ${txHash}` });
-
-					const recentPerformanceSamples = await connection.getRecentPerformanceSamples(1);
-					const { samplePeriodSecs, numSlots } = recentPerformanceSamples[0];
-					const lastMinAverageBlockSpeed = Math.floor(samplePeriodSecs * 1000 / numSlots);
-					const signatureStatus = await connection.getSignatureStatus(txHash);
-
-					if (signatureStatus.err) {
-							cLog(2, `${FleetTimeStamp(fleetName)} HTTP error for`, txHash, signatureStatus);
-							reject(signatureStatus);
-							return;
-						} else if (signatureStatus.value === null) {
-							count++;
-							//cLog(2, `${FleetTimeStamp(fleetName)} HTTP not confirmed`, txHash, signatureStatus);
-							await wait(lastMinAverageBlockSpeed * graceBlockWindow);
-							if (count % 7 == 0) {
-									cLog(2, `${FleetTimeStamp(fleetName)} RESEND ${Math.round(count/7)}`);
-									txHash = await connection.sendRawTransaction(txn, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
-							}
-							if (count >= 30) {
-								//cLog(2, `${FleetTimeStamp(fleetName)} LudicrousTimoutError`);
-								reject({ name: 'LudicrousTimoutError', err: `Timed out for ${txHash}` });
-								return;
-							}
-					} else {
-							//cLog(2, `${FleetTimeStamp(fleetName)} HTTP confirmed`, txHash, signatureStatus);
-							//cLog(2, `${FleetTimeStamp(fleetName)} HTTP confirmed (${count})`);
-							resolve({txHash, confirmation: signatureStatus});
-							confirmed = true;
-					}
-				}
-			} catch (error) {
-				cLog(2, `${FleetTimeStamp(fleetName)} SEND ERROR`, error);
-				reject(error);
-				return;
-			}
-		});
-	}
-
-	async function sendLudicrousTransaction(txn, lastValidBlockHeight, connection, fleetName) {
-			let txHash = await connection.sendRawTransaction(txn, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
-
-			const http = httpMonitor(connection, txHash, txn, lastValidBlockHeight, fleetName);
-
-			return Promise.any([http]).then((result) => {
-				return result;
-			}, (error) => { 
-				cLog(2,`${FleetTimeStamp(fleetName)} LudicrousTimoutError`, error);
-				return { txHash, confirmation: null };
-				//return { txHash, confirmation: { name: 'LudicrousTimoutError', err: error } } 
-			});
-	}
-
-	async function getTxResult(txHash) {
-		let txResult = null;
-		let tryCount = 0;
-
-		while (!txResult && tryCount < 10) {
-			tryCount++;
-			txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
-			if(!txResult) await wait(2000);
-		}
-
-		return { txResult, tryCount };
-	}
-
 	async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName) {
 		let {blockHeight: curBlockHeight} = await solanaConnection.getEpochInfo({ commitment: 'confirmed' });
 		let interimBlockHeight = curBlockHeight;
@@ -784,79 +691,6 @@
 				const secondsTaken = Math.round(fullMsTaken / 1000);
 				cLog(1,`${FleetTimeStamp(fleetName)} <${opName}> Completed in ${secondsTaken}s`);
 				resolve(txResult);
-			}
-		});
-	}
-
-	function old_txSignAndSend(ix, fleet, opName) {
-		return new Promise(async resolve => {
-			const fleetName =  fleet ? fleet.label : 'unknown';
-
-			let tx = new solanaWeb3.Transaction();
-			tx.feePayer = userPublicKey;
-			tx.signer = userPublicKey;
-
-			if (ix.constructor === Array) {
-					ix.forEach(item => tx.add(item.instruction))
-			} else {
-					tx.add(ix.instruction);
-			}
-
-			let macroOpStart = Date.now();
-			let confirmed = false;
-			while (!confirmed) {
-				let { blockhash, lastValidBlockHeight } = await solanaConnection.getLatestBlockhash('confirmed');
-				tx.recentBlockhash = blockhash;
-				tx.lastValidBlockHeight = lastValidBlockHeight;
-				let txSigned = null;
-				if (typeof solflare === 'undefined') {
-					txSigned = await solana.signAllTransactions([tx]);
-				} else {
-					txSigned = await solflare.signAllTransactions([tx]);
-				}
-				let txSerialized = txSigned[0].serialize();
-				let microOpStart = Date.now();
-				let txHash, confirmation;
-
-				if (ludicrousMode) {
-					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> SEND`);
-					({ txHash, confirmation} = await sendLudicrousTransaction(txSerialized, lastValidBlockHeight, solanaConnection, fleetName));
-				} else {
-					txHash = await solanaConnection.sendRawTransaction(txSerialized, {skipPreflight: true, preflightCommitment: 'confirmed'});
-					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> SENT ${Date.now() - microOpStart}ms`);
-					//cLog(3, '---TXHASH---', txHash);
-					confirmation = await waitForTxConfirmation(txHash, blockhash, lastValidBlockHeight, fleetName);
-				}
-
-				//Confirmation check
-				const confirmationTimeStr = `${Date.now() - microOpStart}ms`;
-				if(!confirmation) {
-					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM❌ ${confirmationTimeStr}`);
-					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> Retrying`);
-					continue;  //Restart while loop to try again
-				}
-
-				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM✅ ${confirmationTimeStr}`);
-
-				//Tx Result check
-				let { txResult, tryCount } = await getTxResult(txHash);
-				cLog(3, `${FleetTimeStamp(fleetName)} Got txResult in ${tryCount} tries`, txResult);
-
-				//Retry if something went wrong
-				if(!txResult) {
-					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> BAD RESULT - Retrying`);
-					continue;  //Restart loop
-				}
-
-				confirmed = true;
-
-				const fullMsTaken = Date.now() - macroOpStart;
-				const secondsTaken = Math.round(fullMsTaken / 1000);
-				//cLog(3,`${FleetTimeStamp(fleetName)} Resolving with`, txResult);
-				cLog(1,`${FleetTimeStamp(fleetName)} <${opName}> Completed in ${secondsTaken}s`);
-				resolve(txResult);
-
-				return;
 			}
 		});
 	}
@@ -3344,12 +3178,15 @@
 		setTimeout(() => { startFleet(i); }, 10000 + extraTime);
 	}
 
-	function startAssistant() {
+	async function startAssistant() {
 		for (let i=0, n=userFleets.length; i < n; i++) {
 			//Initialize iteration counter
 			userFleets[i].iterCnt = 0;
 
-			if(enableAssistant && userFleets[i].assignment != '') updateFleetState(userFleets[i], 'Starting');
+			let fleetSavedData = await GM.getValue(userFleets[i].publicKey.toString(), '{}');
+			let fleetParsedData = JSON.parse(fleetSavedData);
+
+			if(fleetParsedData.assignment) updateFleetState(userFleets[i], 'Starting');
 
 			//Stagger fleet starts by 500ms to avoid overloading the RPC
 			setTimeout(() => { startFleet(i);	}, 500 * (i + 1));
@@ -3363,7 +3200,7 @@
 					autoSpanRef.innerHTML = 'Start';
 			} else {
 					enableAssistant = true;
-					startAssistant();
+					await startAssistant();
 					autoSpanRef.innerHTML = 'Stop';
 					for (let i=0, n=userFleets.length; i < n; i++) {
 							let fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
