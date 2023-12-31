@@ -39,37 +39,41 @@
 
 	function cLog(level, ...args) {	if(level <= debugLogLevel) console.log(...args); }
 
+	async function doProxyStuff(target, origMethod, args, rpcs)
+	{
+		let result;
+		try {
+			result = await origMethod.apply(target, args);
+		} catch (error1) {
+			cLog(2, 'CONNECTION ERROR: ', error1);
+			if ((error1 instanceof TypeError && error1.message === 'Failed to fetch') || (error1 instanceof Error && Number(error1.message.slice(0,3)) > 299)) {
+				let success = false;
+				let rpcIdx = 1;
+				while (!success && rpcIdx < rpcs.length) {
+					cLog(2, 'rpcIdx: ', rpcIdx, ', success: ', success);
+					const newConnection = new solanaWeb3.Connection(rpcs[rpcIdx], 'confirmed');
+					try {
+						result = await origMethod.apply(newConnection, args);
+						success = true;
+						cLog(2, 'NEW: ', result);
+					} catch (error2) {
+						cLog(2, 'INNER ERROR: ', error2);
+						if (!(error2 instanceof TypeError && error2.message === 'Failed to fetch') && !(error2 instanceof Error && Number(error2.message.slice(0,3)) > 299)) {
+								return error2;
+						}
+					}
+					rpcIdx = rpcIdx+1 < rpcs.length ? rpcIdx+1 : 0;
+				}
+			}
+		}
+		return result;
+	}
 	const writeConnectionProxy = {
 		get(target, key, receiver) {
 			const origMethod = target[key];
 			if(typeof origMethod === 'function'){
 				return async function (...args) {
-					let result;
-					try {
-						result = await origMethod.apply(target, args);
-					} catch (error1) {
-						cLog(2, 'WRITE CONNECTION ERROR: ', error1);
-						if ((error1 instanceof TypeError && error1.message === 'Failed to fetch') || (error1 instanceof Error && Number(error1.message.slice(0,3)) > 299)) {
-							let success = false;
-							let rpcIdx = 1;
-							while (!success && rpcIdx < writeRPCs.length) {
-								cLog(2, 'rpcIdx: ', rpcIdx, ', success: ', success);
-								const newConnection = new solanaWeb3.Connection(writeRPCs[rpcIdx], 'confirmed');
-								try {
-									result = await origMethod.apply(newConnection, args);
-									success = true;
-									cLog(2, 'NEW WRITE: ', result);
-								} catch (error2) {
-									cLog(2, 'INNER WRITE ERROR: ', error2);
-									if (!(error2 instanceof TypeError && error2.message === 'Failed to fetch') && !(error2 instanceof Error && Number(error2.message.slice(0,3)) > 299)) {
-											return error2;
-									}
-								}
-								rpcIdx = rpcIdx+1 < writeRPCs.length ? rpcIdx+1 : 0;
-							}
-						}
-					}
-					return result;
+					return await doProxyStuff(target, origMethod, args, writeRPCs);
 				}
 			}
 		},
@@ -79,32 +83,7 @@
 			const origMethod = target[key];
 			if(typeof origMethod === 'function'){
 				return async function (...args) {
-					let result;
-					try {
-						result = await origMethod.apply(target, args);
-					} catch (error1) {
-						cLog(2, 'READ CONNECTION ERROR: ', error1);
-						if ((error1 instanceof TypeError && error1.message === 'Failed to fetch') || (error1 instanceof Error && Number(error1.message.slice(0,3)) > 299)) {
-							let success = false;
-							let rpcIdx = 1;
-							while (!success && rpcIdx < readRPCs.length) {
-								cLog(2, 'rpcIdx: ', rpcIdx, ', success: ', success);
-								const newConnection = new solanaWeb3.Connection(readRPCs[rpcIdx], 'confirmed');
-								try {
-									result = await origMethod.apply(newConnection, args);
-									success = true;
-									cLog(2, 'NEW READ: ', result);
-								} catch (error2) {
-									cLog(2, 'INNER READ ERROR: ', error2);
-									if (!(error2 instanceof TypeError && error2.message === 'Failed to fetch') && !(error2 instanceof Error && Number(error2.message.slice(0,3)) > 299)) {
-											return error2;
-									}
-								}
-								rpcIdx = rpcIdx+1 < readRPCs.length ? rpcIdx+1 : 0;
-							}
-						}
-					}
-					return result;
+					return await doProxyStuff(target, origMethod, args, readRPCs);
 				}
 			}
 		},
@@ -2123,7 +2102,7 @@
 					let importText = document.querySelector('#importText');
 					importText.value = '{';
 					let fleetKeys = GM_listValues();
-					cLog(2, 'assistImportToggle: fleetKeys', fleetKeys);
+					//cLog(2, 'assistImportToggle: fleetKeys', fleetKeys);
 					for (let i in fleetKeys) {
 							let fleetSavedData = await GM.getValue(fleetKeys[i], '{}');
 							//let fleetParsedData = JSON.parse(fleetSavedData);
