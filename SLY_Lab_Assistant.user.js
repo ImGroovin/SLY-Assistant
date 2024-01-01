@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant Modded
 // @namespace    http://tampermonkey.net/
-// @version      0.4.1.2m
+// @version      0.4.1.3m
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
 // @match        https://*.labs.staratlas.com/
@@ -2420,10 +2420,11 @@
 							userFleets[i].toolCnt = changesTool.postBalance;
 							userFleets[i].sduCnt = changesSDU.postBalance;
 							if (userFleets[i].scanSkipCnt < 4) {
-									userFleets[i].state = `Scanned [${Math.round(scanCondition)}%]`;
 									let scanDelayMs = userFleets[i].scanCooldown * 1000 + 2000;
-									if(sduFound > 0) scanDelayMs *= 2; //Double wait time for sector to regen
+									//Wait at least 1.5 minutes for sector to regen
+									if(sduFound) scanDelayMs = Math.max(scanDelayMs, 90000);
 									userFleets[i].scanEnd = Date.now() + scanDelayMs;
+									userFleets[i].state = `Scanned [${Math.round(scanCondition)}%]${sduFound ? ` +${sduFound}` : ''}`;
 							} else {
 									userFleets[i].scanEnd = Date.now() + 600000;
 									userFleets[i].state = `Scanning Paused [${TimeToStr(new Date(userFleets[i].scanEnd))}]`;
