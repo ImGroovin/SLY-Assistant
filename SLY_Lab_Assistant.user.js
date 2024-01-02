@@ -24,6 +24,7 @@
 	let transportStopOnError = true; //Should transport fleet stop completely if there's an error (example: not enough resource/fuel/etc.)
 	let scanBlockPattern = 'right'; //Valid patterns: square, ring, up, down, left, right
 	let scanBlockLength = 7; //Length of the line-based patterns (does not apply to square or ring)
+	let scanBlockResetAfterResupply = true; //Start from the beginning of the pattern after resupplying at starbase?
 
 	//Used for reading solana data
 	let readRPCs = [
@@ -1947,6 +1948,8 @@
 		let scanBlock = [];
 		if (destX == '' || destY == '') return scanBlock;
 
+		const tip = scanBlockLength - 1;
+
 		if(scanBlockPattern == 'square') {
 			scanBlock.push([destX, destY]);
 			scanBlock.push([destX+1, destY]);
@@ -1965,19 +1968,19 @@
 		}
 		else if(scanBlockPattern == 'up') {
 			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX, destY + i]);
-			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX + 1, destY - i]);
+			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX + 1, destY + (tip - i)]);
 		}
 		else if(scanBlockPattern == 'down') {
 			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX, destY - i]);
-			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX + 1, destY + i]);
+			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX + 1, destY + (tip + i)]);
 		}
 		else if(scanBlockPattern == 'left') {
 			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX - i, destY]);
-			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX + i, destY + 1]);
+			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX + (tip + i), destY + 1]);
 		}
 		else if(scanBlockPattern == 'right') {
 			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX + i, destY]);
-			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX - i, destY + 1]);
+			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX + (tip - i), destY + 1]);
 		}
 
 		return scanBlock;
@@ -2475,6 +2478,7 @@
 
 	async function handleResupply(i, fleetCoords) {
 			userFleets[i].resupplying = true;
+			if(scanBlockResetAfterResupply) userFleets[i].scanBlockIdx = 0;
 			let starbaseX = userFleets[i].starbaseCoord.split(',')[0].trim();
 			let starbaseY = userFleets[i].starbaseCoord.split(',')[1].trim();
 
