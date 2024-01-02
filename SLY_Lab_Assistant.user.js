@@ -1980,7 +1980,6 @@
 			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX - i, destY + 1]);
 		}
 
-		scanBlockLength = scanBlock.length;
 		return scanBlock;
 	}
 
@@ -2441,11 +2440,11 @@
 							let shouldMove = strike && userFleets[i].scanMove;
 							userFleets[i].scanSkipCnt = strike ? userFleets[i].scanSkipCnt + 1 : 0;
 							cLog(1,`${FleetTimeStamp(userFleets[i].label)} ${Math.round(scanCondition)}%${sduFound > 0 ? ` | FOUND: ${sduFound}` : ''}`);
-							let nextMoveIdx = userFleets[i].scanBlockIdx > scanBlockLength - 2 ? 0 : userFleets[i].scanBlockIdx+1;
+							let nextMoveIdx = userFleets[i].scanBlockIdx > userFleets[i].scanBlock.length - 2 ? 0 : userFleets[i].scanBlockIdx+1;
 							userFleets[i].scanBlockIdx = shouldMove ? nextMoveIdx : userFleets[i].scanBlockIdx;
 							userFleets[i].toolCnt = changesTool.postBalance;
 							userFleets[i].sduCnt = changesSDU.postBalance;
-							if (userFleets[i].scanSkipCnt < scanBlockLength - 1) {
+							if (userFleets[i].scanSkipCnt < userFleets[i].scanBlock.length - 1) {
 									let scanDelayMs = userFleets[i].scanCooldown * 1000 + 2000;
 									//Wait at least 1.5 minutes for sector to regen
 									if(sduFound) scanDelayMs = Math.max(scanDelayMs, 90000);
@@ -3142,9 +3141,8 @@
 			userFleets[i].startupScanBlockCheck = true;
 
 			if(userFleets[i].scanMove) {
-					cLog(2, `${FleetTimeStamp(userFleets[i].label)} Checking scanBlock`);
-
-					for (let s=0; s < scanBlockLength - 1; s++) {
+					cLog(2, `${FleetTimeStamp(userFleets[i].label)} Checking scanBlock`, userFleets[i].scanBlock);
+					for (let s=0; s < userFleets[i].scanBlock.length - 1; s++) {
 							const testCoords = userFleets[i].scanBlock[s];
 							if (fleetCoords[0] == testCoords[0] && fleetCoords[1] == testCoords[1])
 							{
