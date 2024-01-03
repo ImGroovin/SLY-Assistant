@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         SLY Permissioned Account Management
+// @name         [FLY] Freelance System: Core
 // @namespace    http://tampermonkey.net/
-// @version      0.3
+// @version      0.4
 // @description  try to take over the world!
 // @author       SLY
 // @match        https://labs.staratlas.com/
@@ -36,112 +36,107 @@
     let userProfile = null;
     let permissionedAccounts = [];
 
-    function getPermissionedAccounts() {
-        return new Promise(async resolve => {
-            permissionedAccounts = [];
+    async function getPermissionedAccounts() {
+        permissionedAccounts = [];
 
-            // Find the Player Profile associated with the connected wallet
-            [userProfile] = await solanaConnection.getProgramAccounts(
+        // Find the Player Profile associated with the connected wallet
+        [userProfile] = await solanaConnection.getProgramAccounts(
+            profileProgramId,
+            {
+                filters: [
+                    {
+                        memcmp: {
+                            offset: 30,
+                            bytes: userPublicKey.toString(),
+                        },
+                    },
+                ],
+            }
+        );
+
+        // The first 30 bytes are general information about the Profile
+        let profileData = userProfile.account.data.subarray(30);
+        let iter = 0;
+
+        // Each account which has been granted access to this Profile
+        //   is listed in 80 byte chunks
+        while (profileData.length >= 80) {
+            let currProfileKey = profileData.subarray(0, 80);
+            let decodedProfileKey = profileProgram.coder.types.decode('ProfileKey', currProfileKey);
+
+            // Find the Player Profile associated with the account which has been granted access
+            let [targetUserProfile] = await solanaConnection.getProgramAccounts(
                 profileProgramId,
                 {
                     filters: [
                         {
                             memcmp: {
                                 offset: 30,
-                                bytes: userPublicKey.toString(),
+                                bytes: decodedProfileKey.key.toString(),
                             },
                         },
                     ],
                 }
             );
 
-            // The first 30 bytes are general information about the Profile
-            let profileData = userProfile.account.data.subarray(30);
-            let iter = 0;
-
-            // Each account which has been granted access to this Profile
-            //   is listed in 80 byte chunks
-            while (profileData.length >= 80) {
-                let currProfileKey = profileData.subarray(0, 80);
-                let decodedProfileKey = profileProgram.coder.types.decode('ProfileKey', currProfileKey);
-
-                // Find the Player Profile associated with the account which has been granted access
-                let [targetUserProfile] = await solanaConnection.getProgramAccounts(
+            // Find the Player Name associated with the account which has been granted access
+            let playerNameAcct;
+            if (targetUserProfile) {
+                [playerNameAcct] = await solanaConnection.getProgramAccounts(
                     profileProgramId,
                     {
                         filters: [
                             {
                                 memcmp: {
-                                    offset: 30,
-                                    bytes: decodedProfileKey.key.toString(),
+                                    offset: 9,
+                                    bytes: targetUserProfile.pubkey.toString(),
                                 },
                             },
                         ],
                     }
                 );
-
-                // Find the Player Name associated with the account which has been granted access
-                let playerNameAcct;
-                if (targetUserProfile) {
-                    [playerNameAcct] = await solanaConnection.getProgramAccounts(
-                        profileProgramId,
-                        {
-                            filters: [
-                                {
-                                    memcmp: {
-                                        offset: 9,
-                                        bytes: targetUserProfile.pubkey.toString(),
-                                    },
-                                },
-                            ],
-                        }
-                    );
-                }
-                let playerName = playerNameAcct ? new TextDecoder().decode(playerNameAcct.account.data.subarray(42)) : '';
-
-                console.log('account: ', decodedProfileKey.key.toString(), ', name: ', playerName, ', idx: ', iter);
-                permissionedAccounts.push({account: decodedProfileKey.key.toString(), name: playerName, idx: iter})
-                profileData = profileData.subarray(80);
-                iter += 1;
             }
-            console.log(permissionedAccounts);
-            resolve();
-        });
+            let playerName = playerNameAcct ? new TextDecoder().decode(playerNameAcct.account.data.subarray(42)) : '';
+            let permissions = await decodePermissions(decodedProfileKey.permissions);
+            permissionedAccounts.push({account: decodedProfileKey.key.toString(), name: playerName, idx: iter, permissions: permissions})
+            profileData = profileData.subarray(80);
+            iter += 1;
+        }
+        console.log(permissionedAccounts);
+        return;
     }
 
-    function initUser() {
-        return new Promise(async resolve => {
-            await selectWalletToggle();
-            if (wallet === 'phantom') {
-                let walletConn = await solana.connect();
-                userPublicKey = walletConn.publicKey;
-            } else {
-                await solflare.connect();
-                userPublicKey = solflare.publicKey;
-            }
+    async function initUser() {
+        wallet = await selectWalletToggle();
+        if (wallet === 'phantom') {
+            let walletConn = await solana.connect();
+            userPublicKey = walletConn.publicKey;
+        } else {
+            await solflare.connect();
+            userPublicKey = solflare.publicKey;
+        }
 
-            // Find the Player Profile associated with the connected wallet
-            [userProfile] = await solanaConnection.getProgramAccounts(
-                profileProgramId,
-                {
-                    filters: [
-                        {
-                            memcmp: {
-                                offset: 30,
-                                bytes: userPublicKey.toString(),
-                            },
+        // Find the Player Profile associated with the connected wallet
+        [userProfile] = await solanaConnection.getProgramAccounts(
+            profileProgramId,
+            {
+                filters: [
+                    {
+                        memcmp: {
+                            offset: 30,
+                            bytes: userPublicKey.toString(),
                         },
-                    ],
-                }
-            );
+                    },
+                ],
+            }
+        );
 
-            // Conver to a solanaWeb3 PublicKey object - probably unnecessary
-            userProfilePublicKey = new solanaWeb3.PublicKey(userProfile.pubkey.toString());
+        // Convert to a solanaWeb3 PublicKey object - probably unnecessary
+        userProfilePublicKey = new solanaWeb3.PublicKey(userProfile.pubkey.toString());
 
-            await getPermissionedAccounts();
-            manageProfileToggle(permissionedAccounts);
-            resolve();
-        });
+        await getPermissionedAccounts();
+        manageProfileToggle(permissionedAccounts);
+        return;
     }
 
     // Simple async wait utility function
@@ -153,71 +148,67 @@
 
     // Wait until the transaction is confirmed before proceeding
     // Primarily looking for TransactionExpiredBlockheightExceededError to trigger a retry
-    function waitForTxConfirmation(txHash, blockhash, lastValidBlockHeight) {
-        return new Promise(async resolve => {
-            let response = null;
-            try {
-                let confirmation = await solanaConnection.confirmTransaction({
-                    blockhash,
-                    lastValidBlockHeight,
-                    signature: txHash
-                }, 'confirmed');
-                response = confirmation;
-            } catch (err) {
-                console.log('ERROR: ', err);
-                console.log('ERROR NAME: ', err.name);
-                response = err;
-            }
-            resolve(response);
-        });
+    async function waitForTxConfirmation(txHash, blockhash, lastValidBlockHeight) {
+        let response = null;
+        try {
+            let confirmation = await solanaConnection.confirmTransaction({
+                blockhash,
+                lastValidBlockHeight,
+                signature: txHash
+            }, 'confirmed');
+            response = confirmation;
+        } catch (err) {
+            console.log('ERROR: ', err);
+            console.log('ERROR NAME: ', err.name);
+            response = err;
+        }
+        return response;
     }
 
     // Build the transaction, sign it, send it, retry if it expires
-    function txSignAndSend(ix) {
-        return new Promise(async resolve => {
-            let tx = new solanaWeb3.Transaction();
-            console.log('---INSTRUCTION---');
-            console.log(ix);
-            if (ix.constructor === Array) {
-                ix.forEach(item => tx.add(item.instruction))
-            } else {
-                tx.add(ix.instruction);
+    async function txSignAndSend(ix) {
+        let tx = new solanaWeb3.Transaction();
+        console.log('---INSTRUCTION---');
+        console.log(ix);
+        if (ix.constructor === Array) {
+            ix.forEach(item => tx.add(item.instruction))
+        } else {
+            tx.add(ix.instruction);
+        }
+        let { blockhash, lastValidBlockHeight } = await solanaConnection.getLatestBlockhash('confirmed');
+        tx.recentBlockhash = blockhash;
+        tx.lastValidBlockHeight = lastValidBlockHeight;
+        tx.feePayer = userPublicKey;
+        tx.signer = userPublicKey;
+        let txSigned = null;
+        if (wallet === 'phantom') {
+            txSigned = await solana.signAllTransactions([tx]);
+        } else {
+            txSigned = await solflare.signAllTransactions([tx]);
+        }
+        let txSerialized = txSigned[0].serialize();
+        let txHash = await solanaConnection.sendRawTransaction(txSerialized, {skipPreflight: true, preflightCommitment: 'confirmed'});
+        console.log('---TXHASH---');
+        console.log(txHash);
+        let confirmation = await waitForTxConfirmation(txHash, blockhash, lastValidBlockHeight);
+        console.log('---CONFIRMATION---');
+        console.log(confirmation);
+        let txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
+        if (confirmation.name == 'TransactionExpiredBlockheightExceededError' && !txResult) {
+            console.log('-----RETRY-----');
+            txResult = await txSignAndSend(ix);
+        }
+        if (!confirmation.name) {
+            while (!txResult) {
+                await wait(2000);
+                txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
             }
-            let { blockhash, lastValidBlockHeight } = await solanaConnection.getLatestBlockhash('confirmed');
-            tx.recentBlockhash = blockhash;
-            tx.lastValidBlockHeight = lastValidBlockHeight;
-            tx.feePayer = userPublicKey;
-            tx.signer = userPublicKey;
-            let txSigned = null;
-            if (wallet === 'phantom') {
-                txSigned = await solana.signAllTransactions([tx]);
-            } else {
-                txSigned = await solflare.signAllTransactions([tx]);
-            }
-            let txSerialized = txSigned[0].serialize();
-            let txHash = await solanaConnection.sendRawTransaction(txSerialized, {skipPreflight: true, preflightCommitment: 'confirmed'});
-            console.log('---TXHASH---');
-            console.log(txHash);
-            let confirmation = await waitForTxConfirmation(txHash, blockhash, lastValidBlockHeight);
-            console.log('---CONFIRMATION---');
-            console.log(confirmation);
-            let txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
-            if (confirmation.name == 'TransactionExpiredBlockheightExceededError' && !txResult) {
-                console.log('-----RETRY-----');
-                txResult = await txSignAndSend(ix);
-            }
-            if (!confirmation.name) {
-                while (!txResult) {
-                    await wait(2000);
-                    txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
-                }
-            }
-            console.log('txResult: ', txResult);
-            resolve(txResult);
-        });
+        }
+        console.log('txResult: ', txResult);
+        return txResult;
     }
 
-    //bitshift taken from @staratlas/sage permissions.ts
+    // Bitshift taken from @staratlas/sage permissions.ts
     function buildPermissions(input) {
         const out = [0,0,0,0,0,0,0,0];
         out[0] = new BrowserAnchor.anchor.BN(
@@ -251,74 +242,141 @@
         return out;
     }
 
-    async function addKeyToProfile(newKey) {
-        return new Promise(async resolve => {
-            document.getElementById("waiting").classList.add('lds-ring');
-            // Waiting on documentation explaining the permissions. Ideally we would request only necessary permissions. For now, we're requesting all SAGE permissions except 'rentFleet'
-            let permissions = buildPermissions([[true,true,true,true,true,true,true,true],[true,true,true,true,true,false,true,true],[true,true,true,true,true,true,true,true]]);
-            //let permissions = buildPermissions([[true,false,false,false,false,false,false,false],[false,false,true,true,true,false,false,true],[true,false,true,true,true,false,true,true]]);
-
-            let txResult = {};
-            if (newKey.length > 0) {
-                let tx = { instruction: await profileProgram.methods.addKeys(0, 0, [{
-                    scope: sageProgramId,
-                    expireTime: new BrowserAnchor.anchor.BN(-1),
-                    permissions: permissions
-                }]).accountsStrict({
-                    funder: userPublicKey,
-                    profile: userProfilePublicKey,
-                    key: userPublicKey,
-                    systemProgram: solanaWeb3.SystemProgram.programId
-                }).remainingAccounts([{
-                    pubkey: new solanaWeb3.PublicKey(newKey),
-                    isSigner: false,
-                    isWritable: false
-                }]).instruction()}
-                txResult = await txSignAndSend(tx);
-            } else {
-                txResult = {name: "InputNeeded"};
-            }
-            await getPermissionedAccounts();
-            document.getElementById("waiting").classList.remove('lds-ring');
-            manageProfileToggle();
-            document.querySelector('#addAcctDiv').value = '';
-            manageProfileToggle(permissionedAccounts);
-            resolve(txResult);
-        });
+    function decodePermissions(input) {
+        const permissions = [];
+        for (let section of input) {
+            let sectionFlags = [];
+            sectionFlags.push((section & (1 << 0)) === (1 << 0));
+            sectionFlags.push((section & (1 << 1)) === (1 << 1));
+            sectionFlags.push((section & (1 << 2)) === (1 << 2));
+            sectionFlags.push((section & (1 << 3)) === (1 << 3));
+            sectionFlags.push((section & (1 << 4)) === (1 << 4));
+            sectionFlags.push((section & (1 << 5)) === (1 << 5));
+            sectionFlags.push((section & (1 << 6)) === (1 << 6));
+            sectionFlags.push((section & (1 << 7)) === (1 << 7));
+            permissions.push(sectionFlags);
+        }
+        return permissions;
     }
 
-    async function removeKeyFromProfile(targetAccountStr) {
-        return new Promise(async resolve => {
-            document.getElementById("waiting").classList.add('lds-ring');
-            let targetAccount = permissionedAccounts.find(o => o.account === targetAccountStr);
-            console.log(targetAccount.account);
-            console.log(targetAccount.idx);
+    async function addKeyToProfile(newKey) {
+        document.getElementById("waiting").classList.add('lds-ring');
+        // Waiting on documentation explaining the permissions. Ideally we would request only necessary permissions. For now, we're requesting all SAGE permissions except 'rentFleet'
+        let permissions = buildPermissions([[true,true,true,true,true,true,true,true],[true,true,true,true,true,false,true,true],[true,true,true,true,true,true,true,true]]);
+        //let permissions = buildPermissions([[true,false,false,false,false,false,false,false],[false,false,true,true,true,false,false,true],[true,false,true,true,true,false,true,true]]);
 
+        let txResult = {};
+        // Check if the public key has already been added.
+        let targetAccount = permissionedAccounts.some(o => o.account === newKey);
+        console.log('targetAccount: ', targetAccount);
+        if (targetAccount) {
+            txResult = {name: "AccountExists"};
+        } else if (newKey.length < 1) {
+            txResult = {name: "InputNeeded"};
+        } else {
+            let tx = { instruction: await profileProgram.methods.addKeys(0, 0, [{
+                scope: sageProgramId,
+                expireTime: new BrowserAnchor.anchor.BN(-1),
+                permissions: permissions
+            }]).accountsStrict({
+                funder: userPublicKey,
+                profile: userProfilePublicKey,
+                key: userPublicKey,
+                systemProgram: solanaWeb3.SystemProgram.programId
+            }).remainingAccounts([{
+                pubkey: new solanaWeb3.PublicKey(newKey),
+                isSigner: false,
+                isWritable: false
+            }]).instruction()}
+            console.log('tx: ', tx);
+            txResult = await txSignAndSend(tx);
+            await getPermissionedAccounts();
+        }
+        console.log('txResult: ', txResult);
+        document.getElementById("waiting").classList.remove('lds-ring');
+        manageProfileToggle();
+        document.querySelector('#addAcctDiv').value = '';
+        manageProfileToggle(permissionedAccounts);
+        return txResult;
+    }
+
+    async function removeKeyFromProfile(targetAccountIdx) {
+        document.getElementById("waiting").classList.add('lds-ring');
+        let targetAccount = permissionedAccounts.find(o => o.idx == targetAccountIdx);
+        console.log(targetAccount.account);
+        console.log(targetAccount.idx);
+
+        let txResult = {};
+        if (targetAccount.idx === 0) {
+            txResult = {name: "PrimaryAccount"};
+        } else {
             let tx = { instruction: await profileProgram.methods.removeKeys(0, [new BrowserAnchor.anchor.BN(targetAccount.idx), new BrowserAnchor.anchor.BN(targetAccount.idx+1)]).accountsStrict({
                 funder: userPublicKey,
                 profile: userProfilePublicKey,
                 key: userPublicKey,
                 systemProgram: solanaWeb3.SystemProgram.programId
             }).instruction()}
-            let txResult = await txSignAndSend(tx);
+            txResult = await txSignAndSend(tx);
             await getPermissionedAccounts();
-            document.getElementById("waiting").classList.remove('lds-ring');
-            manageProfileToggle();
-            document.querySelector('#addAcctDiv').value = '';
-            manageProfileToggle(permissionedAccounts);
-            resolve(txResult);
+        }
+        document.getElementById("waiting").classList.remove('lds-ring');
+        manageProfileToggle();
+        document.querySelector('#addAcctDiv').value = '';
+        manageProfileToggle(permissionedAccounts);
+        return txResult;
+    }
+
+    function showPermissions(selectedProfile) {
+        const permissionNames = [['manageGame','manageSector','manageStar','managePlanet','manageShip','manageSagePlayerProfile','manageStarbase','manageMineItem'],
+                                 ['manageResource','removeShipEscrow','moveFleet','transitionFromLoadingBay','transitionFromIdle','rentFleet','doCrafting','manageCargoPod'],
+                                 ['addRemoveCargo','doStarbaseUpgrades','manageFleet','manageFleetCargo','doMining','respawn','manageSurveyDataUnit','scanSurveyDataUnit']];
+        let permElem = document.getElementById("permissionDetails");
+        permElem.innerHTML = '';
+        let targetAccount = permissionedAccounts.find(o => o.idx == selectedProfile);
+        let permContainer = document.createElement('div');
+        permContainer.style.width = '100%';
+        permContainer.style.display = 'flex';
+        permContainer.style.justifyContent = 'space-around';
+
+        let permCol1 = document.createElement('div');
+        let permCol1Text = '';
+        targetAccount.permissions[0].forEach((flag, i) => {
+            let flagVal = flag ? '<span style="color: #00ff00">&#10004;</span>' : 'X';
+            permCol1Text += flagVal + ' ' + permissionNames[0][i] + '<br>';
         });
+        permCol1.innerHTML = permCol1Text;
+
+        let permCol2 = document.createElement('div');
+        let permCol2Text = '';
+        targetAccount.permissions[1].forEach((flag, i) => {
+            let flagVal = flag ? '<span style="color: #00ff00">&#10004;</span>' : 'X';
+            permCol2Text += flagVal + ' ' + permissionNames[1][i] + '<br>';
+        });
+        permCol2.innerHTML = permCol2Text;
+
+        let permCol3 = document.createElement('div');
+        let permCol3Text = '';
+        targetAccount.permissions[2].forEach((flag, i) => {
+            let flagVal = flag ? '<span style="color: #00ff00">&#10004;</span>' : 'X';
+            permCol3Text += flagVal + ' ' + permissionNames[2][i] + '<br>';
+        });
+        permCol3.innerHTML = permCol3Text;
+
+        permContainer.appendChild(permCol1);
+        permContainer.appendChild(permCol2);
+        permContainer.appendChild(permCol3);
+        permElem.appendChild(permContainer);
     }
 
     // UI panel - wallet selection
-    async function selectWalletToggle() {
+    function selectWalletToggle() {
         return new Promise(async resolve => {
             let errElem = document.querySelector('#walletModal .assist-modal-error');
             let targetElem = document.querySelector('#walletModal');
             if (targetElem.style.display === 'none') {
                 targetElem.style.display = 'block';
                 let selectWalletBtn = document.querySelector('#selectWalletBtn');
-                selectWalletBtn.onclick = function() {
+                selectWalletBtn.onclick = async function() {
                     let selectWalletBtn = document.querySelector('#walletSelection');
                     let errBool = false;
                     errElem.innerHTML = '';
@@ -335,9 +393,9 @@
                             }
                         }
                         if (!errBool) {
-                            wallet = selectWalletBtn.value;
+                            let selectedWallet = selectWalletBtn.value;
                             selectWalletToggle();
-                            resolve();
+                            resolve(selectedWallet);
                         }
                     }
                 }
@@ -351,11 +409,12 @@
     // UI panel - profile management
     async function manageProfileToggle(accounts) {
         let targetElem = document.querySelector('#accountModal');
+        let permElem = document.getElementById("permissionDetails");
         if (targetElem.style.display === 'none') {
             targetElem.style.display = 'block';
             let contentElem = document.querySelector('#profileList');
             let transportOptStr = '';
-            accounts.forEach( function(account) {transportOptStr += '<option value="' + account.account + '">' + account.name + '  [' + account.account + ']</option>';});
+            accounts.forEach( function(account) {transportOptStr += '<option value="' + account.idx + '">' + account.name + '  [' + account.account + ']</option>';});
             let profileSelect = document.getElementById('profileSelect');
             if (profileSelect !== null) {
                 profileSelect.innerHTML = transportOptStr;
@@ -368,8 +427,10 @@
                 profileSelect.innerHTML = transportOptStr;
                 contentElem.append(profileSelect);
             }
+            profileSelect.addEventListener('change', async function(e) {await showPermissions(profileSelect.value);});
         } else {
             targetElem.style.display = 'none';
+            permElem.innerHTML = '';
         }
     }
 
@@ -403,7 +464,7 @@
             accountModal.style.zIndex = 3;
             let accountModalContent = document.createElement('div');
             accountModalContent.classList.add('assist-modal-content');
-            accountModalContent.innerHTML = '<div class="assist-modal-header"><span>Manage Permissioned Accounts</span><div class="assist-modal-header-right"><div id="waiting"><div></div><div></div><div></div><div></div></div><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span class="assist-modal-error"></span><div>Grant restricted access to interact with this account\'s SAGE instance from another account. Enter the public key of the restricted account below.</div><div max-width="100%"><input id="addAcctDiv" type="text" style="width: 375px;"><button id="addAcctBtn" class="assist-btn">Add Account</button></div><div max-width="100%"><div id="profileList"></div><div style="display: flex;"><button id="removeAcctBtn" class="assist-btn" style="margin-left: auto;">Remove Account</button></div></div></div>';
+            accountModalContent.innerHTML = '<div class="assist-modal-header"><span>[FLY] Freelance System: Core</span><div class="assist-modal-header-right"><div id="waiting"><div></div><div></div><div></div><div></div></div><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span class="assist-modal-error"></span><div>Grant restricted access to interact with this account\'s SAGE instance from another account. Enter the public key of the restricted account below.</div><div max-width="100%"><input id="addAcctDiv" type="text" style="width: 375px;"><button id="addAcctBtn" class="assist-btn">Add Account</button></div><div max-width="100%"><div id="profileList"></div><div style="display: flex;"><button id="removeAcctBtn" class="assist-btn" style="margin-left: auto;">Remove Account</button></div></div><div id="permissionDetails"></div></div>';
             accountModal.append(accountModalContent);
 
             let accountManagerTitle = document.createElement('span');
@@ -413,8 +474,8 @@
             let accountManagerBtn = document.createElement('button');
             accountManagerBtn.id = 'accountManagerBtn';
             accountManagerBtn.classList.add('assist-btn');
-            accountManagerBtn.addEventListener('click', function(e) {initUser();});
-            accountManagerBtn.innerText = 'PAM';
+            accountManagerBtn.addEventListener('click', async function(e) {await initUser();});
+            accountManagerBtn.innerText = 'FLY';
 
             let targetElem = document.querySelector('body');
             let accountManagerContainer = document.createElement('div');
@@ -440,13 +501,32 @@
             targetElem.append(accountModal);
 
             let walletClose = document.querySelector('#walletModal .assist-modal-close');
-            walletClose.addEventListener('click', function(e) {selectWalletToggle();});
+            walletClose.addEventListener('click', async function(e) {await selectWalletToggle();});
             let addAcctBtn = document.querySelector('#addAcctBtn');
-            addAcctBtn.addEventListener('click', function(e) {addKeyToProfile(document.querySelector('#addAcctDiv').value);});
+            addAcctBtn.addEventListener('click', async function(e) {
+                let r = await addKeyToProfile(document.querySelector('#addAcctDiv').value);
+                console.log('r: ', r);
+                let errElem = document.querySelector('#accountModal .assist-modal-error');
+                if (r.name === 'InputNeeded') {
+                    errElem.innerHTML = 'Error: Please enter a public key.';
+                } else if (r.name === 'AccountExists') {
+                    errElem.innerHTML = 'Error: Account already added.';
+                } else {
+                    errElem.innerHTML = '';
+                }
+            });
             let removeAcctBtn = document.querySelector('#removeAcctBtn');
-            removeAcctBtn.addEventListener('click', function(e) {removeKeyFromProfile(document.querySelector('#profileSelect').value);});
+            removeAcctBtn.addEventListener('click', async function(e) {
+                let r = await removeKeyFromProfile(document.querySelector('#profileSelect').value);
+                let errElem = document.querySelector('#accountModal .assist-modal-error');
+                if (r.name === 'PrimaryAccount') {
+                    errElem.innerHTML = 'Error: Cannot remove primary account.';
+                } else {
+                    errElem.innerHTML = '';
+                }
+            });
             let accountClose = document.querySelector('#accountModal .assist-modal-close');
-            accountClose.addEventListener('click', function(e) {manageProfileToggle();});
+            accountClose.addEventListener('click', async function(e) {await manageProfileToggle();});
         }
     }
     observer.observe(document, {childList: true, subtree: true});
