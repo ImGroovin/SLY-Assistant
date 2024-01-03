@@ -22,7 +22,7 @@ Permissions can be granted to a "hot wallet" (the Lancer Account) while maintain
 ## Setup
 The script is built as a TamperMonkey script. TamperMonkey is a userscript manager available for free as a browser extension.
 1.	Install TamperMonkey.
-2.	Select the SLY_Permissioned_Account_Management.user.js file in this repo. View the file and click the "Raw" button to view its source.
+2.	Select the SLY_Freelance_System_Core.user.js file in this repo. View the file and click the "Raw" button to view its source.
 3.	Copy the source.
 4.	Open Tampermonkey in your browser and click the Add Script tab (icon with a plus symbol).
 5.	Paste the source into the script window and click File > Save.
