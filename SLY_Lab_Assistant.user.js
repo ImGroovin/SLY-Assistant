@@ -41,6 +41,7 @@
 	let initComplete = false;
 
 	function cLog(level, ...args) {	if(level <= debugLogLevel) console.log(...args); }
+	function wait(ms) {	return new Promise(resolve => {	setTimeout(resolve, ms); }); }
 
 	async function doProxyStuff(target, origMethod, args, rpcs)
 	{
@@ -66,6 +67,9 @@
 						}
 					}
 					rpcIdx = rpcIdx+1 < rpcs.length ? rpcIdx+1 : 0;
+
+					//Prevent spam if errors are occurring immediately (disconnected from internet / unplugged cable)
+					wait(2000);
 				}
 			}
 		}
@@ -406,12 +410,6 @@
 					});
 					initComplete = true;
 					resolve();
-			});
-	}
-
-	function wait(ms) {
-			return new Promise(resolve => {
-					setTimeout(resolve, ms);
 			});
 	}
 
