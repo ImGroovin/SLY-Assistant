@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant Modded
 // @namespace    http://tampermonkey.net/
-// @version      0.4.1.3m
+// @version      0.4.1.4m
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
 // @match        https://*.labs.staratlas.com/
@@ -22,6 +22,9 @@
 	let debugLogLevel = 3; //How much console logging you want to see (higher number = more, 0 = none)
 	let extraFuelToDropOffAtTarget = 0; //How much excess fuel to leave at target during transport assignments
 	let transportStopOnError = true; //Should transport fleet stop completely if there's an error (example: not enough resource/fuel/etc.)
+	let scanBlockPattern = 'square'; //Valid patterns: square, ring, up, down, left, right
+	let scanBlockLength = 5; //Length of the line-based patterns (does not apply to square or ring)
+	let scanBlockResetAfterResupply = true; //Start from the beginning of the pattern after resupplying at starbase?
 
 	//Used for reading solana data
 	let readRPCs = [
@@ -38,15 +41,23 @@
 	let initComplete = false;
 
 	function cLog(level, ...args) {	if(level <= debugLogLevel) console.log(...args); }
+	function wait(ms) {	return new Promise(resolve => {	setTimeout(resolve, ms); }); }
 
 	async function doProxyStuff(target, origMethod, args, rpcs)
 	{
+		function isConnectivityError(error) {
+			return (
+				(error instanceof TypeError && error.message === 'Failed to fetch') || 
+				(error instanceof Error && Number(error.message.slice(0,3)) > 299)
+			);
+		}
+		
 		let result;
 		try {
 			result = await origMethod.apply(target, args);
 		} catch (error1) {
 			cLog(2, 'CONNECTION ERROR: ', error1);
-			if ((error1 instanceof TypeError && error1.message === 'Failed to fetch') || (error1 instanceof Error && Number(error1.message.slice(0,3)) > 299)) {
+			if (isConnectivityError(error1)) {
 				let success = false;
 				let rpcIdx = 1;
 				while (!success && rpcIdx < rpcs.length) {
@@ -58,11 +69,12 @@
 						cLog(2, 'NEW: ', result);
 					} catch (error2) {
 						cLog(2, 'INNER ERROR: ', error2);
-						if (!(error2 instanceof TypeError && error2.message === 'Failed to fetch') && !(error2 instanceof Error && Number(error2.message.slice(0,3)) > 299)) {
-								return error2;
-						}
+						if (!isConnectivityError(error2)) return error2;
 					}
 					rpcIdx = rpcIdx+1 < rpcs.length ? rpcIdx+1 : 0;
+
+					//Prevent spam if errors are occurring immediately (disconnected from internet / unplugged cable)
+					await wait(2000);
 				}
 			}
 		}
@@ -403,12 +415,6 @@
 					});
 					initComplete = true;
 					resolve();
-			});
-	}
-
-	function wait(ms) {
-			return new Promise(resolve => {
-					setTimeout(resolve, ms);
 			});
 	}
 
@@ -1939,6 +1945,51 @@
 		updateAssistStatus(fleet);
 	}
 
+	function buildScanBlock(destX, destY) {
+		destX = Number(destX);
+		destY = Number(destY);
+		let scanBlock = [];
+		if (destX == '' || destY == '') return scanBlock;
+
+		const tip = scanBlockLength - 1;
+
+		if(scanBlockPattern == 'ring') {
+			scanBlock.push([destX, destY]);
+			scanBlock.push([destX+1, destY]);
+			scanBlock.push([destX+2, destY]);
+			scanBlock.push([destX+2, destY+1]);
+			scanBlock.push([destX+2, destY+2]);
+			scanBlock.push([destX+1, destY+2]);
+			scanBlock.push([destX, destY+2]);
+			scanBlock.push([destX, destY+1]);
+		}
+		else if(scanBlockPattern == 'up') {
+			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX, destY + i]);
+			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX + 1, destY + (tip - i)]);
+		}
+		else if(scanBlockPattern == 'down') {
+			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX, destY - i]);
+			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX + 1, destY - (tip - i)]);
+		}
+		else if(scanBlockPattern == 'left') {
+			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX - i, destY]);
+			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX - (tip - i), destY + 1]);
+		}
+		else if(scanBlockPattern == 'right') {
+			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX + i, destY]);
+			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX + (tip - i), destY + 1]);
+		} 
+		else {
+			//Default to square
+			scanBlock.push([destX, destY]);
+			scanBlock.push([destX+1, destY]);
+			scanBlock.push([destX+1, destY+1]);
+			scanBlock.push([destX, destY+1]);	
+		}
+
+		return scanBlock;
+	}
+
 	async function saveAssistInput() {
 			let fleetRows = document.querySelectorAll('#assistModal .assist-fleet-row');
 			let scanRows = document.querySelectorAll('#assistModal .assist-scan-row');
@@ -2067,17 +2118,8 @@
 							let fleetSavedData = await GM.getValue(fleetPK, '{}');
 							let fleetParsedData = JSON.parse(fleetSavedData);
 							let fleetMoveTarget = fleetParsedData && fleetParsedData.moveTarget ? fleetParsedData.moveTarget : '';
-							destX = Number(destX);
-							destY = Number(destY);
-							let scanShiftX = destX > 0 ? -1 : 1;
-							let scanShiftY = destY > 0 ? -1 : 1;
-							let scanBlock = [];
-							if (destX !== '' && destY !== '') {
-								scanBlock.push([destX, destY]);
-								scanBlock.push([destX+scanShiftX, destY]);
-								scanBlock.push([destX+scanShiftX, destY+scanShiftY]);
-								scanBlock.push([destX, destY+scanShiftY]);
-							}
+							let scanBlock = buildScanBlock(destX, destY);
+
 							await GM.setValue(fleetPK, `{\"name\": \"${fleetName}\", \"assignment\": \"${fleetAssignment}\", \"mineResource\": \"${fleetMineResource}\", \"dest\": \"${fleetDestCoord}\", \"starbase\": \"${fleetStarbaseCoord}\", \"moveType\": \"${moveType}\", \"subwarpPref\": \"${subwarpPref}\", \"moveTarget\": \"${fleetMoveTarget}\", \"transportResource1\": \"${transportResource1}\", \"transportResource1Perc\": ${transportResource1Perc}, \"transportResource2\": \"${transportResource2}\", \"transportResource2Perc\": ${transportResource2Perc}, \"transportResource3\": \"${transportResource3}\", \"transportResource3Perc\": ${transportResource3Perc}, \"transportResource4\": \"${transportResource4}\", \"transportResource4Perc\": ${transportResource4Perc}, \"transportSBResource1\": \"${transportSBResource1}\", \"transportSBResource1Perc\": ${transportSBResource1Perc}, \"transportSBResource2\": \"${transportSBResource2}\", \"transportSBResource2Perc\": ${transportSBResource2Perc}, \"transportSBResource3\": \"${transportSBResource3}\", \"transportSBResource3Perc\": ${transportSBResource3Perc}, \"transportSBResource4\": \"${transportSBResource4}\", \"transportSBResource4Perc\": ${transportSBResource4Perc}, \"scanBlock\": ${JSON.stringify(scanBlock)}, \"scanMin\": ${scanMin}, \"scanMove\": \"${scanMove}\"}`);
 							userFleets[userFleetIndex].mineResource = fleetMineResource;
 							userFleets[userFleetIndex].destCoord = fleetDestCoord;
@@ -2133,17 +2175,7 @@
 		for (let key in jsonTargets) {
 				let destXStr = jsonTargets[key].sector_target[0].toString().trim();
 				let destYStr = jsonTargets[key].sector_target[1].toString().trim();
-				let destX = Number(destXStr);
-				let destY = Number(destYStr);
-				let scanShiftX = destX > 0 ? -1 : 1;
-				let scanShiftY = destY > 0 ? -1 : 1;
-				let scanBlock = [];
-				if (destX !== '' && destY !== '') {
-						scanBlock.push([destX, destY]);
-						scanBlock.push([destX+scanShiftX, destY]);
-						scanBlock.push([destX+scanShiftX, destY+scanShiftY]);
-						scanBlock.push([destX, destY+scanShiftY]);
-				}
+				let scanBlock = buildScanBlock(destXStr, destYStr);
 				let fleetSavedData = await GM.getValue(key, '{}');
 				let fleetParsedData = JSON.parse(fleetSavedData);
 				fleetParsedData.dest = destXStr + ',' + destYStr;
@@ -2154,7 +2186,7 @@
 				userFleets[userFleetIndex].scanBlock = scanBlock;
 		}
 		assistImportToggle();
-}	
+	}
 
 	function assistModalToggle() {
 			let targetElem = document.querySelector('#assistModal');
@@ -2415,11 +2447,11 @@
 							let shouldMove = strike && userFleets[i].scanMove;
 							userFleets[i].scanSkipCnt = strike ? userFleets[i].scanSkipCnt + 1 : 0;
 							cLog(1,`${FleetTimeStamp(userFleets[i].label)} ${Math.round(scanCondition)}%${sduFound > 0 ? ` | FOUND: ${sduFound}` : ''}`);
-							let nextMoveIdx = userFleets[i].scanBlockIdx > 2 ? 0 : userFleets[i].scanBlockIdx+1;
+							let nextMoveIdx = userFleets[i].scanBlockIdx > userFleets[i].scanBlock.length - 2 ? 0 : userFleets[i].scanBlockIdx+1;
 							userFleets[i].scanBlockIdx = shouldMove ? nextMoveIdx : userFleets[i].scanBlockIdx;
 							userFleets[i].toolCnt = changesTool.postBalance;
 							userFleets[i].sduCnt = changesSDU.postBalance;
-							if (userFleets[i].scanSkipCnt < 4) {
+							if (userFleets[i].scanSkipCnt < userFleets[i].scanBlock.length - 1) {
 									let scanDelayMs = userFleets[i].scanCooldown * 1000 + 2000;
 									//Wait at least 1.5 minutes for sector to regen
 									if(sduFound) scanDelayMs = Math.max(scanDelayMs, 90000);
@@ -2450,6 +2482,7 @@
 
 	async function handleResupply(i, fleetCoords) {
 			userFleets[i].resupplying = true;
+			if(scanBlockResetAfterResupply) userFleets[i].scanBlockIdx = 0;
 			let starbaseX = userFleets[i].starbaseCoord.split(',')[0].trim();
 			let starbaseY = userFleets[i].starbaseCoord.split(',')[1].trim();
 
@@ -3116,9 +3149,8 @@
 			userFleets[i].startupScanBlockCheck = true;
 
 			if(userFleets[i].scanMove) {
-					cLog(2, `${FleetTimeStamp(userFleets[i].label)} Checking scanBlock`);
-
-					for (let s=0; s < 4; s++) {
+					cLog(2, `${FleetTimeStamp(userFleets[i].label)} Checking scanBlock`, userFleets[i].scanBlock);
+					for (let s=0; s < userFleets[i].scanBlock.length - 1; s++) {
 							const testCoords = userFleets[i].scanBlock[s];
 							if (fleetCoords[0] == testCoords[0] && fleetCoords[1] == testCoords[1])
 							{
