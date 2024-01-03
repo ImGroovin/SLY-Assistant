@@ -22,8 +22,8 @@
 	let debugLogLevel = 3; //How much console logging you want to see (higher number = more, 0 = none)
 	let extraFuelToDropOffAtTarget = 0; //How much excess fuel to leave at target during transport assignments
 	let transportStopOnError = true; //Should transport fleet stop completely if there's an error (example: not enough resource/fuel/etc.)
-	let scanBlockPattern = 'right'; //Valid patterns: square, ring, up, down, left, right
-	let scanBlockLength = 7; //Length of the line-based patterns (does not apply to square or ring)
+	let scanBlockPattern = 'square'; //Valid patterns: square, ring, up, down, left, right
+	let scanBlockLength = 5; //Length of the line-based patterns (does not apply to square or ring)
 	let scanBlockResetAfterResupply = true; //Start from the beginning of the pattern after resupplying at starbase?
 
 	//Used for reading solana data
@@ -45,12 +45,19 @@
 
 	async function doProxyStuff(target, origMethod, args, rpcs)
 	{
+		function isConnectivityError(error) {
+			return (
+				(error instanceof TypeError && error.message === 'Failed to fetch') || 
+				(error instanceof Error && Number(error.message.slice(0,3)) > 299)
+			);
+		}
+		
 		let result;
 		try {
 			result = await origMethod.apply(target, args);
 		} catch (error1) {
 			cLog(2, 'CONNECTION ERROR: ', error1);
-			if ((error1 instanceof TypeError && error1.message === 'Failed to fetch') || (error1 instanceof Error && Number(error1.message.slice(0,3)) > 299)) {
+			if (isConnectivityError(error1)) {
 				let success = false;
 				let rpcIdx = 1;
 				while (!success && rpcIdx < rpcs.length) {
@@ -62,14 +69,12 @@
 						cLog(2, 'NEW: ', result);
 					} catch (error2) {
 						cLog(2, 'INNER ERROR: ', error2);
-						if (!(error2 instanceof TypeError && error2.message === 'Failed to fetch') && !(error2 instanceof Error && Number(error2.message.slice(0,3)) > 299)) {
-								return error2;
-						}
+						if (!isConnectivityError(error2)) return error2;
 					}
 					rpcIdx = rpcIdx+1 < rpcs.length ? rpcIdx+1 : 0;
 
 					//Prevent spam if errors are occurring immediately (disconnected from internet / unplugged cable)
-					wait(2000);
+					await wait(2000);
 				}
 			}
 		}
@@ -1948,13 +1953,7 @@
 
 		const tip = scanBlockLength - 1;
 
-		if(scanBlockPattern == 'square') {
-			scanBlock.push([destX, destY]);
-			scanBlock.push([destX+1, destY]);
-			scanBlock.push([destX+1, destY+1]);
-			scanBlock.push([destX, destY+1]);
-		}
-		else if(scanBlockPattern == 'ring') {
+		if(scanBlockPattern == 'ring') {
 			scanBlock.push([destX, destY]);
 			scanBlock.push([destX+1, destY]);
 			scanBlock.push([destX+2, destY]);
@@ -1970,15 +1969,22 @@
 		}
 		else if(scanBlockPattern == 'down') {
 			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX, destY - i]);
-			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX + 1, destY + (tip + i)]);
+			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX + 1, destY - (tip - i)]);
 		}
 		else if(scanBlockPattern == 'left') {
 			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX - i, destY]);
-			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX + (tip + i), destY + 1]);
+			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX - (tip - i), destY + 1]);
 		}
 		else if(scanBlockPattern == 'right') {
 			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX + i, destY]);
 			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX + (tip - i), destY + 1]);
+		} 
+		else {
+			//Default to square
+			scanBlock.push([destX, destY]);
+			scanBlock.push([destX+1, destY]);
+			scanBlock.push([destX+1, destY+1]);
+			scanBlock.push([destX, destY+1]);	
 		}
 
 		return scanBlock;
@@ -2169,7 +2175,7 @@
 		for (let key in jsonTargets) {
 				let destXStr = jsonTargets[key].sector_target[0].toString().trim();
 				let destYStr = jsonTargets[key].sector_target[1].toString().trim();
-				let scanBlock = buildScanBlock(destX, destY);
+				let scanBlock = buildScanBlock(destXStr, destYStr);
 				let fleetSavedData = await GM.getValue(key, '{}');
 				let fleetParsedData = JSON.parse(fleetSavedData);
 				fleetParsedData.dest = destXStr + ',' + destYStr;
@@ -2180,7 +2186,7 @@
 				userFleets[userFleetIndex].scanBlock = scanBlock;
 		}
 		assistImportToggle();
-}	
+	}
 
 	function assistModalToggle() {
 			let targetElem = document.querySelector('#assistModal');
