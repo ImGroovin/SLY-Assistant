@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Lab Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.4.1
+// @version      0.4.1.1
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
 // @match        https://*.labs.staratlas.com/
@@ -2239,7 +2239,7 @@
             }
         });
     }
-
+/*
     async function assistAddAcctToggle() {
             let targetElem = document.querySelector('#addAcctModal');
             if (targetElem.style.display === 'none') {
@@ -2248,7 +2248,7 @@
                 targetElem.style.display = 'none';
             }
     }
-
+*/
     async function handleUndockAll(i, fleetCoords, destCoords) {
         for (let i=0, n=userFleets.length; i < n; i++) {
             let fleetAcctInfo = await solanaConnection.getAccountInfo(userFleets[i].publicKey);
@@ -3327,6 +3327,7 @@
             profileModalContent.innerHTML = '<div class="assist-modal-header"><span>Profile Selection</span><div class="assist-modal-header-right"><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><div></div><span>Select a profile to connect to Lab Assistant.</span><div></div><div id="profileDiv" max-width="100%"></div></div>';
             profileModal.append(profileModalContent);
 
+            /*
             let addAcctModal = document.createElement('div');
             addAcctModal.classList.add('assist-modal');
             addAcctModal.id = 'addAcctModal';
@@ -3336,6 +3337,7 @@
             addAcctModalContent.classList.add('assist-modal-content');
             addAcctModalContent.innerHTML = '<div class="assist-modal-header"><span>Add Restricted Account</span><div class="assist-modal-header-right"><button id="addAcctBtn" class="assist-modal-btn">Add Account</button><button id="removeAcctBtn" class="assist-modal-btn">Remove Account</button><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><div></div><span>Grant restricted access to interact with this account\'s SAGE instance from another account. Enter the public key of the restricted account below.</span><div></div><div max-width="100%"><input id="addAcctDiv" type="text" style="width: 375px;"></div></div>';
             addAcctModal.append(addAcctModalContent);
+            */
 
             let assistStatus = document.createElement('div');
             assistStatus.id = 'assistStatus';
@@ -3454,7 +3456,7 @@
             autoContainer.append(assistCheck);
             autoContainer.append(importModal);
             autoContainer.append(profileModal);
-            autoContainer.append(addAcctModal);
+            //autoContainer.append(addAcctModal);
             let assistModalClose = document.querySelector('#assistModal .assist-modal-close');
             assistModalClose.addEventListener('click', function(e) {assistModalToggle();});
             let assistModalSave = document.querySelector('#assistModal .assist-modal-save');
@@ -3473,16 +3475,16 @@
             targetsImport.addEventListener('click', function(e) {saveTargetsImport();});
             let undockAllBtn = document.querySelector('#undockAllBtn');
             undockAllBtn.addEventListener('click', function(e) {handleUndockAll();});
-            let addAcctBtn = document.querySelector('#addAcctBtn');
-            addAcctBtn.addEventListener('click', function(e) {addKeyToProfile(document.querySelector('#addAcctDiv').value);});
-            let removeAcctBtn = document.querySelector('#removeAcctBtn');
-            removeAcctBtn.addEventListener('click', function(e) {removeKeyFromProfile();});
+            //let addAcctBtn = document.querySelector('#addAcctBtn');
+            //addAcctBtn.addEventListener('click', function(e) {addKeyToProfile(document.querySelector('#addAcctDiv').value);});
+            //let removeAcctBtn = document.querySelector('#removeAcctBtn');
+            //removeAcctBtn.addEventListener('click', function(e) {removeKeyFromProfile();});
             let configImportClose = document.querySelector('#importModal .assist-modal-close');
             configImportClose.addEventListener('click', function(e) {assistImportToggle();});
             let profileModalClose = document.querySelector('#profileModal .assist-modal-close');
             profileModalClose.addEventListener('click', function(e) {assistProfileToggle(null);});
-            let addAcctClose = document.querySelector('#addAcctModal .assist-modal-close');
-            addAcctClose.addEventListener('click', function(e) {assistAddAcctToggle();});
+            //let addAcctClose = document.querySelector('#addAcctModal .assist-modal-close');
+            //addAcctClose.addEventListener('click', function(e) {assistAddAcctToggle();});
 
             makeDraggable(assistCheck);
             makeDraggable(assistStatus);
