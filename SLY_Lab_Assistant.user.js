@@ -1964,6 +1964,17 @@
 			scanBlock.push([destX, destY+2]);
 			scanBlock.push([destX, destY+1]);
 		}
+		else if(scanBlockPattern == 'spiral') {
+			scanBlock.push([destX, destY]);
+			scanBlock.push([destX-1, destY-1]);
+			scanBlock.push([destX, destY-1]);
+			scanBlock.push([destX+1, destY-1]);
+			scanBlock.push([destX+1, destY]);
+			scanBlock.push([destX+1, destY+1]);
+			scanBlock.push([destX, destY+1]);
+			scanBlock.push([destX-1, destY+1]);
+			scanBlock.push([destX-1, destY]);
+		}
 		else if(scanBlockPattern == 'up') {
 			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX, destY + i]);
 			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX + 1, destY + (tip - i)]);
