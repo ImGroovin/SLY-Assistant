@@ -49,6 +49,7 @@
 		function isConnectivityError(error) {
 			return (
 				(error instanceof TypeError && error.message === 'Failed to fetch') || 
+				(error instanceof TypeError && error.message.includes('failed to get recent blockhash')) || 
 				(error instanceof Error && Number(error.message.slice(0,3)) > 299)
 			);
 		}
