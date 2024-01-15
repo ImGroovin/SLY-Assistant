@@ -706,16 +706,17 @@
 					//txResult = await txSignAndSend(ix);
 					continue;  //retart loop to try again
 				}
+
 				let tryCount = 1;
 				if (!confirmation.name) {
 					while (!txResult) {
 						tryCount++;
-						await wait(2000);
 						txResult = await solanaReadConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
+						if(!txResult) await wait(1000);
 					}
 				}
 
-				cLog(3, `${FleetTimeStamp(fleetName)} Got txResult in ${tryCount} tries`, txResult);
+				if(tryCount > 1) cLog(3, `${FleetTimeStamp(fleetName)} Got txResult in ${tryCount} tries`, txResult);
 				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM✅ ${confirmationTimeStr}`);
 				confirmed = true;
 
