@@ -658,7 +658,7 @@
 				curBlockHeight = epochInfo.blockHeight;
 		}
 
-		cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> RETRY`);
+		cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> 🔄RETRY`);
 		return await sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName);
 	}
 
@@ -702,7 +702,7 @@
 				if (confirmation.name == 'TransactionExpiredBlockheightExceededError' && !txResult) {
 					//console.log('-----RETRY-----');
 					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM❌ ${confirmationTimeStr}`);
-					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> RESEND`);
+					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> 🔂RESEND`);
 					//txResult = await txSignAndSend(ix);
 					continue;  //retart loop to try again
 				}
