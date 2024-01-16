@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant Modded
 // @namespace    http://tampermonkey.net/
-// @version      0.4.1.1m0
+// @version      0.4.1.1m1
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
 // @match        https://*.labs.staratlas.com/
@@ -44,11 +44,12 @@
 	function cLog(level, ...args) {	if(level <= debugLogLevel) console.log(...args); }
 	function wait(ms) {	return new Promise(resolve => {	setTimeout(resolve, ms); }); }
 
-	async function doProxyStuff(target, origMethod, args, rpcs)
+	async function doProxyStuff(target, origMethod, args, rpcs, proxyType)
 	{
 		function isConnectivityError(error) {
 			return (
 				(error instanceof TypeError && error.message === 'Failed to fetch') || 
+				(error instanceof TypeError && error.message.includes('failed to get recent blockhash')) || 
 				(error instanceof Error && Number(error.message.slice(0,3)) > 299)
 			);
 		}
@@ -57,19 +58,19 @@
 		try {
 			result = await origMethod.apply(target, args);
 		} catch (error1) {
-			cLog(2, 'CONNECTION ERROR: ', error1);
+			cLog(2, `${proxyType} CONNECTION ERROR: `, error1);
 			if (isConnectivityError(error1)) {
 				let success = false;
 				let rpcIdx = 1;
 				while (!success && rpcIdx < rpcs.length) {
-					cLog(2, 'rpcIdx: ', rpcIdx, ', success: ', success);
+					cLog(2, `${proxyType} rpcIdx: ${rpcIdx} success: ${success}`);
 					const newConnection = new solanaWeb3.Connection(rpcs[rpcIdx], 'confirmed');
 					try {
 						result = await origMethod.apply(newConnection, args);
 						success = true;
-						cLog(2, 'NEW: ', result);
+						cLog(2, `${proxyType} NEW: `, result);
 					} catch (error2) {
-						cLog(2, 'INNER ERROR: ', error2);
+						cLog(2, `${proxyType} INNER ERROR: `, error2);
 						if (!isConnectivityError(error2)) return error2;
 					}
 					rpcIdx = rpcIdx+1 < rpcs.length ? rpcIdx+1 : 0;
@@ -86,7 +87,7 @@
 			const origMethod = target[key];
 			if(typeof origMethod === 'function'){
 				return async function (...args) {
-					return await doProxyStuff(target, origMethod, args, writeRPCs);
+					return await doProxyStuff(target, origMethod, args, writeRPCs, 'WRITE');
 				}
 			}
 		},
@@ -96,7 +97,7 @@
 			const origMethod = target[key];
 			if(typeof origMethod === 'function'){
 				return async function (...args) {
-					return await doProxyStuff(target, origMethod, args, readRPCs);
+					return await doProxyStuff(target, origMethod, args, readRPCs, 'READ');
 				}
 			}
 		},
@@ -641,7 +642,8 @@
 		if (curBlockHeight > lastValidBlockHeight) return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
 		txHash = await solanaWriteConnection.sendRawTransaction(txSerialized, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
 
-		while ((curBlockHeight - interimBlockHeight) < 30) {
+		//while ((curBlockHeight - interimBlockHeight) < 30) {
+		while ((curBlockHeight - interimBlockHeight) < 10) {
 				const signatureStatus = await solanaReadConnection.getSignatureStatus(txHash);
 				if (signatureStatus.value && ['confirmed','finalized'].includes(signatureStatus.value.confirmationStatus)) {
 						return {txHash, confirmation: signatureStatus};
@@ -650,12 +652,13 @@
 						return {txHash, confirmation: signatureStatus}
 				}
 
-				await wait(2000);
+				//await wait(2000);
+				await wait(200);
 				let epochInfo = await solanaReadConnection.getEpochInfo({ commitment: 'confirmed' });
 				curBlockHeight = epochInfo.blockHeight;
 		}
 
-		cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> S&C RETRY`);
+		cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> 🔄RETRY`);
 		return await sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName);
 	}
 
@@ -699,20 +702,21 @@
 				if (confirmation.name == 'TransactionExpiredBlockheightExceededError' && !txResult) {
 					//console.log('-----RETRY-----');
 					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM❌ ${confirmationTimeStr}`);
-					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> S&S Retrying`);
+					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> 🔂RESEND`);
 					//txResult = await txSignAndSend(ix);
 					continue;  //retart loop to try again
 				}
+
 				let tryCount = 1;
 				if (!confirmation.name) {
 					while (!txResult) {
 						tryCount++;
-						await wait(2000);
 						txResult = await solanaReadConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
+						if(!txResult) await wait(1000);
 					}
 				}
 
-				cLog(3, `${FleetTimeStamp(fleetName)} Got txResult in ${tryCount} tries`, txResult);
+				if(tryCount > 1) cLog(3, `${FleetTimeStamp(fleetName)} Got txResult in ${tryCount} tries`, txResult);
 				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM✅ ${confirmationTimeStr}`);
 				confirmed = true;
 
