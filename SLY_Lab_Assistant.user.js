@@ -22,7 +22,7 @@
 	let debugLogLevel = 3; //How much console logging you want to see (higher number = more, 0 = none)
 	let extraFuelToDropOffAtTarget = 0; //How much excess fuel to leave at target during transport assignments
 	let transportStopOnError = true; //Should transport fleet stop completely if there's an error (example: not enough resource/fuel/etc.)
-	let scanBlockPattern = 'square'; //Valid patterns: square, ring, up, down, left, right
+	let scanBlockPattern = 'square'; //Valid patterns: square, ring, spiral, up, down, left, right
 	let scanBlockLength = 5; //Length of the line-based patterns (does not apply to square or ring)
 	let scanBlockResetAfterResupply = true; //Start from the beginning of the pattern after resupplying at starbase?
 
