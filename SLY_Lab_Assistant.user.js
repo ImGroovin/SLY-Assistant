@@ -22,7 +22,7 @@
 	let debugLogLevel = 3; //How much console logging you want to see (higher number = more, 0 = none)
 	let extraFuelToDropOffAtTarget = 0; //How much excess fuel to leave at target during transport assignments
 	let transportStopOnError = true; //Should transport fleet stop completely if there's an error (example: not enough resource/fuel/etc.)
-	let scanBlockPattern = 'square'; //Valid patterns: square, ring, spiral, up, down, left, right
+	let scanBlockPattern = 'square'; //Valid patterns: square, ring, spiral, up, down, left, right, sly
 	let scanBlockLength = 5; //Length of the line-based patterns (does not apply to square or ring)
 	let scanBlockResetAfterResupply = true; //Start from the beginning of the pattern after resupplying at starbase?
 
@@ -1979,6 +1979,20 @@
 			scanBlock.push([destX-1, destY+1]);
 			scanBlock.push([destX-1, destY]);
 		}
+		else if(scanBlockPattern == 'sly') {
+			scanBlock.push([destX, destY]);
+			scanBlock.push([destX-1, destY+1]);
+			scanBlock.push([destX-2, destY+1]);
+			scanBlock.push([destX-3, destY]);	
+			scanBlock.push([destX-3, destY-1]);
+			scanBlock.push([destX-2, destY-2]);
+			scanBlock.push([destX-1, destY-2]);
+			scanBlock.push([destX, destY-3]);
+			scanBlock.push([destX, destY-4]);
+			scanBlock.push([destX-1, destY-5]);
+			scanBlock.push([destX-2, destY-5]);
+			scanBlock.push([destX-3, destY-4]);
+		}
 		else if(scanBlockPattern == 'up') {
 			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX, destY + i]);
 			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX + 1, destY + (tip - i)]);
@@ -1994,7 +2008,7 @@
 		else if(scanBlockPattern == 'right') {
 			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX + i, destY]);
 			for(let i=0; i < scanBlockLength; i++) scanBlock.push([destX + (tip - i), destY + 1]);
-		} 
+		}
 		else {
 			//Default to square
 			scanBlock.push([destX, destY]);
