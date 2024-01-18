@@ -262,7 +262,7 @@
     async function addKeyToProfile(newKey) {
         document.getElementById("waiting").classList.add('lds-ring');
         // Waiting on documentation explaining the permissions. Ideally we would request only necessary permissions. For now, we're requesting all SAGE permissions except 'rentFleet'
-        let permissions = buildPermissions([[true,true,true,true,true,true,true,true],[true,true,true,true,true,false,true,true],[true,true,true,true,true,true,true,true]]);
+        let permissions = buildPermissions([[true,true,true,true,true,true,true,true],[true,false,true,true,true,false,true,true],[true,true,true,true,true,true,true,true]]);
         //let permissions = buildPermissions([[true,false,false,false,false,false,false,false],[false,false,true,true,true,false,false,true],[true,false,true,true,true,false,true,true]]);
 
         let txResult = {};
