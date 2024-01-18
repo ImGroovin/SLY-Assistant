@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         [FLY] Freelance System: Core
 // @namespace    http://tampermonkey.net/
-// @version      0.4
+// @version      0.4.1
 // @description  try to take over the world!
 // @author       SLY
 // @match        https://labs.staratlas.com/
