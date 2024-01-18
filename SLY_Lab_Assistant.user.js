@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Lab Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.4.1.1
+// @version      0.4.2
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
 // @match        https://*.labs.staratlas.com/
@@ -32,7 +32,10 @@
                         result = await origMethod.apply(target, args);
                     } catch (error1) {
                         console.log('CONNECTION ERROR: ', error1);
-                        if ((error1 instanceof TypeError && error1.message === 'Failed to fetch') || (error1 instanceof Error && Number(error1.message.slice(0,3)) > 299)) {
+                        console.log('type: ', typeof error1);
+                        console.log('name: ', error1.name);
+                        console.log('message: ', error1.message);
+                        if (error1.message.includes('Failed to fetch') || (error1 instanceof Error && Number(error1.message.slice(0,3)) > 299)) {
                             let success = false;
                             let rpcIdx = 1;
                             while (!success && rpcIdx < rpcEndpoints.length) {
@@ -660,7 +663,7 @@
         console.log('blockDiff: ', curBlockHeight - lastValidBlockHeight);
         let confirmed = false;
         //console.log('--LOOP START--')
-        while ((curBlockHeight - interimBlockHeight) < 30) {
+        while ((curBlockHeight - interimBlockHeight) < 10) {
             let epochInfo = await solanaConnection.getEpochInfo({ commitment: 'confirmed' });
             curBlockHeight = epochInfo.blockHeight;
             //console.log('curBlockHeight: ', curBlockHeight);
@@ -675,7 +678,7 @@
                 console.log('returning error: ', signatureStatus.err);
                 return {txHash, confirmation: signatureStatus}
             }
-            await wait(2000);
+            await wait(200);
         }
         //console.log('--LOOP END--')
         return await sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash);
@@ -743,11 +746,14 @@
             //console.log('---CONFIRMATION---');
             //console.log(confirmation);
             //let {blockHeight: initBlockHeight} = await solanaConnection.getEpochInfo({ commitment: 'confirmed' });
+            let txStartTS = Date.now();
             let response = await sendAndConfirmTx(txSerialized, tx.lastValidBlockHeight, null);
             console.log('txResponse: ', response);
             let txHash = response.txHash;
             let confirmation = response.confirmation;
             let txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
+            let priorityHistory = await solanaConnection.getRecentPrioritizationFees();
+            console.log('priorityHistory: ', priorityHistory);
             if (confirmation.name == 'TransactionExpiredBlockheightExceededError' && !txResult) {
                 console.log('-----RETRY-----');
                 txResult = await txSignAndSend(ix);
@@ -758,6 +764,8 @@
                     txResult = await solanaConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
                 }
             }
+            let txEndTS = Date.now();
+            console.log('Time (ms): ', txEndTS - txStartTS);
             console.log('txResult: ', txResult);
             resolve(txResult);
         });
@@ -2389,6 +2397,16 @@
         }
 
         if (readyToScan) {
+            let [fleetSduToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+                [
+                    userFleets[i].cargoHold.toBuffer(),
+                    new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').toBuffer(),
+                    new solanaWeb3.PublicKey('SDUsgfSZaDhhZ76U3ZgvtFiXsfnHbf2VrzYxjBZ5YbM').toBuffer()
+                ],
+                new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
+            );
+            await solanaConnection.getAccountInfo(fleetSduToken) || await createProgramDerivedAccount(fleetSduToken, userFleets[i].cargoHold, new solanaWeb3.PublicKey('SDUsgfSZaDhhZ76U3ZgvtFiXsfnHbf2VrzYxjBZ5YbM'));
+
             if ((fleetCoords[0] !== destCoords[0] || fleetCoords[1] !== destCoords[1])) {
                 if (userFleets[i].state.slice(0, 13) !== 'Warp Cooldown') {
                     let fleetCurrentFuelTank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
@@ -3006,7 +3024,7 @@
                 updateAssistStatus(userFleets[i]);
                 await execDock(userFleets[i], userFleets[i].destCoord);
                 await wait(2000);
-                if (targetResourceAmounts[0] > 0 || targetResourceAmounts[1] > 0 || targetResourceAmounts[2] > 0 || targetResourceAmounts[3] > 0) {
+                //if (targetResourceAmounts[0] > 0 || targetResourceAmounts[1] > 0 || targetResourceAmounts[2] > 0 || targetResourceAmounts[3] > 0) {
                     userFleets[i].state = 'Unloading';
                     updateAssistStatus(userFleets[i]);
 
@@ -3049,6 +3067,9 @@
                     let currentCargoFuel = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
                     let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
                     let currentCargoFuelCnt = currentCargoFuel ? currentCargoFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
+                    console.log(`[${userFleets[i].label}] DEBUG - fleetCurrentCargo: ${fleetCurrentCargo}`);
+                    console.log(`[${userFleets[i].label}] DEBUG - fuel.toString: ${sageGameAcct.account.mints.fuel.toString()}`);
+                    console.log(`[${userFleets[i].label}] DEBUG - currentCargoFuelCnt: ${currentCargoFuelCnt}`);
                     if (currentCargoFuelCnt > 0) {
                         await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, sageGameAcct.account.mints.fuel.toString(), userFleets[i].destCoord, currentCargoFuelCnt);
                     }
@@ -3075,12 +3096,12 @@
                             await wait(2000);
                         }
                     }
-                }
+                //}
                 userFleets[i].state = 'Loading';
                 updateAssistStatus(userFleets[i]);
 
                 let resAmmo = starbaseResources.indexOf(sageGameAcct.account.mints.ammo.toString());
-                let extraAmmo = 0;
+                extraAmmo = 0;
                 if (resAmmo > -1) {
                     let fleetCurrentAmmoBank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].ammoBank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
                     let currentAmmo = fleetCurrentAmmoBank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.ammo.toString());
@@ -3104,11 +3125,11 @@
                     fuelNeeded = Math.ceil(warpCost);
                 }
 
-                let fleetCurrentFuelTank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
-                let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
+                fleetCurrentFuelTank = await solanaConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
+                currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
                 let fuelCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.fuel);
                 let fleetFuelAcct = currentFuel ? currentFuel.pubkey : fleetFuelToken;
-                let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
+                currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
                 if (fuelNeeded > currentFuelCnt) {
                     console.log(`[${userFleets[i].label}] Refueling`);
                     let fuelResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, fleetFuelAcct, sageGameAcct.account.mints.fuel.toString(), fuelCargoTypeAcct, userFleets[i].destCoord, fuelNeeded - currentFuelCnt);
@@ -3369,7 +3390,7 @@
             //autoButton.style.transform = 'translate(-50%, 0)';
             autoButton.addEventListener('click', function(e) {toggleAssistant();});
             let autoBtnSpan = document.createElement('span');
-            autoBtnSpan.innerText = initComplete == true ? 'Start' : 'Wait...';
+            autoBtnSpan.innerText = initComplete == true ? enableAssistant === true ? 'Stop' : 'Start' : 'Wait...';
             autoBtnSpan.style.fontSize = '14px';
             autoButton.appendChild(autoBtnSpan);
 
