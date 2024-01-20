@@ -3114,6 +3114,7 @@
 										//await wait(2000);
 									}
 
+									//Unload extra ammo from ammo banks
 									if (extraAmmo > 0) {
 											let fleetCurrentAmmoBank = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].ammoBank, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 											let currentAmmo = fleetCurrentAmmoBank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.ammo.toString());
@@ -3127,6 +3128,7 @@
 							}
 							updateFleetState(userFleets[i], 'Loading');
 
+							//Transfer requested ammo to ammo banks
 							let resAmmo = starbaseResources.indexOf(sageGameAcct.account.mints.ammo.toString());
 							let extraAmmo = 0;
 							if (resAmmo > -1) {
@@ -3145,15 +3147,21 @@
 									if (resAmmoMax < resAmmoAmt) extraAmmo = resAmmoAmt - resAmmoMax;
 							}
 
+							//Calculate remaining free cargo space
 							fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
 							let cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
 							let cargoSpace = userFleets[i].cargoCapacity - cargoCnt;
 
 							//Loading
+							cLog(2,`${FleetTimeStamp(userFleets[i].label)} starbaseResourceAmounts`, starbaseResourceAmounts);
 							for (let [j, resource] of starbaseResources.entries()) {
+									if(cargoSpace <= 0) {
+										cLog(1,`${FleetTimeStamp(userFleets[i].label)} Cargo full - remaining loading process skipped`);
+										break;
+									}
+
 									let resourceAmount = starbaseResourceAmounts[j];
 									if (resource !== '' && resourceAmount > 0) {
-											//cLog(2, `${FleetTimeStamp(userFleets[i].label)} Loading ${resource}`);
 											let [fleetResourceToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
 													[
 															userFleets[i].cargoHold.toBuffer(),
@@ -3165,16 +3173,20 @@
 											let currentRes = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === resource);
 											let fleetResAcct = currentRes ? currentRes.pubkey : fleetResourceToken;
 											let resCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == resource);
-											let resAmt = resource == sageGameAcct.account.mints.ammo.toString() ? extraAmmo : resourceAmount;  //Special handling for ammo
-											let resMax = Math.min(cargoSpace, resAmt);
-											cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loading ${resMax} ${resource}`);
+											//let resAmt = resource == sageGameAcct.account.mints.ammo.toString() ? extraAmmo : resourceAmount;  //Special handling for ammo
+											//let resMax = Math.min(cargoSpace, resAmt);
+											let resMax = Math.min(cargoSpace, resourceAmount);
+
 											if (resMax > 0) {
-													cargoSpace -= resMax;
+												cLog(1,`${FleetTimeStamp(userFleets[i].label)} Attempting to load ${resMax} ${resource}`);
 													let resp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetResAcct, resource, resCargoTypeAcct, userFleets[i].destCoord, resMax);
+													cLog(3,`${FleetTimeStamp(userFleets[i].label)} Cargo Transfer Response`, resp);
 													if (resp && resp.name == 'NotEnoughResource') {
 															let resShort = resourceTokens.concat(r4Tokens).find(r => r.token == resource).name;
 															cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough ${resShort}`);
 															errorResource.push(resShort);
+													} else {
+														cargoSpace -= resMax;
 													}
 													//await wait(2000);
 											}
