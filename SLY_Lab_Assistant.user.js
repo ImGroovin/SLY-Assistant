@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant Modded
 // @namespace    http://tampermonkey.net/
-// @version      0.4.1.1m1
+// @version      0.4.2.0m0
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
 // @match        https://*.labs.staratlas.com/
@@ -662,6 +662,19 @@
 		return await sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName);
 	}
 
+	async function getPriorityHistoryStats() {
+		let pHist = await solanaReadConnection.getRecentPrioritizationFees();
+
+		let total = 0;
+		let count = 0;
+
+		if(pHist)	pHist.forEach(hItem => {
+				total += hItem.prioritizationFee ? hItem.prioritizationFee : 0;
+				count++;
+		});
+
+		return { total, count, average: count > 0 ? total / count : 0 };
+	}
 	function txSignAndSend(ix, fleet, opName) {
 		return new Promise(async resolve => {
 			const fleetName =  fleet ? fleet.label : 'unknown';
@@ -696,7 +709,9 @@
 				let txHash = response.txHash;
 				let confirmation = response.confirmation;
 				let txResult = await solanaReadConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
-				
+				const priorityHistoryStats = await getPriorityHistoryStats();
+				cLog(3, `${FleetTimeStamp(fleetName)} priorityHistoryStats`, priorityHistoryStats);
+
 				const confirmationTimeStr = `${Date.now() - microOpStart}ms`;
 
 				if (confirmation.name == 'TransactionExpiredBlockheightExceededError' && !txResult) {
@@ -3423,7 +3438,7 @@
 			//autoButton.style.transform = 'translate(-50%, 0)';
 			autoButton.addEventListener('click', function(e) {toggleAssistant();});
 			let autoBtnSpan = document.createElement('span');
-			autoBtnSpan.innerText = initComplete == true ? 'Start' : 'Wait...';
+			autoBtnSpan.innerText = initComplete == true ? enableAssistant === true ? 'Stop' : 'Start' : 'Wait...';
 			autoBtnSpan.style.fontSize = '14px';
 			autoButton.appendChild(autoBtnSpan);
 
