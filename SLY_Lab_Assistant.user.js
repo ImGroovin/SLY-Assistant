@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant Modded
 // @namespace    http://tampermonkey.net/
-// @version      0.4.1.1m1
+// @version      0.4.2.0m0
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
 // @match        https://*.labs.staratlas.com/
@@ -76,7 +76,7 @@
 					rpcIdx = rpcIdx+1 < rpcs.length ? rpcIdx+1 : 0;
 
 					//Prevent spam if errors are occurring immediately (disconnected from internet / unplugged cable)
-					await wait(2000);
+					await wait(500);
 				}
 			}
 		}
@@ -254,7 +254,7 @@
 		while(!result && tries < 3) {
 			tries++;
 			result = await solanaReadConnection.getAccountInfo(params);
-			if(!result)	await wait(500);
+			if(!result)	await wait(200);
 		}
 
 		cLog(3, `${FleetTimeStamp(fleetName)} get ${reason} x${tries}`);
@@ -662,6 +662,19 @@
 		return await sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName);
 	}
 
+	async function getPriorityHistoryStats() {
+		let pHist = await solanaReadConnection.getRecentPrioritizationFees();
+
+		let total = 0;
+		let count = 0;
+
+		if(pHist)	pHist.forEach(hItem => {
+				total += hItem.prioritizationFee ? hItem.prioritizationFee : 0;
+				count++;
+		});
+
+		return { total, count, average: count > 0 ? total / count : 0 };
+	}
 	function txSignAndSend(ix, fleet, opName) {
 		return new Promise(async resolve => {
 			const fleetName =  fleet ? fleet.label : 'unknown';
@@ -696,7 +709,9 @@
 				let txHash = response.txHash;
 				let confirmation = response.confirmation;
 				let txResult = await solanaReadConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
-				
+				const priorityHistoryStats = await getPriorityHistoryStats();
+				cLog(3, `${FleetTimeStamp(fleetName)} priorityHistoryStats`, priorityHistoryStats);
+
 				const confirmationTimeStr = `${Date.now() - microOpStart}ms`;
 
 				if (confirmation.name == 'TransactionExpiredBlockheightExceededError' && !txResult) {
@@ -1085,7 +1100,7 @@
 
 					let txResult = await txSignAndSend(tx, fleet, 'UNDOCK');
 
-					await wait(2000);
+					//await wait(2000);
 					updateFleetState(fleet, 'Idle');
 
 					resolve(txResult);
@@ -1536,7 +1551,7 @@
 
 					let txResult = await txSignAndSend([tx1,tx2], fleet, 'STOP MINING');
 
-					await wait(2000);
+					//await wait(2000);
 					cLog(1,`${FleetTimeStamp(fleet.label)} Idle`);
 					updateFleetState(fleet, 'Idle');
 
@@ -2401,7 +2416,7 @@
 									await GM.setValue(fleetPK, JSON.stringify(fleetParsedData));
 							}
 					}
-					await wait(2000);
+					//await wait(2000);
 					resolve(warpCooldownFinished);
 			});
 	}
@@ -2541,7 +2556,7 @@
 					if (currentSduCnt && currentSduCnt.account.data.parsed.info.tokenAmount.uiAmount > 0) {
 							await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, 'SDUsgfSZaDhhZ76U3ZgvtFiXsfnHbf2VrzYxjBZ5YbM', userFleets[i].starbaseCoord, currentSduCnt.account.data.parsed.info.tokenAmount.uiAmount);
 							userFleets[i].sduCnt = 0;
-							await wait(2000);
+							//await wait(2000);
 					}
 					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loading`);
 					updateFleetState(userFleets[i], 'Loading');
@@ -2556,7 +2571,7 @@
 					userFleets[i].toolCnt = currentTool ? currentTool.account.data.parsed.info.tokenAmount.uiAmount : 0;
 					await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, userFleets[i].fuelToken, 'fueL3hBZjLLLJHiFH9cqZoozTG3XQZ53diwFPwbzNim', fuelCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].fuelCapacity - currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount);
 					userFleets[i].fuelCnt = userFleets[i].fuelCapacity;
-					await wait(2000);
+					//await wait(2000);
 					await execUndock(userFleets[i], userFleets[i].starbaseCoord);
 			} else { //Not at starbase - move there
 					let moveDist = calculateMovementDistance(fleetCoords, [starbaseX,starbaseY]);
@@ -2745,7 +2760,7 @@
 									updateFleetState(userFleets[i], `Unloading ore`);
 									if (currentResourceCnt > 0) {
 											await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, userFleets[i].mineResource, userFleets[i].starbaseCoord, currentResourceCnt);
-											await wait(2000);
+											//await wait(2000);
 									}
 
 									//if (currentFuelCnt < userFleets[i].fuelCapacity) {
@@ -2757,7 +2772,7 @@
 													cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough fuel`);
 													errorResource.push('fuel');
 											}
-											await wait(2000);
+											//await wait(2000);
 									} else { cLog(1,`${FleetTimeStamp(userFleets[i].label)} Fuel loading skipped: ${currentFuelCnt} / ${fuelNeeded}`); }
 
 									if (currentAmmoCnt < ammoForDuration) {
@@ -2769,7 +2784,7 @@
 													cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough ammo`);
 													errorResource.push('ammo');
 											}
-											await wait(2000);
+											//await wait(2000);
 									} else { cLog(1,`${FleetTimeStamp(userFleets[i].label)} Ammo loading skipped: ${currentAmmoCnt} / ${ammoForDuration}`); }
 
 									fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')});
@@ -2785,7 +2800,7 @@
 													cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough food`);
 													errorResource.push('food');
 											}
-											await wait(2000);
+											//await wait(2000);
 									} else { cLog(1,`${FleetTimeStamp(userFleets[i].label)} Food loading skipped: ${currentFoodCnt} / ${foodForDuration}`); }
 									
 									updateFleetState(userFleets[i], `Loading finish`);
@@ -2893,7 +2908,7 @@
 													let resMax = Math.min(currentResCnt, resAmt);
 													if (resMax > 0) {
 															await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, resource, userFleets[i].starbaseCoord, resMax);
-															await wait(2000);
+															//await wait(2000);
 													}
 													if (resource == sageGameAcct.account.mints.fuel.toString() && resMax < resAmt) extraFuel = resAmt - resMax;
 													if (resource == sageGameAcct.account.mints.ammo.toString() && resMax < resAmt) extraAmmo = resAmt - resMax;
@@ -2907,7 +2922,7 @@
 											let resFuelMax = Math.min(currentFuelCnt, extraFuel);
 											if (resFuelMax > 0) {
 													await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].fuelTank, sageGameAcct.account.mints.fuel.toString(), userFleets[i].starbaseCoord, resFuelMax);
-													await wait(2000);
+													//await wait(2000);
 											}
 									}
 
@@ -2918,7 +2933,7 @@
 											let resAmmoMax = Math.min(currentAmmoCnt, extraAmmo);
 											if (resAmmoMax > 0) {
 													await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].ammoBank, sageGameAcct.account.mints.ammo.toString(), userFleets[i].starbaseCoord, resAmmoMax);
-													await wait(2000);
+													//await wait(2000);
 											}
 									}
 							}
@@ -2934,7 +2949,7 @@
 											cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough fuel`);
 											errorResource.push('fuel');
 									}
-									await wait(2000);
+									//await wait(2000);
 							}
 							let fuelNeeded = 0;
 							if (userFleets[i].moveType == 'warp') {
@@ -2977,7 +2992,7 @@
 											let resAmmoMax = Math.min(userFleets[i].ammoCapacity, resAmmoAmt);
 											if (currentAmmoCnt < resAmmoMax) {
 													await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].ammoBank, fleetAmmoAcct, sageGameAcct.account.mints.ammo.toString(), ammoCargoTypeAcct, userFleets[i].starbaseCoord, resAmmoMax - currentAmmoCnt);
-													await wait(2000);
+													//await wait(2000);
 											}
 											if (resAmmoMax < resAmmoAmt) extraAmmo = resAmmoAmt - resAmmoMax;
 									}
@@ -3008,7 +3023,7 @@
 																	cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough ${resShort}`);
 																	errorResource.push(resShort);
 															}
-															await wait(2000);
+															//await wait(2000);
 													}
 											}
 									}
@@ -3019,7 +3034,7 @@
 									await execUndock(userFleets[i], userFleets[i].starbaseCoord);
 							}
 							updateAssistStatus(userFleets[i]);
-							await wait(2000);
+							//await wait(2000);
 							userFleets[i].moveTarget = userFleets[i].destCoord;
 							userFleets[i].resupplying = false;
 					}
@@ -3062,7 +3077,7 @@
 													cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading ${resMax} ${resource}`);
 													if (resMax > 0) {
 															await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, resource, userFleets[i].destCoord, resMax);
-															await wait(2000);
+															//await wait(2000);
 													}
 													//if (resource == sageGameAcct.account.mints.fuel.toString()) extraFuel = resAmt - resMax;
 													if (resource == sageGameAcct.account.mints.ammo.toString()) extraAmmo = resourceAmount - resMax;
@@ -3079,7 +3094,7 @@
 											cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading extra fuel: ${resFuelMax}`);
 											//if (resFuelMax > 0) {
 											await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].fuelTank, sageGameAcct.account.mints.fuel.toString(), userFleets[i].destCoord, resFuelMax);
-											await wait(2000);
+											//await wait(2000);
 											//}
 									} 
 									//Pickup enough fuel to return to base
@@ -3096,7 +3111,7 @@
 												cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough fuel`);
 												errorResource.push('fuel');
 										}
-										await wait(2000);
+										//await wait(2000);
 									}
 
 									if (extraAmmo > 0) {
@@ -3106,7 +3121,7 @@
 											let resAmmoMax = Math.min(currentAmmoCnt, extraAmmo);
 											if (resAmmoMax > 0) {
 													await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].ammoBank, sageGameAcct.account.mints.ammo.toString(), userFleets[i].destCoord, resAmmoMax);
-													await wait(2000);
+													//await wait(2000);
 											}
 									}
 							}
@@ -3125,7 +3140,7 @@
 									if (currentAmmoCnt < resAmmoMax) {
 											cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loading Ammo`);
 											await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].ammoBank, fleetAmmoAcct, sageGameAcct.account.mints.ammo.toString(), ammoCargoTypeAcct, userFleets[i].destCoord, resAmmoMax - currentAmmoCnt);
-											await wait(2000);
+											//await wait(2000);
 									}
 									if (resAmmoMax < resAmmoAmt) extraAmmo = resAmmoAmt - resAmmoMax;
 							}
@@ -3161,7 +3176,7 @@
 															cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough ${resShort}`);
 															errorResource.push(resShort);
 													}
-													await wait(2000);
+													//await wait(2000);
 											}
 									}
 							}
@@ -3423,7 +3438,7 @@
 			//autoButton.style.transform = 'translate(-50%, 0)';
 			autoButton.addEventListener('click', function(e) {toggleAssistant();});
 			let autoBtnSpan = document.createElement('span');
-			autoBtnSpan.innerText = initComplete == true ? 'Start' : 'Wait...';
+			autoBtnSpan.innerText = initComplete == true ? enableAssistant === true ? 'Stop' : 'Start' : 'Wait...';
 			autoBtnSpan.style.fontSize = '14px';
 			autoButton.appendChild(autoBtnSpan);
 
