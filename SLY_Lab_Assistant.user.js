@@ -1931,6 +1931,8 @@
 					let transportSBResource4 = transportToStarbase[4].children[0].value;
 					transportSBResource4 = transportSBResource4 !== '' ? resourceTokens.concat(r4Tokens).find(r => r.name == transportSBResource4).token : '';
 					let transportSBResource4Perc = parseInt(transportToStarbase[4].children[1].value) || 0;
+
+					/*
 					let ammoSBWanted = 0;
 					let fuelSBWanted = 0;
 					let cargoSBWanted = 0;
@@ -1955,6 +1957,8 @@
 							errBool = true;
 							rowErrBool = true;
 					}
+					*/
+
 					if (rowErrBool === false) {
 							let fleetSavedData = await GM.getValue(fleetPK, '{}');
 							let fleetParsedData = JSON.parse(fleetSavedData);
@@ -2665,7 +2669,9 @@
 							if(hasTargetManifest) {
 								const loadedCargo = await handleTransportLoading(i, targetResources, targetResourceAmounts, userFleets[i].starbaseCoord);
 								if(!loadedCargo && transportStopOnError) {
-									userFleets[i].state = `ERROR: No more cargo resources to load`;
+									const newFleetState = `ERROR: No more cargo to load`;
+									cLog(1,`${FleetTimeStamp(userFleets[i].label)} ${newFleetState}`);
+									userFleets[i].state = newFleetState;
 									return;
 								}
 							} else cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loading skipped - No resources specified`);
@@ -2701,7 +2707,9 @@
 						if(hasStarbaseManifest) {
 							const loadedCargo = await handleTransportLoading(i, starbaseResources, starbaseResourceAmounts, userFleets[i].destCoord);
 							if(!loadedCargo && transportStopOnError) {
-								userFleets[i].state = `ERROR: No more cargo resources to load`;
+								const newFleetState = `ERROR: No more cargo to load`;
+								cLog(1,`${FleetTimeStamp(userFleets[i].label)} ${newFleetState}`);
+								userFleets[i].state = newFleetState;
 								return;
 							}
 						} else cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loading skipped - No resources specified`);
