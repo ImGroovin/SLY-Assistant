@@ -111,6 +111,7 @@
 
 	//Not sure what this does, but it seems to do some reads, so sticking it on the read connection
 	const anchorProvider = new BrowserAnchor.anchor.AnchorProvider(solanaReadConnection, null, null);
+	window.Buffer = BrowserBuffer.Buffer.Buffer;
 
 	const programAddy = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';
 	const tokenProgAddy = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
