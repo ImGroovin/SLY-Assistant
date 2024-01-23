@@ -597,8 +597,8 @@
 				let txHash = response.txHash;
 				let confirmation = response.confirmation;
 				let txResult = await solanaReadConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
-				const priorityHistoryStats = await getPriorityHistoryStats();
-				cLog(3, `${FleetTimeStamp(fleetName)} priorityHistoryStats`, priorityHistoryStats);
+				//const priorityHistoryStats = await getPriorityHistoryStats();
+				//cLog(3, `${FleetTimeStamp(fleetName)} priorityHistoryStats`, priorityHistoryStats);
 
 				const confirmationTimeStr = `${Date.now() - microOpStart}ms`;
 
