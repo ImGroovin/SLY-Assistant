@@ -19,12 +19,13 @@
 	'use strict';
 
 	//Configurable Options
-	let debugLogLevel = 3; //How much console logging you want to see (higher number = more, 0 = none)
-	let transportUseAmmoBank = true; //Determines if your transports should use their ammo banks to move ammo (in addition to their cargo holds)
-	let transportStopOnError = true; //Should transport fleet stop completely if there's an error (example: not enough resource/fuel/etc.)
-	let scanBlockPattern = 'square'; //Valid patterns: square, ring, spiral, up, down, left, right, sly
-	let scanBlockLength = 5; //Length of the line-based patterns (does not apply to square or ring)
-	let scanBlockResetAfterResupply = false; //Start from the beginning of the pattern after resupplying at starbase?
+	const priorityFee = 1; // Priority Fee added to each transaction in Lamports. Set to 0 (zero) to disable priority fees. 1 Lamport = 0.000000001 SOL
+	const debugLogLevel = 3; //How much console logging you want to see (higher number = more, 0 = none)
+	const transportUseAmmoBank = true; //Determines if your transports should use their ammo banks to move ammo (in addition to their cargo holds)
+	const transportStopOnError = true; //Should transport fleet stop completely if there's an error (example: not enough resource/fuel/etc.)
+	const scanBlockPattern = 'square'; //Valid patterns: square, ring, spiral, up, down, left, right, sly
+	const scanBlockLength = 5; //Length of the line-based patterns (does not apply to square or ring)
+	const scanBlockResetAfterResupply = false; //Start from the beginning of the pattern after resupplying at starbase?
 
 	//Used for reading solana data
 	let readRPCs = [
@@ -571,6 +572,7 @@
 			let confirmed = false;
 			while (!confirmed) {
 				let tx = new solanaWeb3.Transaction();	
+				if (priorityFee > 0) tx.add(solanaWeb3.ComputeBudgetProgram.setComputeUnitPrice({microLamports: priorityFee}));
 				if (ix.constructor === Array) {
 					ix.forEach(item => tx.add(item.instruction))
 				} else {
@@ -1224,6 +1226,7 @@
 					let fleetCurrentAmmoBank = await solanaReadConnection.getParsedTokenAccountsByOwner(fleet.ammoBank, {programId: new solanaWeb3.PublicKey(tokenProgAddy)});
 					let currentAmmo = fleetCurrentAmmoBank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.ammo.toString());
 					let fleetAmmoAcct = currentAmmo ? currentAmmo.pubkey : fleetAmmoToken;
+					//await solanaReadConnection.getAccountInfo(fleetAmmoAcct) || await createProgramDerivedAccount(fleetAmmoAcct, fleet.ammoBank, sageGameAcct.account.mints.ammo);
 
 					const accInfo = await getAccountInfo(fleet.label, 'fleet resource token', fleetResourceToken);
 					cLog(2, `${FleetTimeStamp(fleet.label)} Mining getAccountInfo result`,accInfo);
