@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant Modded
 // @namespace    http://tampermonkey.net/
-// @version      0.4.2.0m1
+// @version      0.4.2.0m2
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
 // @match        https://*.labs.staratlas.com/
@@ -20,7 +20,6 @@
 
 	//Configurable Options
 	let debugLogLevel = 3; //How much console logging you want to see (higher number = more, 0 = none)
-	let extraFuelToDropOffAtTarget = 0; //How much excess fuel to leave at target during transport assignments
 	let transportUseAmmoBank = true; //Determines if your transports should use their ammo banks to move ammo (in addition to their cargo holds)
 	let transportStopOnError = true; //Should transport fleet stop completely if there's an error (example: not enough resource/fuel/etc.)
 	let scanBlockPattern = 'square'; //Valid patterns: square, ring, spiral, up, down, left, right, sly
@@ -563,6 +562,7 @@
 
 		return { total, count, average: count > 0 ? total / count : 0 };
 	}
+
 	function txSignAndSend(ix, fleet, opName) {
 		return new Promise(async resolve => {
 			const fleetName = fleet ? fleet.label : 'unknown';
@@ -2708,8 +2708,7 @@
 							} else cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading skipped - No resources specified`);
 
 							//Refeuling at Starbase
-							const fuelError = await handleTransportRefuelingAtStarbase(userFleets[i], userFleets[i].starbaseCoord, moveDist);
-							if (fuelError) {
+							if(!await handleTransportRefueling(userFleets[i], userFleets[i].starbaseCoord, moveDist, true, true, 0)) {
 								userFleets[i].state = `ERROR: Not enough fuel`;
 								return;
 							}
@@ -2736,13 +2735,14 @@
 						await execDock(userFleets[i], userFleets[i].destCoord);
 
 						//Unloading at Target
+						let fuelUnloadDeficit = 0; //How far short of the manifest was the amount of fuel unloaded?
 						if (hasTargetManifest) {
-							await handleTransportUnloading(userFleets[i], userFleets[i].destCoord, targetCargoManifest);
+							const unloadResult = await handleTransportUnloading(userFleets[i], userFleets[i].destCoord, targetCargoManifest);
+							fuelUnloadDeficit = unloadResult.fuelUnloadDeficit;
 						} else cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading skipped - No resources specified`);
 
 						//Refueling at Target
-						const fuelError = await handleTransportRefuelingAtTarget(userFleets[i], userFleets[i].destCoord, moveDist);
-						if (fuelError) {
+						if(!await handleTransportRefueling(userFleets[i], userFleets[i].destCoord, moveDist, false, false, fuelUnloadDeficit)) {
 							userFleets[i].state = `ERROR: Not enough fuel`;
 							return;
 						}
@@ -2775,53 +2775,87 @@
 			}
 	}
 
-	async function handleTransportRefuelingAtStarbase(fleet, starbaseCoord, moveDist) {
-		cLog(1,`${FleetTimeStamp(fleet.label)} Refueling`);
-		updateFleetState(fleet, 'Refueling');
-	
+	async function getFleetFuelData(fleet, moveDist = 0) {
 		const fleetCurrentFuelTank = await solanaReadConnection.getParsedTokenAccountsByOwner(fleet.fuelTank, {programId: new solanaWeb3.PublicKey(tokenProgAddy)});
-		const currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
-		const fleetFuelAcct = currentFuel ? currentFuel.pubkey : await getFleetFuelToken(fleet);
-		const currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
-		if (currentFuelCnt < fleet.fuelCapacity) {
-			cLog(1,`${FleetTimeStamp(fleet.label)} Filling fuel tank to 100%`);
-			const fuelResp = await execCargoFromStarbaseToFleet(
-				fleet, 
-				fleet.fuelTank, 
-				fleetFuelAcct, 
-				sageGameAcct.account.mints.fuel.toString(), 
-				fuelCargoTypeAcct, 
-				starbaseCoord, 
-				fleet.fuelCapacity - currentFuelCnt
-			);
-			
-			if (fuelResp && fuelResp.name == 'NotEnoughResource') {
-				cLog(1,`${FleetTimeStamp(fleet.label)} ERROR: Not enough fuel`);
-				return true;
-			}
+		const token = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
+		const account = token ? token.pubkey : await getFleetFuelToken(fleet);
+		const amount = token ? token.account.data.parsed.info.tokenAmount.uiAmount : 0;
+
+		return {
+			account,
+			token,
+			amount,
+			capacity: fleet.fuelCapacity,
+			warpCost: Math.ceil(calculateWarpFuelBurn(fleet, moveDist)),
+			subwarpCost: Math.ceil(calculateSubwarpFuelBurn(fleet, moveDist)),
 		}
+	}
+	async function fuelFleet(fleet, dockCoords, account, amount) {
+		cLog(1,`${FleetTimeStamp(fleet.label)} Filling fuel tank: ${amount}`);
+		const fuelResp = await execCargoFromStarbaseToFleet(
+			fleet, 
+			fleet.fuelTank, 
+			account, 
+			sageGameAcct.account.mints.fuel.toString(), 
+			fuelCargoTypeAcct, 
+			dockCoords, 
+			amount
+		);
 		
+		if (fuelResp && fuelResp.name == 'NotEnoughResource') {
+			cLog(1,`${FleetTimeStamp(fleet.label)} ERROR: Not enough fuel`);
+			return false;
+		}
+
+		return true;
+	}
+	async function handleTransportRefueling(fleet, starbaseCoord, moveDist, fullTank = true, roundTrip = true, amountToDropOff = 0) {
+		cLog(1,`${FleetTimeStamp(fleet.label)} ⛽ Refueling`);
+		updateFleetState(fleet, 'Refueling');
+
+		const fuelData = await getFleetFuelData(fleet, moveDist);
+
+		//Calculate fuel needed
+		const costMultiplier = roundTrip ? 2 : 1;
 		let fuelNeeded = 0;
 		if (fleet.moveType == 'warp') {
-				fuelNeeded = calculateWarpFuelBurn(fleet, moveDist) * 2;
+			fuelNeeded = fuelData.warpCost * costMultiplier;
+			if(fuelNeeded > fuelData.capacity)
+				if(roundTrip) fuelNeeded = fuelData.warpCost + fuelData.subwarpCost;
+				else fuelNeeded = fuelData.subwarpCost;
+		} else fuelNeeded = fuelData.subwarpCost * costMultiplier;
 
-				//Try warp + subwarp
-				if(fuelNeeded > fleet.fuelCapacity)	fuelNeeded = 
-					calculateWarpFuelBurn(fleet, moveDist) + 
-					calculateSubwarpFuelBurn(fleet, moveDist);
-		} else {
-				fuelNeeded = calculateSubwarpFuelBurn(fleet, moveDist) * 2;
-		}
-
-		if(fuelNeeded > fleet.fuelCapacity) {
+		if(fuelNeeded > fuelData.capacity) {
 			cLog(1,`${FleetTimeStamp(fleet.label)} ERROR: Fuel tank too small for round trip`);
-			return true;
+			return false;
 		}
 
-		return false;
+		//Log fuel readouts
+		const extraFuel = Math.floor(fuelData.amount - fuelNeeded);
+		cLog(2, `${FleetTimeStamp(fleet.label)} Current Fuel: ${fuelData.amount}`);
+		cLog(2, `${FleetTimeStamp(fleet.label)} Warp Cost: ${fuelData.warpCost}`);
+		cLog(2, `${FleetTimeStamp(fleet.label)} Subwarp Cost: ${fuelData.subwarpCost}`);
+		cLog(2, `${FleetTimeStamp(fleet.label)} Extra Fuel: ${extraFuel}`);
 
-		/*		
-		//Add extra fuel needed beyond fuel tank capacity
+		//Unload extra fuel from tank
+		if(amountToDropOff > 0) {
+			const fuelToUnload = Math.min(amountToDropOff, extraFuel);
+			if (fuelToUnload > 0) {
+				cLog(1,`${FleetTimeStamp(fleet.label)} Unloading extra fuel: ${fuelToUnload}`);
+				await execCargoFromFleetToStarbase(fleet, fleet.fuelTank, sageGameAcct.account.mints.fuel.toString(), starbaseCoord, fuelToUnload);
+			}
+		}
+
+		//Calculate amount of fuel to add to the tank
+		const fuelToAdd = (fullTank ? fuelData.capacity : fuelNeeded) - fuelData.amount;
+		
+		//Bail if already has enough
+		if (fuelToAdd <= 0) return true;
+
+		//Put in the fuel
+		return await fuelFleet(fleet, starbaseCoord, fuelData.account, fuelToAdd);
+
+		/*//Add extra fuel needed beyond fuel tank capacity
 		const [fleetCargoFuelToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
 			[
 					fleet.cargoHold.toBuffer(),
@@ -2854,85 +2888,27 @@
 		}
 		*/
 	}
-	async function handleTransportRefuelingAtTarget(fleet, starbaseCoord, moveDist) {
-		cLog(1,`${FleetTimeStamp(fleet.label)} Refueling`);
-		updateFleetState(fleet, 'Refueling');
-
-		const fleetCurrentFuelTank = await solanaReadConnection.getParsedTokenAccountsByOwner(fleet.fuelTank, {programId: new solanaWeb3.PublicKey(tokenProgAddy)});
-		const currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
-		const currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
-		const warpCost = calculateWarpFuelBurn(fleet, moveDist);
-		const subwarpCost = calculateSubwarpFuelBurn(fleet, moveDist);
-		const useSubwarp = fleet.moveType != 'warp';
-
-		let extraFuel = currentFuelCnt - Math.ceil(warpCost) * 1.05;
-		if (useSubwarp || currentFuelCnt < warpCost) {
-			if(!useSubwarp) cLog(1,'NOT ENOUGH FUEL TO WARP');
-			extraFuel = currentFuelCnt - Math.ceil(subwarpCost);
-		}
-
-		//Log fuel readouts
-		cLog(2, `${FleetTimeStamp(fleet.label)} Current Fuel: ${currentFuelCnt}`);
-		cLog(2, `${FleetTimeStamp(fleet.label)} Warp Cost: ${warpCost}`);
-		cLog(2, `${FleetTimeStamp(fleet.label)} Subwarp Cost: ${subwarpCost}`);
-		cLog(2, `${FleetTimeStamp(fleet.label)} Extra Fuel: ${extraFuel}`);
-
-		//Unload extra fuel from tank
-		const resFuelMax = Math.min(extraFuelToDropOffAtTarget, extraFuel);
-		if (resFuelMax > 0) {
-			cLog(1,`${FleetTimeStamp(fleet.label)} Unloading extra fuel: ${resFuelMax}`);
-			await execCargoFromFleetToStarbase(fleet, fleet.fuelTank, sageGameAcct.account.mints.fuel.toString(), starbaseCoord, resFuelMax);
-		} 
-
-		//Pickup enough fuel to return to base
-		else if(extraFuel < 0) {
-			const fuelToPickup = extraFuel * -1;
-
-			cLog(1,`${FleetTimeStamp(fleet.label)} Refueling`);
-			updateFleetState(fleet, 'Refueling');
-			
-			const fleetCurrentFuelTank = await solanaReadConnection.getParsedTokenAccountsByOwner(fleet.fuelTank, {programId: new solanaWeb3.PublicKey(tokenProgAddy)});
-			const currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
-			const fleetFuelAcct = currentFuel ? currentFuel.pubkey : await getFleetFuelToken(fleet);
-			
-			cLog(1,`${FleetTimeStamp(fleet.label)} Filling fuel tank ${fuelToPickup}`);
-			const fuelResp = await execCargoFromStarbaseToFleet(
-				fleet, 
-				fleet.fuelTank, 
-				fleetFuelAcct, 
-				sageGameAcct.account.mints.fuel.toString(), 
-				fuelCargoTypeAcct, 
-				starbaseCoord, 
-				fuelToPickup
-			);
-
-			if (fuelResp && fuelResp.name == 'NotEnoughResource') {
-					cLog(1,`${FleetTimeStamp(fleet.label)} ERROR: Not enough fuel`);
-					return true;
-			}
-		}
-
-		return false;
-	}
 	async function handleTransportUnloading(fleet, starbaseCoord, transportManifest) {
-		cLog(1,`${FleetTimeStamp(fleet.label)} Unloading Transport ...`);
+		cLog(1,`${FleetTimeStamp(fleet.label)} 🚚 Unloading Transport`);
 		updateFleetState(fleet, 'Unloading');
 
 		const ammoMint = sageGameAcct.account.mints.ammo;
 		const fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(fleet.cargoHold, {programId: new solanaWeb3.PublicKey(tokenProgAddy)});
 
-		//const extraFuel = 0;
-		//let ammoToUnload = 0;
-
 		//Unloading resources from manifest
+		let fuelUnloadDeficit = 0;
 		for (const entry of transportManifest) {
 			if (entry.res !== '' && entry.amt > 0) {
+				const isFuel = entry.res === sageGameAcct.account.mints.fuel.toString();
 				const currentRes = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === entry.res);
 				const currentResCnt = currentRes ? currentRes.account.data.parsed.info.tokenAmount.uiAmount : 0;
-				const resMax = Math.min(currentResCnt, entry.amt);
-				if (resMax > 0) {
-					cLog(1,`${FleetTimeStamp(fleet.label)} Unloading ${resMax} ${entry.res}`);
-					await execCargoFromFleetToStarbase(fleet, fleet.cargoHold, entry.res, starbaseCoord, resMax);
+
+				if(isFuel) fuelUnloadDeficit = entry.amt;
+				const amountToUnload = Math.min(currentResCnt, entry.amt);
+				if (amountToUnload > 0) {
+					cLog(1,`${FleetTimeStamp(fleet.label)} Unloading ${amountToUnload} ${entry.res}`);
+					await execCargoFromFleetToStarbase(fleet, fleet.cargoHold, entry.res, starbaseCoord, amountToUnload);
+					if(isFuel) fuelUnloadDeficit -= amountToUnload;
 				} else {
 					cLog(1,`${FleetTimeStamp(fleet.label)} Unload ${entry.res} skipped - none found in ship's cargo hold`);
 				}
@@ -2953,23 +2929,11 @@
 			}
 		}
 
-		/*
-		//Extra fuel handling
-		if (extraFuel > 0) {
-				let fleetCurrentFuelTank = await solanaReadConnection.getParsedTokenAccountsByOwner(fleet.fuelTank, {programId: new solanaWeb3.PublicKey(tokenProgAddy)});
-				let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
-				let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
-				let resFuelMax = Math.min(currentFuelCnt, extraFuel);
-				if (resFuelMax > 0) {
-					cLog(1,`${FleetTimeStamp(fleet.label)} Unloading ${resFuelMax} extra fuel`);
-					await execCargoFromFleetToStarbase(fleet, fleet.fuelTank, sageGameAcct.account.mints.fuel.toString(), starbaseCoord, resFuelMax);
-				}
-		}
-		*/
+		return { fuelUnloadDeficit };
 	}
 
 	async function handleTransportLoading(i, starbaseCoords, transportManifest) {
-		cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loading Transport ...`);
+		cLog(1,`${FleetTimeStamp(userFleets[i].label)} 📦 Loading Transport`);
 		updateFleetState(userFleets[i], 'Loading');
 
 		//Use ammo banks if possible
