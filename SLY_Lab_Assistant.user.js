@@ -952,10 +952,9 @@
 							},
 					]);
 
-					//This was causing a problem at starbases with no resources present
-					//let starbasePlayerCargoHold = starbasePlayerCargoHolds.find(item => item.account.openTokenAccounts > 0);
-					//This works
-					let starbasePlayerCargoHold = starbasePlayerCargoHolds[0];
+					let starbasePlayerCargoHold = starbasePlayerCargoHolds.find(item => item.account.openTokenAccounts > 0);
+					starbasePlayerCargoHold = starbasePlayerCargoHold ? starbasePlayerCargoHold : starbasePlayerCargoHolds.length > 0 ? starbasePlayerCargoHolds[0] : await execCreateCargoPod(fleet, dockCoords);
+
 					let [starbaseCargoToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
 							[
 									starbasePlayerCargoHold.publicKey.toBuffer(),
