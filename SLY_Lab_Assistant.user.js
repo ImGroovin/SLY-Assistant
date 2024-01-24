@@ -937,6 +937,50 @@
 		cLog(1,`${FleetTimeStamp(fleet.label)} Undock Startup Complete`);
 	}
 
+	async function execCreateCargoPod(fleet, dockCoords) {
+		let starbaseX = dockCoords.split(',')[0].trim();
+		let starbaseY = dockCoords.split(',')[1].trim();
+		let starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
+		let starbasePlayer = await getStarbasePlayer(userProfileAcct,starbase.publicKey);
+		let cargoPodData = {
+			keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx),
+			podSeeds: Array.from(solanaWeb3.Keypair.generate().publicKey.toBuffer())
+		}
+
+		let [cargoPod] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+			[
+				BrowserBuffer.Buffer.Buffer.from("cargo_pod"),
+				BrowserBuffer.Buffer.Buffer.from(cargoPodData.podSeeds),
+			],
+			sageProgramId
+		);
+
+		let tx = { instruction: await sageProgram.methods.createCargoPod(cargoPodData).accountsStrict({
+				funder: userPublicKey,
+				starbaseAndStarbasePlayer: {
+						starbase: starbase.publicKey,
+						starbasePlayer: starbasePlayer.publicKey
+				},
+				gameAccountsAndProfile: {
+						gameAndProfileAndFaction: {
+								key: userPublicKey,
+								profile: userProfileAcct,
+								profileFaction: userProfileFactionAcct.publicKey,
+								gameId: sageGameAcct.publicKey
+						},
+						gameState: sageGameAcct.account.gameState
+				},
+				cargoPod: cargoPod,
+				cargoStatsDefinition: sageGameAcct.account.cargo.statsDefinition,
+				cargoProgram: cargoProgramId,
+				systemProgram: solanaWeb3.SystemProgram.programId
+		}).instruction().signers([userPublicKey])}
+
+		await txSignAndSend(tx, fleet, 'Create CargoPod');
+
+		return cargoPod;
+	}
+
 	async function execCargoFromFleetToStarbase(fleet, fleetCargoPod, tokenMint, dockCoords, amount) {
 			return new Promise(async resolve => {
 					let starbaseX = dockCoords.split(',')[0].trim();
