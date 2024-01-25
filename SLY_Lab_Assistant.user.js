@@ -551,20 +551,6 @@
 		return await sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName);
 	}
 
-	async function getPriorityHistoryStats() {
-		let pHist = await solanaReadConnection.getRecentPrioritizationFees();
-
-		let total = 0;
-		let count = 0;
-
-		if(pHist)	pHist.forEach(hItem => {
-				total += hItem.prioritizationFee ? hItem.prioritizationFee : 0;
-				count++;
-		});
-
-		return { total, count, average: count > 0 ? total / count : 0 };
-	}
-
 	function txSignAndSend(ix, fleet, opName) {
 		return new Promise(async resolve => {
 			const fleetName = fleet ? fleet.label : 'unknown';
@@ -3050,6 +3036,7 @@
 				cLog(2, `${FleetTimeStamp(userFleets[i].label)} <getAccountInfo> (${userFleets[i].state})`);
 				let fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
 				let [fleetState, extra] = getFleetState(fleetAcctInfo);
+				cLog(3, `${FleetTimeStamp(userFleets[i].label)} chain fleet state: ${fleetState}`);
 				let fleetCoords = fleetState == 'Idle' ? extra : [];
 				let fleetMining = fleetState == 'MineAsteroid' ? extra : [];
 				userFleets[i].startingCoords = fleetCoords;
