@@ -547,7 +547,7 @@
 				curBlockHeight = epochInfo.blockHeight;
 		}
 
-		cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> 🔄RETRY`);
+		cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> RETRY 🔄`);
 		return await sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName);
 	}
 
@@ -607,8 +607,8 @@
 
 				if (confirmation.name == 'TransactionExpiredBlockheightExceededError' && !txResult) {
 					//console.log('-----RETRY-----');
-					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM❌ ${confirmationTimeStr}`);
-					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> 🔂RESEND`);
+					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM ❌ ${confirmationTimeStr}`);
+					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> RESEND 🔂`);
 					//txResult = await txSignAndSend(ix);
 					continue; //retart loop to try again
 				}
@@ -623,7 +623,7 @@
 				}
 
 				if(tryCount > 1) cLog(3, `${FleetTimeStamp(fleetName)} Got txResult in ${tryCount} tries`, txResult);
-				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM✅ ${confirmationTimeStr}`);
+				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM ✅ ${confirmationTimeStr}`);
 				confirmed = true;
 
 				const fullMsTaken = Date.now() - macroOpStart;
@@ -2386,7 +2386,7 @@
 							let strike = (scanLow && timeUp) ? true : false;
 							let shouldMove = strike && userFleets[i].scanMove;
 							userFleets[i].scanSkipCnt = strike ? userFleets[i].scanSkipCnt + 1 : 0;
-							cLog(1,`${FleetTimeStamp(userFleets[i].label)} ${Math.round(scanCondition)}%${sduFound > 0 ? ` | FOUND: ${sduFound}` : ''}`);
+							cLog(1,`${FleetTimeStamp(userFleets[i].label)} 📡 ${Math.round(scanCondition)}%${sduFound > 0 ? ` | FOUND: ${sduFound}` : ''}`);
 							let nextMoveIdx = userFleets[i].scanBlockIdx > userFleets[i].scanBlock.length - 2 ? 0 : userFleets[i].scanBlockIdx+1;
 							userFleets[i].scanBlockIdx = shouldMove ? nextMoveIdx : userFleets[i].scanBlockIdx;
 							userFleets[i].toolCnt = changesTool.postBalance;
