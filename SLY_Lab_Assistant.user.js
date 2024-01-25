@@ -547,7 +547,7 @@
 				curBlockHeight = epochInfo.blockHeight;
 		}
 
-		cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> 🔄RETRY`);
+		cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> RETRY 🔄`);
 		return await sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName);
 	}
 
@@ -593,8 +593,8 @@
 
 				if (confirmation.name == 'TransactionExpiredBlockheightExceededError' && !txResult) {
 					//console.log('-----RETRY-----');
-					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM❌ ${confirmationTimeStr}`);
-					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> 🔂RESEND`);
+					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM ❌ ${confirmationTimeStr}`);
+					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> RESEND 🔂`);
 					//txResult = await txSignAndSend(ix);
 					continue; //retart loop to try again
 				}
@@ -609,7 +609,7 @@
 				}
 
 				if(tryCount > 1) cLog(3, `${FleetTimeStamp(fleetName)} Got txResult in ${tryCount} tries`, txResult);
-				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM✅ ${confirmationTimeStr}`);
+				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM ✅ ${confirmationTimeStr}`);
 				confirmed = true;
 
 				const fullMsTaken = Date.now() - macroOpStart;
@@ -923,6 +923,50 @@
 		cLog(1,`${FleetTimeStamp(fleet.label)} Undock Startup Complete`);
 	}
 
+	async function execCreateCargoPod(fleet, dockCoords) {
+		let starbaseX = dockCoords.split(',')[0].trim();
+		let starbaseY = dockCoords.split(',')[1].trim();
+		let starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
+		let starbasePlayer = await getStarbasePlayer(userProfileAcct,starbase.publicKey);
+		let cargoPodData = {
+			keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx),
+			podSeeds: Array.from(solanaWeb3.Keypair.generate().publicKey.toBuffer())
+		}
+
+		let [cargoPod] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+			[
+				BrowserBuffer.Buffer.Buffer.from("cargo_pod"),
+				BrowserBuffer.Buffer.Buffer.from(cargoPodData.podSeeds),
+			],
+			sageProgramId
+		);
+
+		let tx = { instruction: await sageProgram.methods.createCargoPod(cargoPodData).accountsStrict({
+				funder: userPublicKey,
+				starbaseAndStarbasePlayer: {
+						starbase: starbase.publicKey,
+						starbasePlayer: starbasePlayer.publicKey
+				},
+				gameAccountsAndProfile: {
+						gameAndProfileAndFaction: {
+								key: userPublicKey,
+								profile: userProfileAcct,
+								profileFaction: userProfileFactionAcct.publicKey,
+								gameId: sageGameAcct.publicKey
+						},
+						gameState: sageGameAcct.account.gameState
+				},
+				cargoPod: cargoPod,
+				cargoStatsDefinition: sageGameAcct.account.cargo.statsDefinition,
+				cargoProgram: cargoProgramId,
+				systemProgram: solanaWeb3.SystemProgram.programId
+		}).instruction().signers([userPublicKey])}
+
+		await txSignAndSend(tx, fleet, 'Create CargoPod');
+
+		return cargoPod;
+	}
+
 	async function execCargoFromFleetToStarbase(fleet, fleetCargoPod, tokenMint, dockCoords, amount) {
 			return new Promise(async resolve => {
 					let starbaseX = dockCoords.split(',')[0].trim();
@@ -938,10 +982,9 @@
 							},
 					]);
 
-					//This was causing a problem at starbases with no resources present
-					//let starbasePlayerCargoHold = starbasePlayerCargoHolds.find(item => item.account.openTokenAccounts > 0);
-					//This works
-					let starbasePlayerCargoHold = starbasePlayerCargoHolds[0];
+					let starbasePlayerCargoHold = starbasePlayerCargoHolds.find(item => item.account.openTokenAccounts > 0);
+					starbasePlayerCargoHold = starbasePlayerCargoHold ? starbasePlayerCargoHold : starbasePlayerCargoHolds.length > 0 ? starbasePlayerCargoHolds[0] : await execCreateCargoPod(fleet, dockCoords);
+
 					let [starbaseCargoToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
 							[
 									starbasePlayerCargoHold.publicKey.toBuffer(),
@@ -2329,7 +2372,7 @@
 							let strike = (scanLow && timeUp) ? true : false;
 							let shouldMove = strike && userFleets[i].scanMove;
 							userFleets[i].scanSkipCnt = strike ? userFleets[i].scanSkipCnt + 1 : 0;
-							cLog(1,`${FleetTimeStamp(userFleets[i].label)} ${Math.round(scanCondition)}%${sduFound > 0 ? ` | FOUND: ${sduFound}` : ''}`);
+							cLog(1,`${FleetTimeStamp(userFleets[i].label)} 📡 ${Math.round(scanCondition)}%${sduFound > 0 ? ` | FOUND: ${sduFound}` : ''}`);
 							let nextMoveIdx = userFleets[i].scanBlockIdx > userFleets[i].scanBlock.length - 2 ? 0 : userFleets[i].scanBlockIdx+1;
 							userFleets[i].scanBlockIdx = shouldMove ? nextMoveIdx : userFleets[i].scanBlockIdx;
 							userFleets[i].toolCnt = changesTool.postBalance;
