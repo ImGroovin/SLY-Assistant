@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant Modded
 // @namespace    http://tampermonkey.net/
-// @version      0.4.2.0m2
+// @version      0.4.3m0
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
 // @match        https://*.labs.staratlas.com/
@@ -1799,40 +1799,45 @@
 			};
 	}
 
-	function updateAssistStatus(fleet) {
-			let targetRow = document.querySelectorAll('#assistStatus .assist-fleet-row[pk="' + fleet.publicKey.toString() + '"]');
+	function updateAssistStatus(fleet, color) {
+		let targetRow = document.querySelectorAll('#assistStatus .assist-fleet-row[pk="' + fleet.publicKey.toString() + '"]');
 
-			if (targetRow.length > 0) {
-					targetRow[0].children[1].firstChild.innerHTML = fleet.toolCnt;
-					targetRow[0].children[2].firstChild.innerHTML = fleet.sduCnt;
-					targetRow[0].children[3].firstChild.innerHTML = fleet.state;
-			} else {
-					let fleetRow = document.createElement('tr');
-					fleetRow.classList.add('assist-fleet-row');
-					fleetRow.setAttribute('pk', fleet.publicKey.toString());
-					let fleetLabel = document.createElement('span');
-					fleetLabel.innerHTML = fleet.label;
-					let fleetLabelTd = document.createElement('td');
-					fleetLabelTd.appendChild(fleetLabel);
-					let fleetTool = document.createElement('span');
-					fleetTool.innerHTML = fleet.toolCnt;
-					let fleetToolTd = document.createElement('td');
-					fleetToolTd.appendChild(fleetTool);
-					let fleetSdu = document.createElement('span');
-					fleetSdu.innerHTML = fleet.sduCnt;
-					let fleetSduTd = document.createElement('td');
-					fleetSduTd.appendChild(fleetSdu);
-					let fleetStatus = document.createElement('span');
-					fleetStatus.innerHTML = fleet.state;
-					let fleetStatusTd = document.createElement('td');
-					fleetStatusTd.appendChild(fleetStatus);
-					fleetRow.appendChild(fleetLabelTd);
-					fleetRow.appendChild(fleetToolTd);
-					fleetRow.appendChild(fleetSduTd);
-					fleetRow.appendChild(fleetStatusTd);
-					let targetElem = document.querySelector('#assistStatus .assist-modal-body table');
-					targetElem.appendChild(fleetRow);
-			}
+		if (targetRow.length > 0) {
+			targetRow[0].children[1].firstChild.innerHTML = fleet.toolCnt;
+			targetRow[0].children[2].firstChild.innerHTML = fleet.sduCnt;
+			targetRow[0].children[3].firstChild.innerHTML = fleet.state;
+		} else {
+			let fleetRow = document.createElement('tr');
+			fleetRow.classList.add('assist-fleet-row');
+			fleetRow.setAttribute('pk', fleet.publicKey.toString());
+			let fleetLabel = document.createElement('span');
+			fleetLabel.innerHTML = fleet.label;
+			let fleetLabelTd = document.createElement('td');
+			fleetLabelTd.appendChild(fleetLabel);
+			let fleetTool = document.createElement('span');
+			fleetTool.innerHTML = fleet.toolCnt;
+			let fleetToolTd = document.createElement('td');
+			fleetToolTd.appendChild(fleetTool);
+			let fleetSdu = document.createElement('span');
+			fleetSdu.innerHTML = fleet.sduCnt;
+			let fleetSduTd = document.createElement('td');
+			fleetSduTd.appendChild(fleetSdu);
+			let fleetStatus = document.createElement('span');
+			fleetStatus.innerHTML = fleet.state;
+			let fleetStatusTd = document.createElement('td');
+			fleetStatusTd.appendChild(fleetStatus);
+			fleetRow.appendChild(fleetLabelTd);
+			fleetRow.appendChild(fleetToolTd);
+			fleetRow.appendChild(fleetSduTd);
+			fleetRow.appendChild(fleetStatusTd);
+			let targetElem = document.querySelector('#assistStatus .assist-modal-body table');
+			targetElem.appendChild(fleetRow);
+		}
+
+		if(targetRow && targetRow.length > 0 && targetRow[0].children && targetRow[0].children.length > 0) {
+			if(!color) color = 'white';
+			targetRow[0].children[0].firstChild.style.color=color;
+		}
 	}
 	function updateFleetState(fleet, newState) {
 		fleet.state = newState;
@@ -3057,6 +3062,8 @@
 		//Don't run fleets in an error state
 		if (userFleets[i].state.includes('ERROR')) return;
 
+		userFleets[i].lastOp = Date.now();
+
 		const moving = 
 			userFleets[i].state.includes('Move [') || 
 			userFleets[i].state.includes('Warp [') ||
@@ -3136,6 +3143,24 @@
 			//Stagger fleet starts by 500ms to avoid overloading the RPC
 			setTimeout(() => { startFleet(i);	}, 500 * (i + 1));
 		}
+
+		setTimeout(fleetsHealthCheck, 5000);
+	}
+
+	async function fleetsHealthCheck() {
+		if (!enableAssistant) return;
+
+		for (let i=0, n=userFleets.length; i < n; i++) {
+			const fleet = userFleets[i];
+			if(fleet.lastOp) {
+				if(Date.now() - fleet.lastOp > 600000) {
+					//cLog(3,`${FleetTimeStamp(userFleets[i].label)} Unresponsive`);
+					updateAssistStatus(fleet, 'red');
+				}
+			}
+		}
+
+		if(enableAssistant)	setTimeout(fleetsHealthCheck, 10000);
 	}
 
 	async function toggleAssistant() {
