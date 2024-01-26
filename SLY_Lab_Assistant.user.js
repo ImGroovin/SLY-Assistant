@@ -26,6 +26,7 @@
 	const scanBlockPattern = 'square'; //Valid patterns: square, ring, spiral, up, down, left, right, sly
 	const scanBlockLength = 5; //Length of the line-based patterns (does not apply to square or ring)
 	const scanBlockResetAfterResupply = false; //Start from the beginning of the pattern after resupplying at starbase?
+	const scanResupplyOnLowFuel = false; //When true, scanning fleet set to scanMove with low fuel will return to base to resupply fuel + toolkits
 
 	//Used for reading solana data
 	let readRPCs = [
@@ -2350,7 +2351,7 @@
 											}
 									} else {
 											cLog(1,`${fuelReadout} (low)`);
-											//userFleets[i].scanSkipCnt = 0;
+											if(scanResupplyOnLowFuel) await handleResupply(i, fleetCoords);
 									}
 							}
 					}
@@ -2407,7 +2408,7 @@
 							}
 					}
 			} else {
-					await handleResupply(i, fleetCoords)
+					await handleResupply(i, fleetCoords);
 			}
 	}
 
