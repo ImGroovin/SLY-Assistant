@@ -51,8 +51,9 @@
 		function isConnectivityError(error) {
 			return (
 				(error instanceof TypeError && error.message === 'Failed to fetch') || 
-				(error instanceof TypeError && error.message.includes('failed to get recent blockhash')) || 
+				(error instanceof TypeError && error.message.includes('failed to get')) || 
 				(error instanceof TypeError && error.message.includes('Unable to complete request')) || 
+				(error instanceof Error && error.message.includes('failed to send')) ||
 				(error instanceof Error && Number(error.message.slice(0,3)) > 299)
 			);
 		}
