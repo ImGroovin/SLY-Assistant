@@ -50,11 +50,18 @@
 	{
 		function isConnectivityError(error) {
 			return (
+				(Number(error.message.slice(0,3)) > 299) ||
+				(error.message === 'Failed to fetch') ||
+				(error.message.includes('failed to get')) ||
+				(error.message.includes('failed to send')) ||
+				(error.message.includes('Unable to complete request'))
+/*
 				(error instanceof TypeError && error.message === 'Failed to fetch') || 
 				(error instanceof TypeError && error.message.includes('failed to get')) || 
 				(error instanceof TypeError && error.message.includes('Unable to complete request')) || 
 				(error instanceof Error && error.message.includes('failed to send')) ||
 				(error instanceof Error && Number(error.message.slice(0,3)) > 299)
+*/				
 			);
 		}
 		
@@ -2263,6 +2270,7 @@
 					let warpFinish = fleetState == 'MoveWarp' ? extra.warpFinish.toNumber() * 1000 : 0;
 					let subwarpFinish = fleetState == 'MoveSubwarp' ? extra.arrivalTime.toNumber() * 1000 : 0;
 					let endTime = warpFinish > subwarpFinish ? warpFinish : subwarpFinish;
+					userFleets[i].moveEnd = endTime;
 					
 					while (endTime > Date.now()) {
 						const newFleetState = 'Move [' + TimeToStr(new Date(endTime)) + ']';
@@ -2291,7 +2299,7 @@
 									await GM.setValue(fleetPK, JSON.stringify(fleetParsedData));
 							}
 					}
-					//await wait(2000);
+
 					resolve(warpCooldownFinished);
 			});
 	}
@@ -3155,9 +3163,15 @@
 
 		for (let i=0, n=userFleets.length; i < n; i++) {
 			const fleet = userFleets[i];
+			const foo = Math.max(
+				Date.now(), 
+				fleet.scanEnd ? fleet.scanEnd : 0, 
+				fleet.moveEnd ? fleet.moveEnd : 0,
+			);
+			
 			if(fleet.lastOp) {
-				if(Date.now() - fleet.lastOp > 600000) {
-					//cLog(3,`${FleetTimeStamp(userFleets[i].label)} Unresponsive`);
+				if(foo - fleet.lastOp > 600000) {
+					cLog(3,`${FleetTimeStamp(userFleets[i].label)} Unresponsive`, TimeToStr(new Date(foo)));
 					updateAssistStatus(fleet, 'red');
 				}
 			}
