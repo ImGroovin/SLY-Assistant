@@ -3164,14 +3164,19 @@
 		for (let i=0, n=userFleets.length; i < n; i++) {
 			const fleet = userFleets[i];
 			const foo = Math.max(
-				Date.now(), 
+				fleet.lastOp,
 				fleet.scanEnd ? fleet.scanEnd : 0, 
 				fleet.moveEnd ? fleet.moveEnd : 0,
 			);
 			
 			if(fleet.lastOp) {
-				if(foo - fleet.lastOp > 600000) {
-					cLog(3,`${FleetTimeStamp(userFleets[i].label)} Unresponsive`, TimeToStr(new Date(foo)));
+				if(Date.now() - foo > 600000) {
+					cLog(3,`${FleetTimeStamp(userFleets[i].label)} Unresponsive`, 
+						TimeToStr(new Date(foo)),
+						TimeToStr(new Date(fleet.lastOp)),
+						TimeToStr(new Date(fleet.scanEnd)),
+						TimeToStr(new Date(fleet.moveEnd)),
+					);
 					updateAssistStatus(fleet, 'red');
 				}
 			}
