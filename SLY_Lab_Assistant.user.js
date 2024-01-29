@@ -2264,7 +2264,6 @@
 						}
 					}
 
-					await wait(moveTime * 1000);
 					fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
 					[fleetState, extra] = getFleetState(fleetAcctInfo);
 					let warpFinish = fleetState == 'MoveWarp' ? extra.warpFinish.toNumber() * 1000 : 0;
@@ -2272,13 +2271,14 @@
 					let endTime = warpFinish > subwarpFinish ? warpFinish : subwarpFinish;
 					userFleets[i].moveEnd = endTime;
 					
+					await wait(moveTime * 1000);
 					while (endTime > Date.now()) {
 						const newFleetState = 'Move [' + TimeToStr(new Date(endTime)) + ']';
 						updateFleetState(userFleets[i], newFleetState);
 						await wait(Math.max(1000, endTime - Date.now()));
 					}
 
-					await wait(2000);
+					//await wait(2000);
 					if (fleetState == 'MoveWarp') {
 						await execExitWarp(userFleets[i]);
 					} else if (fleetState == 'MoveSubwarp'){
@@ -2334,13 +2334,13 @@
 									let distToStarbase = Math.max(calculateMovementDistance(fleetCoords, [starbaseX,starbaseY]), calculateMovementDistance(furthestPoint, [starbaseX,starbaseY]));
 									//cLog(2, `${FleetTimeStamp(userFleets[i].label)} distToStarbase: ${distToStarbase}`);
 									let fuelNeeded = 0;
-									let exactFuelNeeded = 0;
+									//let exactFuelNeeded = 0;
 									if (userFleets[i].moveType == 'warp') {
 											fuelNeeded = calculateWarpFuelBurn(userFleets[i], distToStarbase) + calculateWarpFuelBurn(userFleets[i], 2);
-											exactFuelNeeded = calculateWarpFuelBurn(userFleets[i], distToStarbase);
+											//exactFuelNeeded = calculateWarpFuelBurn(userFleets[i], distToStarbase);
 									} else {
 											fuelNeeded = calculateSubwarpFuelBurn(userFleets[i], distToStarbase) + calculateSubwarpFuelBurn(userFleets[i], 2);
-											exactFuelNeeded = calculateSubwarpFuelBurn(userFleets[i], distToStarbase);
+											//exactFuelNeeded = calculateSubwarpFuelBurn(userFleets[i], distToStarbase);
 									}
 									//cLog(2, `${FleetTimeStamp(userFleets[i].label)} currentFuelCnt: ${currentFuelCnt}`);
 									//cLog(2, `${FleetTimeStamp(userFleets[i].label)} fuelNeeded: ${exactFuelNeeded}`);
@@ -2353,7 +2353,7 @@
 													const scanEndsIn = Math.max(0, userFleets[i].scanEnd - Date.now());
 													//Clamp the scan end time to the cooldown if it is higher (due to paused scanning)
 													userFleets[i].scanEnd = scanEndsIn > userFleets[i].scanCooldown ? userFleets[i].scanCooldown : scanEndsIn;
-													let warpCooldownFinished = await handleMovement(i, moveDist, destCoords[0], destCoords[1]);
+													await handleMovement(i, moveDist, destCoords[0], destCoords[1]);
 													cLog(1,`${FleetTimeStamp(userFleets[i].label)} Movement finished`);
 													userFleets[i].scanSectorStart = Date.now();
 											} else {
