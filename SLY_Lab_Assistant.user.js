@@ -769,7 +769,7 @@
 			
 			let txResult = await txSignAndSend(tx, fleet, 'EXIT SUBWARP');
 			
-			cLog(1,`${FleetTimeStamp(fleet.label)} Idle`);
+			cLog(1,`${FleetTimeStamp(fleet.label)} Idle 💤`);
 			updateFleetState(fleet, 'Idle');
 
 			resolve(txResult);
@@ -827,7 +827,7 @@
 
 					let txResult = await txSignAndSend(tx, fleet, 'EXIT WARP');
 
-					cLog(1,`${FleetTimeStamp(fleet.label)} Idle`);
+					cLog(1,`${FleetTimeStamp(fleet.label)} Idle 💤`);
 					updateFleetState(fleet, 'Idle');
 
 					resolve(txResult);
@@ -1417,7 +1417,7 @@
 					let txResult = await txSignAndSend([tx1,tx2], fleet, 'STOP MINING');
 
 					//await wait(2000);
-					cLog(1,`${FleetTimeStamp(fleet.label)} Idle`);
+					cLog(1,`${FleetTimeStamp(fleet.label)} Idle 💤`);
 					updateFleetState(fleet, 'Idle');
 
 					resolve(txResult);
@@ -2201,8 +2201,6 @@
 						let starbase = await sageProgram.account.starbase.fetch(extra.starbase);
 						let coords = starbase.sector[0].toNumber() + ',' + starbase.sector[1].toNumber();
 						await execUndock(userFleets[i], coords);
-						//console.log(`[${userFleets[i].label}] Idle`);
-						//userFleets[i].state = 'Idle';
 				}
 		}
 	}
@@ -2603,7 +2601,7 @@
 							if (moveDist > 0) {
 									let warpCooldownFinished = await handleMovement(i, moveDist, targetX, targetY);
 							} else {
-									cLog(1,`${FleetTimeStamp(userFleets[i].label)} Idle`);
+									cLog(1,`${FleetTimeStamp(userFleets[i].label)} Idle 💤`);
 									updateFleetState(userFleets[i], 'Idle');
 							}
 					} else {
