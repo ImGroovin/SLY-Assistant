@@ -28,6 +28,8 @@
 	const scanBlockResetAfterResupply = false; //Start from the beginning of the pattern after resupplying at starbase?
 	const scanResupplyOnLowFuel = false; //When true, scanning fleet set to scanMove with low fuel will return to base to resupply fuel + toolkits
 	const statusPanelOpacity = 0.75; //How transparent the status panel should be (1 = completely opaque)
+	const autoStartScript = false; //Should assistant automatically start after initialization is complete?
+	const reloadPageOnFailedFleets = 0; //How many fleets need to stall before triggering an automatic page reload? (0 = never trigger)
 
 	//Used for reading solana data
 	let readRPCs = [
@@ -43,6 +45,7 @@
 
 	let enableAssistant = false;
 	let initComplete = false;
+	let fleetStallCount = 0;
 
 	function cLog(level, ...args) {	if(level <= debugLogLevel) console.log(...args); }
 	function wait(ms) {	return new Promise(resolve => {	setTimeout(resolve, ms); }); }
@@ -3170,7 +3173,7 @@
 				fleet.moveEnd ? fleet.moveEnd : 0,
 			);
 			
-			if(fleet.lastOp) {
+			if(fleet.lastOp && !userFleets[i].stalled) {
 				if(Date.now() - foo > 600000) {
 					cLog(3,`${FleetTimeStamp(userFleets[i].label)} Unresponsive`, 
 						TimeToStr(new Date(foo)),
@@ -3178,9 +3181,18 @@
 						TimeToStr(new Date(fleet.scanEnd)),
 						TimeToStr(new Date(fleet.moveEnd)),
 					);
+
 					updateAssistStatus(fleet, 'red');
+					userFleets[i].stalled = true;
+					fleetStallCount++;
 				}
 			}
+		}
+
+		//Auto-reload when too many fleets fail
+		if(reloadPageOnFailedFleets && reloadPageOnFailedFleets < fleetStallCount) {
+			location.reload();
+			return;
 		}
 
 		if(enableAssistant)	setTimeout(fleetsHealthCheck, 10000);
@@ -3370,6 +3382,7 @@
 
 			userFleets.sort(function (a, b) { return a.label.toUpperCase().localeCompare(b.label.toUpperCase()); });
 			initComplete = true;
+			if(autoStartScript) toggleAssistant();
 			resolve();
 		});
 	}
