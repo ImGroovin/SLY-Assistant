@@ -3191,6 +3191,7 @@
 
 		//Auto-reload when too many fleets fail
 		if(reloadPageOnFailedFleets && reloadPageOnFailedFleets < fleetStallCount) {
+			cLog(1, `ASSISTANT: ${fleetStallCount} fleets have stalled - reloading ...`);
 			location.reload();
 			return;
 		}
@@ -3382,7 +3383,10 @@
 
 			userFleets.sort(function (a, b) { return a.label.toUpperCase().localeCompare(b.label.toUpperCase()); });
 			initComplete = true;
-			if(autoStartScript) toggleAssistant();
+			if(autoStartScript) {
+				assistStatusToggle();
+				toggleAssistant();
+			}
 			resolve();
 		});
 	}
