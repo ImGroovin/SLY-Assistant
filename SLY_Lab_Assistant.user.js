@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant Modded
 // @namespace    http://tampermonkey.net/
-// @version      0.4.2.0m2
+// @version      0.4.3m0
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
 // @match        https://*.labs.staratlas.com/
@@ -26,6 +26,10 @@
 	const scanBlockPattern = 'square'; //Valid patterns: square, ring, spiral, up, down, left, right, sly
 	const scanBlockLength = 5; //Length of the line-based patterns (does not apply to square or ring)
 	const scanBlockResetAfterResupply = false; //Start from the beginning of the pattern after resupplying at starbase?
+	const scanResupplyOnLowFuel = false; //When true, scanning fleet set to scanMove with low fuel will return to base to resupply fuel + toolkits
+	const statusPanelOpacity = 0.75; //How transparent the status panel should be (1 = completely opaque)
+	const autoStartScript = false; //Should assistant automatically start after initialization is complete?
+	const reloadPageOnFailedFleets = 0; //How many fleets need to stall before triggering an automatic page reload? (0 = never trigger)
 
 	//Used for reading solana data
 	let readRPCs = [
@@ -41,6 +45,7 @@
 
 	let enableAssistant = false;
 	let initComplete = false;
+	let fleetStallCount = 0;
 
 	function cLog(level, ...args) {	if(level <= debugLogLevel) console.log(...args); }
 	function wait(ms) {	return new Promise(resolve => {	setTimeout(resolve, ms); }); }
@@ -49,9 +54,18 @@
 	{
 		function isConnectivityError(error) {
 			return (
+				(Number(error.message.slice(0,3)) > 299) ||
+				(error.message === 'Failed to fetch') ||
+				(error.message.includes('failed to get')) ||
+				(error.message.includes('failed to send')) ||
+				(error.message.includes('Unable to complete request'))
+/*
 				(error instanceof TypeError && error.message === 'Failed to fetch') || 
-				(error instanceof TypeError && error.message.includes('failed to get recent blockhash')) || 
+				(error instanceof TypeError && error.message.includes('failed to get')) || 
+				(error instanceof TypeError && error.message.includes('Unable to complete request')) || 
+				(error instanceof Error && error.message.includes('failed to send')) ||
 				(error instanceof Error && Number(error.message.slice(0,3)) > 299)
+*/				
 			);
 		}
 		
@@ -551,20 +565,6 @@
 		return await sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName);
 	}
 
-	async function getPriorityHistoryStats() {
-		let pHist = await solanaReadConnection.getRecentPrioritizationFees();
-
-		let total = 0;
-		let count = 0;
-
-		if(pHist)	pHist.forEach(hItem => {
-				total += hItem.prioritizationFee ? hItem.prioritizationFee : 0;
-				count++;
-		});
-
-		return { total, count, average: count > 0 ? total / count : 0 };
-	}
-
 	function txSignAndSend(ix, fleet, opName) {
 		return new Promise(async resolve => {
 			const fleetName = fleet ? fleet.label : 'unknown';
@@ -769,7 +769,7 @@
 			
 			let txResult = await txSignAndSend(tx, fleet, 'EXIT SUBWARP');
 			
-			cLog(1,`${FleetTimeStamp(fleet.label)} Idle`);
+			cLog(1,`${FleetTimeStamp(fleet.label)} Idle 💤`);
 			updateFleetState(fleet, 'Idle');
 
 			resolve(txResult);
@@ -827,7 +827,7 @@
 
 					let txResult = await txSignAndSend(tx, fleet, 'EXIT WARP');
 
-					cLog(1,`${FleetTimeStamp(fleet.label)} Idle`);
+					cLog(1,`${FleetTimeStamp(fleet.label)} Idle 💤`);
 					updateFleetState(fleet, 'Idle');
 
 					resolve(txResult);
@@ -1417,7 +1417,7 @@
 					let txResult = await txSignAndSend([tx1,tx2], fleet, 'STOP MINING');
 
 					//await wait(2000);
-					cLog(1,`${FleetTimeStamp(fleet.label)} Idle`);
+					cLog(1,`${FleetTimeStamp(fleet.label)} Idle 💤`);
 					updateFleetState(fleet, 'Idle');
 
 					resolve(txResult);
@@ -1813,40 +1813,45 @@
 			};
 	}
 
-	function updateAssistStatus(fleet) {
-			let targetRow = document.querySelectorAll('#assistStatus .assist-fleet-row[pk="' + fleet.publicKey.toString() + '"]');
+	function updateAssistStatus(fleet, color) {
+		let targetRow = document.querySelectorAll('#assistStatus .assist-fleet-row[pk="' + fleet.publicKey.toString() + '"]');
 
-			if (targetRow.length > 0) {
-					targetRow[0].children[1].firstChild.innerHTML = fleet.toolCnt;
-					targetRow[0].children[2].firstChild.innerHTML = fleet.sduCnt;
-					targetRow[0].children[3].firstChild.innerHTML = fleet.state;
-			} else {
-					let fleetRow = document.createElement('tr');
-					fleetRow.classList.add('assist-fleet-row');
-					fleetRow.setAttribute('pk', fleet.publicKey.toString());
-					let fleetLabel = document.createElement('span');
-					fleetLabel.innerHTML = fleet.label;
-					let fleetLabelTd = document.createElement('td');
-					fleetLabelTd.appendChild(fleetLabel);
-					let fleetTool = document.createElement('span');
-					fleetTool.innerHTML = fleet.toolCnt;
-					let fleetToolTd = document.createElement('td');
-					fleetToolTd.appendChild(fleetTool);
-					let fleetSdu = document.createElement('span');
-					fleetSdu.innerHTML = fleet.sduCnt;
-					let fleetSduTd = document.createElement('td');
-					fleetSduTd.appendChild(fleetSdu);
-					let fleetStatus = document.createElement('span');
-					fleetStatus.innerHTML = fleet.state;
-					let fleetStatusTd = document.createElement('td');
-					fleetStatusTd.appendChild(fleetStatus);
-					fleetRow.appendChild(fleetLabelTd);
-					fleetRow.appendChild(fleetToolTd);
-					fleetRow.appendChild(fleetSduTd);
-					fleetRow.appendChild(fleetStatusTd);
-					let targetElem = document.querySelector('#assistStatus .assist-modal-body table');
-					targetElem.appendChild(fleetRow);
-			}
+		if (targetRow.length > 0) {
+			targetRow[0].children[1].firstChild.innerHTML = fleet.toolCnt;
+			targetRow[0].children[2].firstChild.innerHTML = fleet.sduCnt;
+			targetRow[0].children[3].firstChild.innerHTML = fleet.state;
+		} else {
+			let fleetRow = document.createElement('tr');
+			fleetRow.classList.add('assist-fleet-row');
+			fleetRow.setAttribute('pk', fleet.publicKey.toString());
+			let fleetLabel = document.createElement('span');
+			fleetLabel.innerHTML = fleet.label;
+			let fleetLabelTd = document.createElement('td');
+			fleetLabelTd.appendChild(fleetLabel);
+			let fleetTool = document.createElement('span');
+			fleetTool.innerHTML = fleet.toolCnt;
+			let fleetToolTd = document.createElement('td');
+			fleetToolTd.appendChild(fleetTool);
+			let fleetSdu = document.createElement('span');
+			fleetSdu.innerHTML = fleet.sduCnt;
+			let fleetSduTd = document.createElement('td');
+			fleetSduTd.appendChild(fleetSdu);
+			let fleetStatus = document.createElement('span');
+			fleetStatus.innerHTML = fleet.state;
+			let fleetStatusTd = document.createElement('td');
+			fleetStatusTd.appendChild(fleetStatus);
+			fleetRow.appendChild(fleetLabelTd);
+			fleetRow.appendChild(fleetToolTd);
+			fleetRow.appendChild(fleetSduTd);
+			fleetRow.appendChild(fleetStatusTd);
+			let targetElem = document.querySelector('#assistStatus .assist-modal-body table');
+			targetElem.appendChild(fleetRow);
+		}
+
+		if(targetRow && targetRow.length > 0 && targetRow[0].children && targetRow[0].children.length > 0) {
+			if(!color) color = 'white';
+			targetRow[0].children[0].firstChild.style.color=color;
+		}
 	}
 	function updateFleetState(fleet, newState) {
 		fleet.state = newState;
@@ -2196,8 +2201,6 @@
 						let starbase = await sageProgram.account.starbase.fetch(extra.starbase);
 						let coords = starbase.sector[0].toNumber() + ',' + starbase.sector[1].toNumber();
 						await execUndock(userFleets[i], coords);
-						//console.log(`[${userFleets[i].label}] Idle`);
-						//userFleets[i].state = 'Idle';
 				}
 		}
 	}
@@ -2263,20 +2266,21 @@
 						}
 					}
 
-					await wait(moveTime * 1000);
 					fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
 					[fleetState, extra] = getFleetState(fleetAcctInfo);
 					let warpFinish = fleetState == 'MoveWarp' ? extra.warpFinish.toNumber() * 1000 : 0;
 					let subwarpFinish = fleetState == 'MoveSubwarp' ? extra.arrivalTime.toNumber() * 1000 : 0;
 					let endTime = warpFinish > subwarpFinish ? warpFinish : subwarpFinish;
+					userFleets[i].moveEnd = endTime;
 					
+					await wait(moveTime * 1000);
 					while (endTime > Date.now()) {
 						const newFleetState = 'Move [' + TimeToStr(new Date(endTime)) + ']';
 						updateFleetState(userFleets[i], newFleetState);
 						await wait(Math.max(1000, endTime - Date.now()));
 					}
 
-					await wait(2000);
+					//await wait(2000);
 					if (fleetState == 'MoveWarp') {
 						await execExitWarp(userFleets[i]);
 					} else if (fleetState == 'MoveSubwarp'){
@@ -2297,7 +2301,7 @@
 									await GM.setValue(fleetPK, JSON.stringify(fleetParsedData));
 							}
 					}
-					//await wait(2000);
+
 					resolve(warpCooldownFinished);
 			});
 	}
@@ -2332,13 +2336,13 @@
 									let distToStarbase = Math.max(calculateMovementDistance(fleetCoords, [starbaseX,starbaseY]), calculateMovementDistance(furthestPoint, [starbaseX,starbaseY]));
 									//cLog(2, `${FleetTimeStamp(userFleets[i].label)} distToStarbase: ${distToStarbase}`);
 									let fuelNeeded = 0;
-									let exactFuelNeeded = 0;
+									//let exactFuelNeeded = 0;
 									if (userFleets[i].moveType == 'warp') {
 											fuelNeeded = calculateWarpFuelBurn(userFleets[i], distToStarbase) + calculateWarpFuelBurn(userFleets[i], 2);
-											exactFuelNeeded = calculateWarpFuelBurn(userFleets[i], distToStarbase);
+											//exactFuelNeeded = calculateWarpFuelBurn(userFleets[i], distToStarbase);
 									} else {
 											fuelNeeded = calculateSubwarpFuelBurn(userFleets[i], distToStarbase) + calculateSubwarpFuelBurn(userFleets[i], 2);
-											exactFuelNeeded = calculateSubwarpFuelBurn(userFleets[i], distToStarbase);
+											//exactFuelNeeded = calculateSubwarpFuelBurn(userFleets[i], distToStarbase);
 									}
 									//cLog(2, `${FleetTimeStamp(userFleets[i].label)} currentFuelCnt: ${currentFuelCnt}`);
 									//cLog(2, `${FleetTimeStamp(userFleets[i].label)} fuelNeeded: ${exactFuelNeeded}`);
@@ -2351,7 +2355,7 @@
 													const scanEndsIn = Math.max(0, userFleets[i].scanEnd - Date.now());
 													//Clamp the scan end time to the cooldown if it is higher (due to paused scanning)
 													userFleets[i].scanEnd = scanEndsIn > userFleets[i].scanCooldown ? userFleets[i].scanCooldown : scanEndsIn;
-													let warpCooldownFinished = await handleMovement(i, moveDist, destCoords[0], destCoords[1]);
+													await handleMovement(i, moveDist, destCoords[0], destCoords[1]);
 													cLog(1,`${FleetTimeStamp(userFleets[i].label)} Movement finished`);
 													userFleets[i].scanSectorStart = Date.now();
 											} else {
@@ -2359,7 +2363,7 @@
 											}
 									} else {
 											cLog(1,`${fuelReadout} (low)`);
-											//userFleets[i].scanSkipCnt = 0;
+											if(scanResupplyOnLowFuel) await handleResupply(i, fleetCoords);
 									}
 							}
 					}
@@ -2416,7 +2420,7 @@
 							}
 					}
 			} else {
-					await handleResupply(i, fleetCoords)
+					await handleResupply(i, fleetCoords);
 			}
 	}
 
@@ -2597,7 +2601,7 @@
 							if (moveDist > 0) {
 									let warpCooldownFinished = await handleMovement(i, moveDist, targetX, targetY);
 							} else {
-									cLog(1,`${FleetTimeStamp(userFleets[i].label)} Idle`);
+									cLog(1,`${FleetTimeStamp(userFleets[i].label)} Idle 💤`);
 									updateFleetState(userFleets[i], 'Idle');
 							}
 					} else {
@@ -3071,6 +3075,8 @@
 		//Don't run fleets in an error state
 		if (userFleets[i].state.includes('ERROR')) return;
 
+		userFleets[i].lastOp = Date.now();
+
 		const moving = 
 			userFleets[i].state.includes('Move [') || 
 			userFleets[i].state.includes('Warp [') ||
@@ -3093,6 +3099,7 @@
 				cLog(2, `${FleetTimeStamp(userFleets[i].label)} <getAccountInfo> (${userFleets[i].state})`);
 				let fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
 				let [fleetState, extra] = getFleetState(fleetAcctInfo);
+				cLog(3, `${FleetTimeStamp(userFleets[i].label)} chain fleet state: ${fleetState}`);
 				let fleetCoords = fleetState == 'Idle' ? extra : [];
 				let fleetMining = fleetState == 'MineAsteroid' ? extra : [];
 				userFleets[i].startingCoords = fleetCoords;
@@ -3149,6 +3156,45 @@
 			//Stagger fleet starts by 500ms to avoid overloading the RPC
 			setTimeout(() => { startFleet(i);	}, 500 * (i + 1));
 		}
+
+		setTimeout(fleetsHealthCheck, 5000);
+	}
+
+	async function fleetsHealthCheck() {
+		if (!enableAssistant) return;
+
+		for (let i=0, n=userFleets.length; i < n; i++) {
+			const fleet = userFleets[i];
+			const foo = Math.max(
+				fleet.lastOp,
+				fleet.scanEnd ? fleet.scanEnd : 0, 
+				fleet.moveEnd ? fleet.moveEnd : 0,
+			);
+			
+			if(fleet.lastOp && !userFleets[i].stalled) {
+				if(Date.now() - foo > 600000) {
+					cLog(3,`${FleetTimeStamp(userFleets[i].label)} Unresponsive`, 
+						TimeToStr(new Date(foo)),
+						TimeToStr(new Date(fleet.lastOp)),
+						TimeToStr(new Date(fleet.scanEnd)),
+						TimeToStr(new Date(fleet.moveEnd)),
+					);
+
+					updateAssistStatus(fleet, 'red');
+					userFleets[i].stalled = true;
+					fleetStallCount++;
+				}
+			}
+		}
+
+		//Auto-reload when too many fleets fail
+		if(reloadPageOnFailedFleets && reloadPageOnFailedFleets < fleetStallCount) {
+			cLog(1, `ASSISTANT: ${fleetStallCount} fleets have stalled - reloading ...`);
+			location.reload();
+			return;
+		}
+
+		if(enableAssistant)	setTimeout(fleetsHealthCheck, 10000);
 	}
 
 	async function toggleAssistant() {
@@ -3335,6 +3381,10 @@
 
 			userFleets.sort(function (a, b) { return a.label.toUpperCase().localeCompare(b.label.toUpperCase()); });
 			initComplete = true;
+			if(autoStartScript) {
+				assistStatusToggle();
+				toggleAssistant();
+			}
 			resolve();
 		});
 	}
@@ -3376,7 +3426,7 @@
 			document.getElementById("assistContainerIso") && document.getElementById("assistContainerIso").remove();
 			observer && observer.disconnect();
 			let assistCSS = document.createElement('style');
-			assistCSS.innerHTML = '.assist-modal {display: none; position: fixed; z-index: 2; padding-top: 100px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);} .assist-modal-content {position: relative; display: flex; flex-direction: column; background-color: rgb(41, 41, 48); margin: auto; padding: 0; border: 1px solid #888; width: 785px; min-width: 450px; max-width: 75%; height: auto; min-height: 50px; max-height: 85%; overflow-y: auto; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19); -webkit-animation-name: animatetop; -webkit-animation-duration: 0.4s; animation-name: animatetop; animation-duration: 0.4s;} #assist-modal-error {color: red; margin-left: 5px; margin-right: 5px; font-size: 16px;} .assist-modal-header-right {color: rgb(255, 190, 77); margin-left: auto !important; font-size: 20px;} .assist-btn {background-color: rgb(41, 41, 48); color: rgb(255, 190, 77); margin-left: 2px; margin-right: 2px;} .assist-btn:hover {background-color: rgba(255, 190, 77, 0.2);} .assist-modal-close:hover, .assist-modal-close:focus {font-weight: bold; text-decoration: none; cursor: pointer;} .assist-modal-btn {color: rgb(255, 190, 77); padding: 5px 5px; margin-right: 5px; text-decoration: none; background-color: rgb(41, 41, 48); border: none; cursor: pointer;} .assist-modal-save:hover { background-color: rgba(255, 190, 77, 0.2); } .assist-modal-header {display: flex; align-items: center; padding: 2px 16px; background-color: rgba(255, 190, 77, 0.2); border-bottom: 2px solid rgb(255, 190, 77); color: rgb(255, 190, 77);} .assist-modal-body {padding: 2px 16px; font-size: 12px;} .assist-modal-body > table {width: 100%;} .assist-modal-body th, .assist-modal-body td {padding-right: 5px, padding-left: 5px;} #assistStatus {background-color: rgba(0,0,0,0.4); opacity: 0.75; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1;} #assistCheck {background-color: rgba(0,0,0,0.75); backdrop-filter: blur(10px); position: absolute; margin: auto; left: 0; right: 0; top: 100px; width: 650px; min-width: 450px; max-width: 75%; z-index: 1;} .dropdown { position: absolute; display: none; margin-top: 25px; margin-left: 152px; background-color: rgb(41, 41, 48); min-width: 120px; box-shadow: 0 8px 16px 0 rgba(0, 0, 0, 0.2); z-index: 2; } .dropdown.show { display: block; } .assist-btn-alt { color: rgb(255, 190, 77); padding: 12px 16px; text-decoration: none; display: block; background-color: rgb(41, 41, 48); border: none; cursor: pointer; } .assist-btn-alt:hover { background-color: rgba(255, 190, 77, 0.2); } #checkresults { padding: 5px; margin-top: 20px; border: 1px solid grey; border-radius: 8px;} .dropdown button {width: 100%; text-align: left;} #assistModal table {border-collapse: collapse;} .assist-scan-row, .assist-mine-row, .assist-transport-row {background-color: rgba(255, 190, 77, 0.1); border-left: 1px solid white; border-right: 1px solid white; border-bottom: 1px solid white} .show-top-border {background-color: rgba(255, 190, 77, 0.1); border-left: 1px solid white; border-right: 1px solid white; border-top: 1px solid white;}';
+			assistCSS.innerHTML = `.assist-modal {display: none; position: fixed; z-index: 2; padding-top: 100px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);} .assist-modal-content {position: relative; display: flex; flex-direction: column; background-color: rgb(41, 41, 48); margin: auto; padding: 0; border: 1px solid #888; width: 785px; min-width: 450px; max-width: 75%; height: auto; min-height: 50px; max-height: 85%; overflow-y: auto; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19); -webkit-animation-name: animatetop; -webkit-animation-duration: 0.4s; animation-name: animatetop; animation-duration: 0.4s;} #assist-modal-error {color: red; margin-left: 5px; margin-right: 5px; font-size: 16px;} .assist-modal-header-right {color: rgb(255, 190, 77); margin-left: auto !important; font-size: 20px;} .assist-btn {background-color: rgb(41, 41, 48); color: rgb(255, 190, 77); margin-left: 2px; margin-right: 2px;} .assist-btn:hover {background-color: rgba(255, 190, 77, 0.2);} .assist-modal-close:hover, .assist-modal-close:focus {font-weight: bold; text-decoration: none; cursor: pointer;} .assist-modal-btn {color: rgb(255, 190, 77); padding: 5px 5px; margin-right: 5px; text-decoration: none; background-color: rgb(41, 41, 48); border: none; cursor: pointer;} .assist-modal-save:hover { background-color: rgba(255, 190, 77, 0.2); } .assist-modal-header {display: flex; align-items: center; padding: 2px 16px; background-color: rgba(255, 190, 77, 0.2); border-bottom: 2px solid rgb(255, 190, 77); color: rgb(255, 190, 77);} .assist-modal-body {padding: 2px 16px; font-size: 12px;} .assist-modal-body > table {width: 100%;} .assist-modal-body th, .assist-modal-body td {padding-right: 5px, padding-left: 5px;} #assistStatus {background-color: rgba(0,0,0,${statusPanelOpacity}); opacity: ${statusPanelOpacity}; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1;} #assistCheck {background-color: rgba(0,0,0,0.75); backdrop-filter: blur(10px); position: absolute; margin: auto; left: 0; right: 0; top: 100px; width: 650px; min-width: 450px; max-width: 75%; z-index: 1;} .dropdown { position: absolute; display: none; margin-top: 25px; margin-left: 152px; background-color: rgb(41, 41, 48); min-width: 120px; box-shadow: 0 8px 16px 0 rgba(0, 0, 0, 0.2); z-index: 2; } .dropdown.show { display: block; } .assist-btn-alt { color: rgb(255, 190, 77); padding: 12px 16px; text-decoration: none; display: block; background-color: rgb(41, 41, 48); border: none; cursor: pointer; } .assist-btn-alt:hover { background-color: rgba(255, 190, 77, 0.2); } #checkresults { padding: 5px; margin-top: 20px; border: 1px solid grey; border-radius: 8px;} .dropdown button {width: 100%; text-align: left;} #assistModal table {border-collapse: collapse;} .assist-scan-row, .assist-mine-row, .assist-transport-row {background-color: rgba(255, 190, 77, 0.1); border-left: 1px solid white; border-right: 1px solid white; border-bottom: 1px solid white} .show-top-border {background-color: rgba(255, 190, 77, 0.1); border-left: 1px solid white; border-right: 1px solid white; border-top: 1px solid white;}`;
 
 			let assistModal = document.createElement('div');
 			assistModal.classList.add('assist-modal');
