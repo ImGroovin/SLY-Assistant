@@ -142,8 +142,31 @@
 	const cargoProgramId = new solanaWeb3.PublicKey(cargoProgramAddy);
 	const profileFactionIDL = JSON.parse('{"version":"0.7.0","name":"profile_faction","instructions":[{"name":"chooseFaction","accounts":[{"name":"key","isMut":false,"isSigner":true,"docs":["The key with auth permissions."]},{"name":"funder","isMut":true,"isSigner":true,"docs":["The funder for the transaction."]},{"name":"profile","isMut":false,"isSigner":false,"docs":["The profile to change faction for."]},{"name":"faction","isMut":true,"isSigner":false,"docs":["The faction to change to."]},{"name":"systemProgram","isMut":false,"isSigner":false,"docs":["The system program."]}],"args":[{"name":"keyIndex","type":"u16"},{"name":"faction","type":{"defined":"Faction"}}]}],"accounts":[{"name":"ProfileFactionAccount","docs":["Stores a profiles enlisted faction on-chain."],"type":{"kind":"struct","fields":[{"name":"version","docs":["The data version of this account."],"type":"u8"},{"name":"profile","docs":["The profile this faction enlistment is for."],"type":"publicKey"},{"name":"faction","docs":["The faction of the profile."],"type":"u8"},{"name":"bump","docs":["The bump for this account."],"type":"u8"}]}}],"types":[{"name":"Faction","docs":["A faction that a player can belong to."],"type":{"kind":"enum","variants":[{"name":"Unaligned"},{"name":"MUD"},{"name":"ONI"},{"name":"Ustur"}]}}]}');
 	const profileFactionProgramId = new solanaWeb3.PublicKey('pFACSRuobDmvfMKq1bAzwj27t6d2GJhSCHb1VcfnRmq');
-	const resourceTokens = [{name: 'Carbon', token: 'CARBWKWvxEuMcq3MqCxYfi7UoFVpL9c4rsQS99tw6i4X'},{name: 'Iron Ore', token: 'FeorejFjRRAfusN9Fg3WjEZ1dRCf74o6xwT5vDt3R34J'},{name: 'Diamond', token: 'DMNDKqygEN3WXKVrAD4ofkYBc4CKNRhFUbXP4VK7a944'},{name: 'Lumanite', token: 'LUMACqD5LaKjs1AeuJYToybasTXoYQ7YkxJEc4jowNj'},{name: 'Biomass', token: 'MASS9GqtJz6ABisAxcUn3FeR4phMqH1XfG6LPKJePog'},{name: 'Arco', token: 'ARCoQ9dndpg6wE2rRexzfwgJR3NoWWhpcww3xQcQLukg'},{name: 'Hydrogen', token: 'HYDR4EPHJcDPcaLYUcNCtrXUdt1PnaN4MvE655pevBYp'},{name: 'Copper Ore', token: 'CUore1tNkiubxSwDEtLc3Ybs1xfWLs8uGjyydUYZ25xc'},{name: 'Rochinol', token: 'RCH1Zhg4zcSSQK8rw2s6rDMVsgBEWa4kiv1oLFndrN5'}, {name: 'Framework', token: 'FMWKb7YJA5upZHbu5FjVRRoxdDw2FYFAu284VqUGF9C2'}, {name: 'Graphene', token: 'GRAPHKGoKtXtdPBx17h6fWopdT5tLjfAP8cDJ1SvvDn4'}, {name: 'Radiation Absorber', token: 'RABSXX6RcqJ1L5qsGY64j91pmbQVbsYRQuw1mmxhxFe'}, {name: 'Electronics', token: 'ELECrjC8m9GxCqcm4XCNpFvkS8fHStAvymS6MJbe3XLZ'}]
-	const r4Tokens = [{name: 'Fuel', token: fuelAddy},{name: 'Food', token: 'foodQJAztMzX1DKpLaiounNe2BDMds5RNuPC6jsNrDG'},{name: 'Ammo', token: 'ammoK8AkX2wnebQb35cDAZtTkvsXQbi82cGeTnUvvfK'},{name: 'Toolkit', token: toolsAddy},{name: 'SDU', token: SDUAddy}]
+	const resourceTokens = [
+		{name: 'Carbon', token: 'CARBWKWvxEuMcq3MqCxYfi7UoFVpL9c4rsQS99tw6i4X'},
+		{name: 'Iron Ore', token: 'FeorejFjRRAfusN9Fg3WjEZ1dRCf74o6xwT5vDt3R34J'},
+		{name: 'Diamond', token: 'DMNDKqygEN3WXKVrAD4ofkYBc4CKNRhFUbXP4VK7a944'},
+		{name: 'Lumanite', token: 'LUMACqD5LaKjs1AeuJYToybasTXoYQ7YkxJEc4jowNj'},
+		{name: 'Biomass', token: 'MASS9GqtJz6ABisAxcUn3FeR4phMqH1XfG6LPKJePog'},
+		{name: 'Arco', token: 'ARCoQ9dndpg6wE2rRexzfwgJR3NoWWhpcww3xQcQLukg'},
+		{name: 'Hydrogen', token: 'HYDR4EPHJcDPcaLYUcNCtrXUdt1PnaN4MvE655pevBYp'},
+		{name: 'Copper Ore', token: 'CUore1tNkiubxSwDEtLc3Ybs1xfWLs8uGjyydUYZ25xc'},
+		{name: 'Rochinol', token: 'RCH1Zhg4zcSSQK8rw2s6rDMVsgBEWa4kiv1oLFndrN5'},
+		{name: 'Framework', token: 'FMWKb7YJA5upZHbu5FjVRRoxdDw2FYFAu284VqUGF9C2'},
+		{name: 'Graphene', token: 'GRAPHKGoKtXtdPBx17h6fWopdT5tLjfAP8cDJ1SvvDn4'},
+		{name: 'Radiation Absorber', token: 'RABSXX6RcqJ1L5qsGY64j91pmbQVbsYRQuw1mmxhxFe'},
+		{name: 'Electronics', token: 'ELECrjC8m9GxCqcm4XCNpFvkS8fHStAvymS6MJbe3XLZ'},
+		{name: 'Particle Accelerator', token: 'PTCLSWbwZ3mqZqHAporphY2ofio8acsastaHfoP87Dc'},
+		{name: 'Power Source', token: 'PoWRYJnw3YDSyXgNtN3mQ3TKUMoUSsLAbvE8Ejade3u'},
+		{name: 'Electromagnet', token: 'EMAGoQSP89CJV5focVjrpEuE4CeqJ4k1DouQW7gUu7yX'},
+	];
+	const r4Tokens = [
+		{name: 'Fuel', token: fuelAddy},
+		{name: 'Food', token: 'foodQJAztMzX1DKpLaiounNe2BDMds5RNuPC6jsNrDG'},
+		{name: 'Ammo', token: 'ammoK8AkX2wnebQb35cDAZtTkvsXQbi82cGeTnUvvfK'},
+		{name: 'Toolkit', token: toolsAddy},
+		{name: 'SDU', token: SDUAddy}
+	];
 	const maxResWeight = 6;
 
 	let userPublicKey = null;
@@ -1619,7 +1642,7 @@
 			transportLabel1.style.width = '84px';
 			transportLabel1.style.minWidth = '84px';
 
-			let transportResources = ['','Ammo','Food','Fuel','SDU','Toolkit','Arco','Biomass','Carbon','Copper Ore','Diamond','Hydrogen','Iron Ore','Lumanite','Rochinol','Framework', 'Graphene', 'Radiation Absorber', 'Electronics']
+			let transportResources = ['','Ammo','Food','Fuel','SDU','Toolkit','Arco','Biomass','Carbon','Copper Ore','Diamond','Hydrogen','Iron Ore','Lumanite','Rochinol','Framework','Graphene','Radiation Absorber','Electronics','Particle Accelerator','Power Source','Electromagnet'];
 			let transportOptStr = '';
 			transportResources.forEach( function(resource) {transportOptStr += '<option value="' + resource + '">' + resource + '</option>';});
 			let transportResource1 = document.createElement('select');
