@@ -596,20 +596,15 @@
 				let microOpStart = Date.now();
 				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> SEND`);
 				let response = await sendAndConfirmTx(txSerialized, tx.lastValidBlockHeight, null, fleet, opName);
-				//console.log('txResponse: ', response);
 				let txHash = response.txHash;
 				let confirmation = response.confirmation;
-				let txResult = await solanaReadConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
-				//const priorityHistoryStats = await getPriorityHistoryStats();
-				//cLog(3, `${FleetTimeStamp(fleetName)} priorityHistoryStats`, priorityHistoryStats);
+				let txResult = txHash ? await solanaReadConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1}) : undefined;
 
 				const confirmationTimeStr = `${Date.now() - microOpStart}ms`;
 
-				if (confirmation.name == 'TransactionExpiredBlockheightExceededError' && !txResult) {
-					//console.log('-----RETRY-----');
+				if (confirmation && confirmation.name == 'TransactionExpiredBlockheightExceededError' && !txResult) {
 					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM ❌ ${confirmationTimeStr}`);
 					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> RESEND 🔂`);
-					//txResult = await txSignAndSend(ix);
 					continue; //retart loop to try again
 				}
 
