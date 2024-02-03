@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant Modded
 // @namespace    http://tampermonkey.net/
-// @version      0.4.3m1
+// @version      0.4.3m2
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
 // @match        https://*.labs.staratlas.com/
@@ -27,6 +27,7 @@
 	const scanBlockLength = 5; //Length of the line-based patterns (does not apply to square or ring)
 	const scanBlockResetAfterResupply = false; //Start from the beginning of the pattern after resupplying at starbase?
 	const scanResupplyOnLowFuel = false; //When true, scanning fleet set to scanMove with low fuel will return to base to resupply fuel + toolkits
+	const scanSectorRegenTime = 90; //Number of seconds to wait after a successful scan to allow sector to regenerate
 	const statusPanelOpacity = 0.75; //How transparent the status panel should be (1 = completely opaque)
 	const autoStartScript = false; //Should assistant automatically start after initialization is complete?
 	const reloadPageOnFailedFleets = 0; //How many fleets need to stall before triggering an automatic page reload? (0 = never trigger)
@@ -619,20 +620,15 @@
 				let microOpStart = Date.now();
 				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> SEND`);
 				let response = await sendAndConfirmTx(txSerialized, tx.lastValidBlockHeight, null, fleet, opName);
-				//console.log('txResponse: ', response);
 				let txHash = response.txHash;
 				let confirmation = response.confirmation;
-				let txResult = await solanaReadConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
-				//const priorityHistoryStats = await getPriorityHistoryStats();
-				//cLog(3, `${FleetTimeStamp(fleetName)} priorityHistoryStats`, priorityHistoryStats);
+				let txResult = txHash ? await solanaReadConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1}) : undefined;
 
 				const confirmationTimeStr = `${Date.now() - microOpStart}ms`;
 
-				if (confirmation.name == 'TransactionExpiredBlockheightExceededError' && !txResult) {
-					//console.log('-----RETRY-----');
+				if (confirmation && confirmation.name == 'TransactionExpiredBlockheightExceededError' && !txResult) {
 					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM ❌ ${confirmationTimeStr}`);
 					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> RESEND 🔂`);
-					//txResult = await txSignAndSend(ix);
 					continue; //retart loop to try again
 				}
 
@@ -939,7 +935,7 @@
 		const fleet = userFleets[i];
 		cLog(1,`${FleetTimeStamp(fleet.label)} Undock ${assignment} Startup`);
 
-		if(assignment == 'Transport') {
+		if(assignment == 'Transport' || assignment == 'Mine') {
 			const fleetAcctInfo = await solanaReadConnection.getAccountInfo(fleet.publicKey);
 			const [fleetState, extra] = getFleetState(fleetAcctInfo);
 			if (fleetState === 'StarbaseLoadingBay') {
@@ -2411,7 +2407,7 @@
 							if (userFleets[i].scanSkipCnt < userFleets[i].scanBlock.length - 1) {
 									let scanDelayMs = userFleets[i].scanCooldown * 1000 + 2000;
 									//Wait at least 1.5 minutes for sector to regen
-									if(sduFound) scanDelayMs = Math.max(scanDelayMs, 90000);
+									if(sduFound) scanDelayMs = Math.max(scanDelayMs, scanSectorRegenTime * 1000);
 									userFleets[i].scanEnd = Date.now() + scanDelayMs;
 									userFleets[i].state = `Scanned [${Math.round(scanCondition)}%]${sduFound ? ` +${sduFound}` : ''}`;
 							} else {
