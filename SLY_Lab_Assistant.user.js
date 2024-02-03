@@ -911,7 +911,7 @@
 		const fleet = userFleets[i];
 		cLog(1,`${FleetTimeStamp(fleet.label)} Undock ${assignment} Startup`);
 
-		if(assignment == 'Transport') {
+		if(assignment == 'Transport' || assignment == 'Mine') {
 			const fleetAcctInfo = await solanaReadConnection.getAccountInfo(fleet.publicKey);
 			const [fleetState, extra] = getFleetState(fleetAcctInfo);
 			if (fleetState === 'StarbaseLoadingBay') {
