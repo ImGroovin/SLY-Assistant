@@ -27,6 +27,7 @@
 	const scanBlockLength = 5; //Length of the line-based patterns (does not apply to square or ring)
 	const scanBlockResetAfterResupply = false; //Start from the beginning of the pattern after resupplying at starbase?
 	const scanResupplyOnLowFuel = false; //When true, scanning fleet set to scanMove with low fuel will return to base to resupply fuel + toolkits
+	const scanSectorRegenTime = 90; //Number of seconds to wait after a successful scan to allow sector to regenerate
 	const statusPanelOpacity = 0.75; //How transparent the status panel should be (1 = completely opaque)
 	const autoStartScript = false; //Should assistant automatically start after initialization is complete?
 	const reloadPageOnFailedFleets = 0; //How many fleets need to stall before triggering an automatic page reload? (0 = never trigger)
@@ -2406,7 +2407,7 @@
 							if (userFleets[i].scanSkipCnt < userFleets[i].scanBlock.length - 1) {
 									let scanDelayMs = userFleets[i].scanCooldown * 1000 + 2000;
 									//Wait at least 1.5 minutes for sector to regen
-									if(sduFound) scanDelayMs = Math.max(scanDelayMs, 90000);
+									if(sduFound) scanDelayMs = Math.max(scanDelayMs, scanSectorRegenTime * 1000);
 									userFleets[i].scanEnd = Date.now() + scanDelayMs;
 									userFleets[i].state = `Scanned [${Math.round(scanCondition)}%]${sduFound ? ` +${sduFound}` : ''}`;
 							} else {
