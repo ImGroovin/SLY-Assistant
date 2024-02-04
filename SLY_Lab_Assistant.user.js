@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant Modded
 // @namespace    http://tampermonkey.net/
-// @version      0.4.3m2
+// @version      0.4.3m3
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
 // @match        https://*.labs.staratlas.com/
@@ -1104,16 +1104,14 @@
 				new solanaWeb3.PublicKey(programAddy)
 			);
 
+			/*
 			//Get source account or bail if none
-			const starbaseCargoAccountInfo = await getAccountInfo(fleet.label, 'Starbase cargo token', starbaseCargoToken);// || await createProgramDerivedAccount(starbaseCargoToken, starbasePlayerCargoHold.publicKey, new solanaWeb3.PublicKey(tokenMint), fleet);
+			const starbaseCargoAccountInfo = await getAccountInfo(fleet.label, 'Starbase cargo token', starbaseCargoToken) || await createProgramDerivedAccount(starbaseCargoToken, starbasePlayerCargoHold.publicKey, new solanaWeb3.PublicKey(tokenMint), fleet);
 			if(!starbaseCargoAccountInfo) {
 				txResult = {name: "NotEnoughResource"};
 				resolve(txResult);
 				return;
-			}
-
-			//Get or create target account
-			await getAccountInfo(fleet.label, 'fleet cargo token', tokenTo) || await createProgramDerivedAccount(tokenTo, cargoPodTo, new solanaWeb3.PublicKey(tokenMint), fleet);
+			}*/
 
 			let mostFound = 0;
 			for (let cargoHold of starbasePlayerCargoHolds) {
@@ -1134,42 +1132,49 @@
 					}
 			}
 			amount = amount > mostFound ? mostFound : amount;
-			let tx = { instruction: await sageProgram.methods.depositCargoToFleet({ amount: new BrowserAnchor.anchor.BN(amount), keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx) }).accountsStrict({
-					gameAccountsFleetAndOwner: {
-							gameFleetAndOwner: {
-									fleetAndOwner: {
-											fleet: fleet.publicKey,
-											owningProfile: userProfileAcct,
-											owningProfileFaction: userProfileFactionAcct.publicKey,
-											key: userPublicKey
-									},
-									gameId: sageGameAcct.publicKey
-							},
-							gameState: sageGameAcct.account.gameState
-					},
-					fundsTo: userPublicKey,
-					starbaseAndStarbasePlayer: {
-							starbase: starbase.publicKey,
-							starbasePlayer: starbasePlayer.publicKey
-					},
-					cargoPodFrom: starbasePlayerCargoHold.publicKey,
-					cargoPodTo: cargoPodTo,
-					cargoType: cargoType.publicKey,
-					cargoStatsDefinition: sageGameAcct.account.cargo.statsDefinition,
-					tokenFrom: starbaseCargoToken,
-					tokenTo: tokenTo,
-					tokenMint: tokenMint,
-					cargoProgram: cargoProgramId,
-					tokenProgram: tokenProgAddy
-			}).remainingAccounts([{
-					pubkey: starbase.publicKey,
-					isSigner: false,
-					isWritable: false
-			}]).instruction()}
+
 			if (amount > 0) {
-					txResult = await txSignAndSend(tx, fleet, 'LOAD');
+				//Get or create target account
+				await getAccountInfo(fleet.label, 'fleet cargo token', tokenTo) || await createProgramDerivedAccount(tokenTo, cargoPodTo, new solanaWeb3.PublicKey(tokenMint), fleet);
+
+				//Build tx
+				let tx = { instruction: await sageProgram.methods.depositCargoToFleet({ amount: new BrowserAnchor.anchor.BN(amount), keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx) }).accountsStrict({
+						gameAccountsFleetAndOwner: {
+								gameFleetAndOwner: {
+										fleetAndOwner: {
+												fleet: fleet.publicKey,
+												owningProfile: userProfileAcct,
+												owningProfileFaction: userProfileFactionAcct.publicKey,
+												key: userPublicKey
+										},
+										gameId: sageGameAcct.publicKey
+								},
+								gameState: sageGameAcct.account.gameState
+						},
+						fundsTo: userPublicKey,
+						starbaseAndStarbasePlayer: {
+								starbase: starbase.publicKey,
+								starbasePlayer: starbasePlayer.publicKey
+						},
+						cargoPodFrom: starbasePlayerCargoHold.publicKey,
+						cargoPodTo: cargoPodTo,
+						cargoType: cargoType.publicKey,
+						cargoStatsDefinition: sageGameAcct.account.cargo.statsDefinition,
+						tokenFrom: starbaseCargoToken,
+						tokenTo: tokenTo,
+						tokenMint: tokenMint,
+						cargoProgram: cargoProgramId,
+						tokenProgram: tokenProgAddy
+				}).remainingAccounts([{
+						pubkey: starbase.publicKey,
+						isSigner: false,
+						isWritable: false
+				}]).instruction()}
+				
+				//Send tx
+				txResult = await txSignAndSend(tx, fleet, 'LOAD');
 			} else {
-					txResult = {name: "NotEnoughResource"};
+				txResult = {name: "NotEnoughResource"};
 			}
 
 			let [fleetRepairKitToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
