@@ -1095,24 +1095,6 @@
 				},
 			]);
 			let starbasePlayerCargoHold = starbasePlayerCargoHolds[0];
-			let [starbaseCargoToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
-				[
-						starbasePlayerCargoHold.publicKey.toBuffer(),
-						new solanaWeb3.PublicKey(tokenProgAddy).toBuffer(),
-						new solanaWeb3.PublicKey(tokenMint).toBuffer()
-				],
-				new solanaWeb3.PublicKey(programAddy)
-			);
-
-			/*
-			//Get source account or bail if none
-			const starbaseCargoAccountInfo = await getAccountInfo(fleet.label, 'Starbase cargo token', starbaseCargoToken) || await createProgramDerivedAccount(starbaseCargoToken, starbasePlayerCargoHold.publicKey, new solanaWeb3.PublicKey(tokenMint), fleet);
-			if(!starbaseCargoAccountInfo) {
-				txResult = {name: "NotEnoughResource"};
-				resolve(txResult);
-				return;
-			}*/
-
 			let mostFound = 0;
 			for (let cargoHold of starbasePlayerCargoHolds) {
 					if (cargoHold.account && cargoHold.account.openTokenAccounts > 0) {
@@ -1132,10 +1114,22 @@
 					}
 			}
 			amount = amount > mostFound ? mostFound : amount;
-
-			if (amount > 0) {
-				//Get or create target account
+			
+			if (amount > 0) {	
+				//Get/create target account
 				await getAccountInfo(fleet.label, 'fleet cargo token', tokenTo) || await createProgramDerivedAccount(tokenTo, cargoPodTo, new solanaWeb3.PublicKey(tokenMint), fleet);
+
+				let [starbaseCargoToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+					[
+							starbasePlayerCargoHold.publicKey.toBuffer(),
+							new solanaWeb3.PublicKey(tokenProgAddy).toBuffer(),
+							new solanaWeb3.PublicKey(tokenMint).toBuffer()
+					],
+					new solanaWeb3.PublicKey(programAddy)
+				);
+
+				//Get/create source account (why?)
+				//await getAccountInfo(fleet.label, 'Starbase cargo token', starbaseCargoToken) || await createProgramDerivedAccount(starbaseCargoToken, starbasePlayerCargoHold.publicKey, new solanaWeb3.PublicKey(tokenMint), fleet);
 
 				//Build tx
 				let tx = { instruction: await sageProgram.methods.depositCargoToFleet({ amount: new BrowserAnchor.anchor.BN(amount), keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx) }).accountsStrict({
@@ -2283,6 +2277,7 @@
 						}
 					}
 
+					await wait(2000); //Allow time for RPC to update
 					fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
 					[fleetState, extra] = getFleetState(fleetAcctInfo);
 					let warpFinish = fleetState == 'MoveWarp' ? extra.warpFinish.toNumber() * 1000 : 0;
@@ -3039,7 +3034,7 @@
 				const isAmmo = entry.res === sageGameAcct.account.mints.ammo.toString();
 				const resMax = Math.min(cargoSpace, isAmmo ? entry.amt - ammoLoadingIntoAmmoBank : entry.amt);
 				if (resMax > 0) {
-					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Attempting to load ${resMax} ${entry.res}`);
+					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Attempting to load ${resMax} ${entry.res} from ${starbaseCoords}`);
 					const resp = await execCargoFromStarbaseToFleet(
 						userFleets[i],
 						userFleets[i].cargoHold,
