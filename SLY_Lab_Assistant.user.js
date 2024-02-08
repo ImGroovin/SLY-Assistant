@@ -2280,11 +2280,18 @@
 					await wait(2000); //Allow time for RPC to update
 					fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
 					[fleetState, extra] = getFleetState(fleetAcctInfo);
-					let warpFinish = fleetState == 'MoveWarp' ? extra.warpFinish.toNumber() * 1000 : 0;
-					let subwarpFinish = fleetState == 'MoveSubwarp' ? extra.arrivalTime.toNumber() * 1000 : 0;
-					let endTime = warpFinish > subwarpFinish ? warpFinish : subwarpFinish;
+					//let warpFinish = fleetState == 'MoveWarp' ? extra.warpFinish.toNumber() * 1000 : 0;
+					//let subwarpFinish = fleetState == 'MoveSubwarp' ? extra.arrivalTime.toNumber() * 1000 : 0;
+					//let endTime = warpFinish > subwarpFinish ? warpFinish : subwarpFinish;
+					let endTime = Math.max(
+						fleetState == 'MoveWarp' ? extra.warpFinish.toNumber() * 1000 : 0,
+						fleetState == 'MoveSubwarp' ? extra.arrivalTime.toNumber() * 1000 : 0,
+					);
 					userFleets[i].moveEnd = endTime;
 					
+					cLog(3, `${FleetTimeStamp(userFleets[i].label)} Expected arrival (chain): ${TimeToStr(new Date(endTime))}`);
+					cLog(3, `${FleetTimeStamp(userFleets[i].label)} Expected arrival (calc): ${TimeToStr(new Date(Date.now() + moveTime * 1000))}`);
+
 					await wait(moveTime * 1000);
 					while (endTime > Date.now()) {
 						const newFleetState = 'Move [' + TimeToStr(new Date(endTime)) + ']';
@@ -2326,14 +2333,8 @@
 			let readyToScan = true;
 
 			if (userFleets[i].scanCost == 0) {
-					if (userFleets[i].cargoCapacity - cargoCnt < 100) {
-							readyToScan = false;
-					}
-			} else {
-					if (currentToolCnt < userFleets[i].scanCost) {
-							readyToScan = false;
-					}
-			}
+				if (userFleets[i].cargoCapacity - cargoCnt < 100) readyToScan = false;
+			} else if (currentToolCnt < userFleets[i].scanCost) readyToScan = false;
 
 			if (readyToScan) {
 					let moved = false;
@@ -2376,6 +2377,7 @@
 									} else {
 											cLog(1,`${fuelReadout} (low)`);
 											if(scanResupplyOnLowFuel) await handleResupply(i, fleetCoords);
+											moved = true;
 									}
 							}
 					}
@@ -2432,7 +2434,7 @@
 							}
 					}
 			} else {
-					await handleResupply(i, fleetCoords);
+				await handleResupply(i, fleetCoords);
 			}
 	}
 
@@ -3186,10 +3188,10 @@
 			if(fleet.lastOp && !userFleets[i].stalled) {
 				if(Date.now() - foo > 600000) {
 					cLog(3,`${FleetTimeStamp(userFleets[i].label)} Unresponsive`, 
-						TimeToStr(new Date(foo)),
-						TimeToStr(new Date(fleet.lastOp)),
-						TimeToStr(new Date(fleet.scanEnd)),
-						TimeToStr(new Date(fleet.moveEnd)),
+						foo ? TimeToStr(new Date(foo)) : 'null',
+						fleet.lastOp ? TimeToStr(new Date(fleet.lastOp)) : 'null',
+						fleet.scanEnd ? TimeToStr(new Date(fleet.scanEnd)) : 'null',
+						fleet.moveEnd ? TimeToStr(new Date(fleet.moveEnd)) : 'null',
 					);
 
 					updateAssistStatus(fleet, 'red');
