@@ -3096,8 +3096,7 @@
 		const mining = userFleets[i].mineEnd && userFleets[i].state.includes('Mine') && (Date.now() < userFleets[i].mineEnd);
 		const onTarget = userFleets[i].lastScanCoord == userFleets[i].destCoord;
 		const waitingForScan = userFleets[i].scanEnd && (Date.now() <= userFleets[i].scanEnd);
-		if(userFleets[i].resupplying || moving || mining) //return;
-			cLog(2, `${FleetTimeStamp(userFleets[i].label)} Operating moving fleet`);
+		if(moving) cLog(2, `${FleetTimeStamp(userFleets[i].label)} Operating moving fleet`);
 		if(userFleets[i].resupplying || mining) return;
 		if(!onTarget && waitingForWarpCD) return;
 		if(scanning && onTarget && waitingForScan) return;
