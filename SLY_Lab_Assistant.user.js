@@ -689,7 +689,7 @@
 							instructionsSysvar: new solanaWeb3.PublicKey('Sysvar1nstructions1111111111111111111111111') // static
 					}).instruction()}
 
-					updateFleetState(fleet, 'Scanning');
+					updateFleetState(fleet, `Scanning [${TimeToStr(new Date(Date.now()))}]`);
 
 					let txResult = await txSignAndSend(tx, fleet, 'SCAN');
 
