@@ -2280,13 +2280,9 @@
 					await wait(2000); //Allow time for RPC to update
 					fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
 					[fleetState, extra] = getFleetState(fleetAcctInfo);
-					//let warpFinish = fleetState == 'MoveWarp' ? extra.warpFinish.toNumber() * 1000 : 0;
-					//let subwarpFinish = fleetState == 'MoveSubwarp' ? extra.arrivalTime.toNumber() * 1000 : 0;
-					//let endTime = warpFinish > subwarpFinish ? warpFinish : subwarpFinish;
-					let endTime = Math.max(
-						fleetState == 'MoveWarp' ? extra.warpFinish.toNumber() * 1000 : 0,
-						fleetState == 'MoveSubwarp' ? extra.arrivalTime.toNumber() * 1000 : 0,
-					);
+					let warpFinish = fleetState == 'MoveWarp' ? extra.warpFinish.toNumber() * 1000 : 0;
+					let subwarpFinish = fleetState == 'MoveSubwarp' ? extra.arrivalTime.toNumber() * 1000 : 0;
+					let endTime = warpFinish > subwarpFinish ? warpFinish : subwarpFinish;
 					userFleets[i].moveEnd = endTime;
 					
 					cLog(3, `${FleetTimeStamp(userFleets[i].label)} Expected arrival (chain): ${TimeToStr(new Date(endTime))}`);
@@ -3100,7 +3096,9 @@
 		const mining = userFleets[i].mineEnd && userFleets[i].state.includes('Mine') && (Date.now() < userFleets[i].mineEnd);
 		const onTarget = userFleets[i].lastScanCoord == userFleets[i].destCoord;
 		const waitingForScan = userFleets[i].scanEnd && (Date.now() <= userFleets[i].scanEnd);
-		if(userFleets[i].resupplying || moving || mining) return;
+		if(userFleets[i].resupplying || moving || mining) //return;
+			cLog(2, `${FleetTimeStamp(userFleets[i].label)} Operating moving fleet`);
+		if(userFleets[i].resupplying || mining) return;
 		if(!onTarget && waitingForWarpCD) return;
 		if(scanning && onTarget && waitingForScan) return;
 
@@ -3147,7 +3145,8 @@
 		if (!enableAssistant) return;
 
 		let extraTime = 0;
-		try { await operateFleet(i); } 
+		//cLog(1,`${FleetTimeStamp(userFleets[i].label)} Operating fleet ...`);
+		try { await operateFleet(i); }
 		catch(error) {
 			extraTime = 20000;
 			cLog(1,`${FleetTimeStamp(userFleets[i].label)} Uncaught error - waiting 20s longer`, error);
