@@ -689,7 +689,7 @@
 							instructionsSysvar: new solanaWeb3.PublicKey('Sysvar1nstructions1111111111111111111111111') // static
 					}).instruction()}
 
-					updateFleetState(fleet, 'Scanning');
+					updateFleetState(fleet, `Scanning [${TimeToStr(new Date(Date.now()))}]`);
 
 					let txResult = await txSignAndSend(tx, fleet, 'SCAN');
 
@@ -2217,105 +2217,106 @@
 	}
 	
 	async function handleMovement(i, moveDist, moveX, moveY) {
-			return new Promise(async resolve => {
-					let moveTime = 1;
-					let warpCooldownFinished = 0;
-					let fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
-					let [fleetState, extra] = getFleetState(fleetAcctInfo);
-					if (fleetState == 'Idle' && extra.length > 1 && moveDist && moveX !== null && moveX !== '' && moveY != null && moveY !== '') {
-						if (extra[0] !== moveX || extra[1] !== moveY) {
-							let warpCost = calculateWarpFuelBurn(userFleets[i], moveDist);
-							let subwarpCost = calculateSubwarpFuelBurn(userFleets[i], moveDist);
-							let fleetCurrentFuelTank = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey(tokenProgAddy)});
-							let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
-							let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
+		let moveTime = 1;
+		let warpCooldownFinished = 0;
+		let fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
+		let [fleetState, extra] = getFleetState(fleetAcctInfo);
+		if (fleetState == 'Idle' && extra.length > 1 && moveDist && moveX !== null && moveX !== '' && moveY != null && moveY !== '') {
+			if (extra[0] !== moveX || extra[1] !== moveY) {
+				let warpCost = calculateWarpFuelBurn(userFleets[i], moveDist);
+				let subwarpCost = calculateSubwarpFuelBurn(userFleets[i], moveDist);
+				let fleetCurrentFuelTank = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey(tokenProgAddy)});
+				let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
+				let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
 
-							let fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey(tokenProgAddy)});
-							let currentCargoFuel = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
-							let currentCargoFuelCnt = currentCargoFuel ? currentCargoFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
-							if (userFleets[i].moveType == 'warp' && (currentFuelCnt + currentCargoFuelCnt) >= warpCost) {
-								let fleetAcctData = sageProgram.coder.accounts.decode('Fleet', fleetAcctInfo.data);
-								let warpCooldownExpiresAt = fleetAcctData.warpCooldownExpiresAt.toNumber() * 1000;
-								
-								while (Date.now() < warpCooldownExpiresAt) {
-									if (!userFleets[i].state.includes('Warp C/D')) {
-										const warpCDExpireTimeStr = `[${TimeToStr(new Date(warpCooldownExpiresAt))}]`;
-										cLog(1,`${FleetTimeStamp(userFleets[i].label)} Awaiting Warp C/D ${warpCDExpireTimeStr}`);
-										updateFleetState(userFleets[i], `Warp C/D ${warpCDExpireTimeStr}`);
-									}
-
-									await wait(Math.max(1000, warpCooldownExpiresAt - Date.now()));
-								}
-
-								await wait(2000);
-								if (moveDist > userFleets[i].maxWarpDistance / 100) {
-									let warpCnt = userFleets[i].maxWarpDistance > 0 ? moveDist / (userFleets[i].maxWarpDistance / 100) : 1;
-									let distXRaw = (moveX - extra[0]) / warpCnt;
-									let distYRaw = (moveY - extra[1]) / warpCnt;
-									let distX = distXRaw > 0 ? Math.floor(distXRaw) : Math.ceil(distXRaw);
-									let distY = distYRaw > 0 ? Math.floor(distYRaw) : Math.ceil(distYRaw);
-									moveX = extra[0] + distX;
-									moveY = extra[1] + distY;
-									let fleetSavedData = await GM.getValue(userFleets[i].publicKey.toString(), '{}');
-									let fleetParsedData = JSON.parse(fleetSavedData);
-									let fleetPK = userFleets[i].publicKey.toString();
-									fleetParsedData.moveTarget = userFleets[i].moveTarget;
-									await GM.setValue(fleetPK, JSON.stringify(fleetParsedData));
-									moveDist = calculateMovementDistance(extra, [moveX,moveY]);
-								}
-
-								moveTime = calculateWarpTime(userFleets[i], moveDist);
-								const warpResult = await execWarp(userFleets[i], moveX, moveY, moveTime);
-								warpCooldownFinished = warpResult.warpCooldownFinished;
-							} else if (currentFuelCnt + currentCargoFuelCnt >= subwarpCost) {
-								moveTime = calculateSubwarpTime(userFleets[i], moveDist);
-								await execSubwarp(userFleets[i], moveX, moveY, moveTime);
-							} else {
-								cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unable to move, lack of fuel`);
-								updateFleetState(userFleets[i], 'ERROR: Not enough fuel');
-							}
-						}
-					}
-
-					await wait(2000); //Allow time for RPC to update
-					fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
-					[fleetState, extra] = getFleetState(fleetAcctInfo);
-					let warpFinish = fleetState == 'MoveWarp' ? extra.warpFinish.toNumber() * 1000 : 0;
-					let subwarpFinish = fleetState == 'MoveSubwarp' ? extra.arrivalTime.toNumber() * 1000 : 0;
-					let endTime = warpFinish > subwarpFinish ? warpFinish : subwarpFinish;
-					userFleets[i].moveEnd = endTime;
+				let fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: new solanaWeb3.PublicKey(tokenProgAddy)});
+				let currentCargoFuel = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
+				let currentCargoFuelCnt = currentCargoFuel ? currentCargoFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
+				if (userFleets[i].moveType == 'warp' && (currentFuelCnt + currentCargoFuelCnt) >= warpCost) {
+					let fleetAcctData = sageProgram.coder.accounts.decode('Fleet', fleetAcctInfo.data);
+					let warpCooldownExpiresAt = fleetAcctData.warpCooldownExpiresAt.toNumber() * 1000;
 					
-					await wait(moveTime * 1000);
-					while (endTime > Date.now()) {
-						const newFleetState = 'Move [' + TimeToStr(new Date(endTime)) + ']';
-						updateFleetState(userFleets[i], newFleetState);
-						await wait(Math.max(1000, endTime - Date.now()));
+					while (Date.now() < warpCooldownExpiresAt) {
+						if (!userFleets[i].state.includes('Warp C/D')) {
+							const warpCDExpireTimeStr = `[${TimeToStr(new Date(warpCooldownExpiresAt))}]`;
+							cLog(1,`${FleetTimeStamp(userFleets[i].label)} Awaiting Warp C/D ${warpCDExpireTimeStr}`);
+							updateFleetState(userFleets[i], `Warp C/D ${warpCDExpireTimeStr}`);
+						}
+
+						await wait(Math.max(1000, warpCooldownExpiresAt - Date.now()));
 					}
 
-					//await wait(2000);
-					if (fleetState == 'MoveWarp') {
-						await execExitWarp(userFleets[i]);
-					} else if (fleetState == 'MoveSubwarp'){
-						await execExitSubwarp(userFleets[i]);
+					await wait(2000);
+					if (moveDist > userFleets[i].maxWarpDistance / 100) {
+						let warpCnt = userFleets[i].maxWarpDistance > 0 ? moveDist / (userFleets[i].maxWarpDistance / 100) : 1;
+						let distXRaw = (moveX - extra[0]) / warpCnt;
+						let distYRaw = (moveY - extra[1]) / warpCnt;
+						let distX = distXRaw > 0 ? Math.floor(distXRaw) : Math.ceil(distXRaw);
+						let distY = distYRaw > 0 ? Math.floor(distYRaw) : Math.ceil(distYRaw);
+						moveX = extra[0] + distX;
+						moveY = extra[1] + distY;
+						let fleetSavedData = await GM.getValue(userFleets[i].publicKey.toString(), '{}');
+						let fleetParsedData = JSON.parse(fleetSavedData);
+						let fleetPK = userFleets[i].publicKey.toString();
+						fleetParsedData.moveTarget = userFleets[i].moveTarget;
+						await GM.setValue(fleetPK, JSON.stringify(fleetParsedData));
+						moveDist = calculateMovementDistance(extra, [moveX,moveY]);
 					}
 
-					fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
-					[fleetState, extra] = getFleetState(fleetAcctInfo);
-					if (fleetState == 'Idle' && extra) {
-							let targetX = userFleets[i].moveTarget != '' && userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[0].trim() : '';
-							let targetY = userFleets[i].moveTarget != '' && userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[1].trim() : '';
-							if (extra[0] == targetX && extra[1] == targetY) {
-									userFleets[i].moveTarget = [];
-									let fleetSavedData = await GM.getValue(userFleets[i].publicKey.toString(), '{}');
-									let fleetParsedData = JSON.parse(fleetSavedData);
-									let fleetPK = userFleets[i].publicKey.toString();
-									fleetParsedData.moveTarget = userFleets[i].moveTarget;
-									await GM.setValue(fleetPK, JSON.stringify(fleetParsedData));
-							}
-					}
+					moveTime = calculateWarpTime(userFleets[i], moveDist);
+					const warpResult = await execWarp(userFleets[i], moveX, moveY, moveTime);
+					warpCooldownFinished = warpResult.warpCooldownFinished;
+				} else if (currentFuelCnt + currentCargoFuelCnt >= subwarpCost) {
+					moveTime = calculateSubwarpTime(userFleets[i], moveDist);
+					await execSubwarp(userFleets[i], moveX, moveY, moveTime);
+				} else {
+					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unable to move, lack of fuel`);
+					updateFleetState(userFleets[i], 'ERROR: Not enough fuel');
+				}
+			}
+		}
 
-					resolve(warpCooldownFinished);
-			});
+		await wait(2000); //Allow time for RPC to update
+		fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
+		[fleetState, extra] = getFleetState(fleetAcctInfo);
+		let warpFinish = fleetState == 'MoveWarp' ? extra.warpFinish.toNumber() * 1000 : 0;
+		let subwarpFinish = fleetState == 'MoveSubwarp' ? extra.arrivalTime.toNumber() * 1000 : 0;
+		let endTime = warpFinish > subwarpFinish ? warpFinish : subwarpFinish;
+		userFleets[i].moveEnd = endTime;
+		
+		cLog(3, `${FleetTimeStamp(userFleets[i].label)} Expected arrival (chain): ${TimeToStr(new Date(endTime))}`);
+		cLog(3, `${FleetTimeStamp(userFleets[i].label)} Expected arrival (calc): ${TimeToStr(new Date(Date.now() + moveTime * 1000))}`);
+
+		await wait(moveTime * 1000);
+		while (endTime > Date.now()) {
+			const newFleetState = 'Move [' + TimeToStr(new Date(endTime)) + ']';
+			updateFleetState(userFleets[i], newFleetState);
+			await wait(Math.max(1000, endTime - Date.now()));
+		}
+
+		//await wait(2000);
+		if (fleetState == 'MoveWarp') {
+			await execExitWarp(userFleets[i]);
+		} else if (fleetState == 'MoveSubwarp'){
+			await execExitSubwarp(userFleets[i]);
+		}
+
+		fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
+		[fleetState, extra] = getFleetState(fleetAcctInfo);
+		if (fleetState == 'Idle' && extra) {
+				let targetX = userFleets[i].moveTarget != '' && userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[0].trim() : '';
+				let targetY = userFleets[i].moveTarget != '' && userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[1].trim() : '';
+				if (extra[0] == targetX && extra[1] == targetY) {
+						userFleets[i].moveTarget = [];
+						let fleetSavedData = await GM.getValue(userFleets[i].publicKey.toString(), '{}');
+						let fleetParsedData = JSON.parse(fleetSavedData);
+						let fleetPK = userFleets[i].publicKey.toString();
+						fleetParsedData.moveTarget = userFleets[i].moveTarget;
+						await GM.setValue(fleetPK, JSON.stringify(fleetParsedData));
+				}
+		}
+
+		return warpCooldownFinished;
 	}
 
 	async function handleScan(i, fleetCoords, destCoords) {
@@ -2326,14 +2327,8 @@
 			let readyToScan = true;
 
 			if (userFleets[i].scanCost == 0) {
-					if (userFleets[i].cargoCapacity - cargoCnt < 100) {
-							readyToScan = false;
-					}
-			} else {
-					if (currentToolCnt < userFleets[i].scanCost) {
-							readyToScan = false;
-					}
-			}
+				if (userFleets[i].cargoCapacity - cargoCnt < 100) readyToScan = false;
+			} else if (currentToolCnt < userFleets[i].scanCost) readyToScan = false;
 
 			if (readyToScan) {
 					let moved = false;
@@ -2376,6 +2371,7 @@
 									} else {
 											cLog(1,`${fuelReadout} (low)`);
 											if(scanResupplyOnLowFuel) await handleResupply(i, fleetCoords);
+											moved = true;
 									}
 							}
 					}
@@ -2432,7 +2428,7 @@
 							}
 					}
 			} else {
-					await handleResupply(i, fleetCoords);
+				await handleResupply(i, fleetCoords);
 			}
 	}
 
@@ -3098,7 +3094,8 @@
 		const mining = userFleets[i].mineEnd && userFleets[i].state.includes('Mine') && (Date.now() < userFleets[i].mineEnd);
 		const onTarget = userFleets[i].lastScanCoord == userFleets[i].destCoord;
 		const waitingForScan = userFleets[i].scanEnd && (Date.now() <= userFleets[i].scanEnd);
-		if(userFleets[i].resupplying || moving || mining) return;
+		if(moving) cLog(2, `${FleetTimeStamp(userFleets[i].label)} Operating moving fleet`);
+		if(userFleets[i].resupplying || mining) return;
 		if(!onTarget && waitingForWarpCD) return;
 		if(scanning && onTarget && waitingForScan) return;
 
@@ -3120,7 +3117,8 @@
 					if(fleetParsedData.assignment == 'Scan' || fleetParsedData.assignment == 'Mine' || fleetParsedData.assignment == 'Transport')
 						await execStartupUndock(i, fleetParsedData.assignment);
 				}
-				else if (userFleets[i].state == 'MoveWarp' || userFleets[i].state == 'MoveSubwarp') {
+				else if (fleetState == 'MoveWarp' || fleetState == 'MoveSubwarp') {
+					cLog(2, `${FleetTimeStamp(userFleets[i].label)} executing handleMovement`);
 					await handleMovement(i, null, null, null);
 				}
 				else if (fleetParsedData.assignment == 'Scan' && fleetState == 'Idle') {
@@ -3145,7 +3143,8 @@
 		if (!enableAssistant) return;
 
 		let extraTime = 0;
-		try { await operateFleet(i); } 
+		//cLog(1,`${FleetTimeStamp(userFleets[i].label)} Operating fleet ...`);
+		try { await operateFleet(i); }
 		catch(error) {
 			extraTime = 20000;
 			cLog(1,`${FleetTimeStamp(userFleets[i].label)} Uncaught error - waiting 20s longer`, error);
@@ -3186,10 +3185,10 @@
 			if(fleet.lastOp && !userFleets[i].stalled) {
 				if(Date.now() - foo > 600000) {
 					cLog(3,`${FleetTimeStamp(userFleets[i].label)} Unresponsive`, 
-						TimeToStr(new Date(foo)),
-						TimeToStr(new Date(fleet.lastOp)),
-						TimeToStr(new Date(fleet.scanEnd)),
-						TimeToStr(new Date(fleet.moveEnd)),
+						foo ? TimeToStr(new Date(foo)) : 'null',
+						fleet.lastOp ? TimeToStr(new Date(fleet.lastOp)) : 'null',
+						fleet.scanEnd ? TimeToStr(new Date(fleet.scanEnd)) : 'null',
+						fleet.moveEnd ? TimeToStr(new Date(fleet.moveEnd)) : 'null',
 					);
 
 					updateAssistStatus(fleet, 'red');
