@@ -2282,11 +2282,15 @@
 		let warpFinish = fleetState == 'MoveWarp' ? extra.warpFinish.toNumber() * 1000 : 0;
 		let subwarpFinish = fleetState == 'MoveSubwarp' ? extra.arrivalTime.toNumber() * 1000 : 0;
 		let endTime = warpFinish > subwarpFinish ? warpFinish : subwarpFinish;
-		userFleets[i].moveEnd = endTime;
 		
+		const calcEndTime = Date.now() + moveTime * 1000;
 		cLog(3, `${FleetTimeStamp(userFleets[i].label)} Expected arrival (chain): ${TimeToStr(new Date(endTime))}`);
-		cLog(3, `${FleetTimeStamp(userFleets[i].label)} Expected arrival (calc): ${TimeToStr(new Date(Date.now() + moveTime * 1000))}`);
+		cLog(3, `${FleetTimeStamp(userFleets[i].label)} Expected arrival (calc): ${TimeToStr(new Date(calcEndTime))}`);
 
+		//Sometimes the chain returns null, use calculated time as fallback
+		if(!endTime) endTime = calcEndTime;
+
+		userFleets[i].moveEnd = endTime;
 		await wait(moveTime * 1000);
 		while (endTime > Date.now()) {
 			const newFleetState = 'Move [' + TimeToStr(new Date(endTime)) + ']';
