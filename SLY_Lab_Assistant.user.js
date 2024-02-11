@@ -1824,7 +1824,7 @@
 			};
 	}
 
-	function updateAssistStatus(fleet, color) {
+	function updateAssistStatus(fleet) {
 		let targetRow = document.querySelectorAll('#assistStatus .assist-fleet-row[pk="' + fleet.publicKey.toString() + '"]');
 
 		if (targetRow.length > 0) {
@@ -1858,11 +1858,9 @@
 			let targetElem = document.querySelector('#assistStatus .assist-modal-body table');
 			targetElem.appendChild(fleetRow);
 		}
-
-		if(targetRow && targetRow.length > 0 && targetRow[0].children && targetRow[0].children.length > 0) {
-			if(!color) color = 'white';
-			targetRow[0].children[0].firstChild.style.color=color;
-		}
+		
+		if(targetRow && targetRow.length > 0 && targetRow[0].children && targetRow[0].children.length > 0)
+			targetRow[0].children[0].firstChild.style.color=fleet.fontColor ? fleet.fontColor : 'white';
 	}
 	function updateFleetState(fleet, newState) {
 		fleet.state = newState;
@@ -3106,7 +3104,7 @@
 		try {
 				let fleetSavedData = await GM.getValue(userFleets[i].publicKey.toString(), '{}');
 				let fleetParsedData = JSON.parse(fleetSavedData);
-				if(!fleetParsedData.assignment) return;
+				//if(!fleetParsedData.assignment) return;
 
 				userFleets[i].iterCnt++;
 				cLog(2, `${FleetTimeStamp(userFleets[i].label)} <getAccountInfo> (${userFleets[i].state})`);
@@ -3138,8 +3136,6 @@
 		} catch (err) {
 				cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR`, err);
 		}
-
-		updateAssistStatus(userFleets[i]);
 	}
 
 	async function startFleet(i) {
@@ -3147,11 +3143,30 @@
 		if (!enableAssistant) return;
 
 		let extraTime = 0;
-		//cLog(1,`${FleetTimeStamp(userFleets[i].label)} Operating fleet ...`);
-		try { await operateFleet(i); }
+		const fleet = userFleets[i];
+
+		try { 
+			//cLog(1,`${FleetTimeStamp(userFleets[i].label)} Operating fleet ...`);
+			const fleetSavedData = await GM.getValue(fleet.publicKey.toString(), '{}');
+			const fleetParsedData = JSON.parse(fleetSavedData);
+	
+			//Bail if no assignment
+			if(fleetParsedData.assignment) {
+				fleet.fontColor = 'green';
+				updateAssistStatus(fleet);
+
+				await operateFleet(i); 
+
+				fleet.fontColor = 'white';
+				updateAssistStatus(fleet);
+			}
+		}
 		catch(error) {
 			extraTime = 20000;
-			cLog(1,`${FleetTimeStamp(userFleets[i].label)} Uncaught error - waiting 20s longer`, error);
+			cLog(1,`${FleetTimeStamp(fleet.label)} Uncaught error - waiting 20s longer`, error);
+
+			fleet.fontColor = 'red';
+			updateAssistStatus(fleet);
 		}
 
 		//Add extra wait time if an uncaught error occurred
@@ -3180,6 +3195,13 @@
 
 		for (let i=0, n=userFleets.length; i < n; i++) {
 			const fleet = userFleets[i];
+
+			const fleetSavedData = await GM.getValue(fleet.publicKey.toString(), '{}');
+			const fleetParsedData = JSON.parse(fleetSavedData);
+	
+			//Skip unassigned fleets
+			if(!fleetParsedData.assignment) continue;
+	
 			const foo = Math.max(
 				fleet.lastOp,
 				fleet.scanEnd ? fleet.scanEnd : 0, 
@@ -3195,7 +3217,8 @@
 						fleet.moveEnd ? TimeToStr(new Date(fleet.moveEnd)) : 'null',
 					);
 
-					updateAssistStatus(fleet, 'red');
+					fleet.fontColor = 'red';
+					updateAssistStatus(fleet);
 					userFleets[i].stalled = true;
 					fleetStallCount++;
 				}
@@ -3391,6 +3414,7 @@
 					moveType: fleetMoveType, 
 					mineResource: fleetMineResource, 
 					minePlanet: null,
+					fontColor: 'white',
 				});
 			}
 
