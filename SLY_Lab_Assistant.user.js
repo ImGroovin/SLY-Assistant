@@ -3129,6 +3129,10 @@
 					let destCoords = userFleets[i].scanBlock[userFleets[i].scanBlockIdx];
 					await handleScan(i, fleetCoords, destCoords);
 				} else if (fleetParsedData.assignment == 'Mine') {
+					if(fleetMining) {
+						cLog(1,`${FleetTimeStamp(userFleets[i].label)} Fleet State Mismatch - Updating to Mining again`);
+						updateFleetState(userFleets[i], 'Mine [' + TimeToStr(new Date(Date.now())) + ']');
+					}
 					await handleMining(i, userFleets[i].state, fleetCoords, fleetMining);
 				} else if (fleetParsedData.assignment == 'Transport') {
 					await handleTransport(i, userFleets[i].state, fleetCoords);
@@ -3152,7 +3156,7 @@
 	
 			//Bail if no assignment
 			if(fleetParsedData.assignment) {
-				fleet.fontColor = 'green';
+				fleet.fontColor = 'aquamarine';
 				updateAssistStatus(fleet);
 
 				await operateFleet(i); 
@@ -3165,7 +3169,7 @@
 			extraTime = 20000;
 			cLog(1,`${FleetTimeStamp(fleet.label)} Uncaught error - waiting 20s longer`, error);
 
-			fleet.fontColor = 'red';
+			fleet.fontColor = 'crimson';
 			updateAssistStatus(fleet);
 		}
 
@@ -3217,7 +3221,7 @@
 						fleet.moveEnd ? TimeToStr(new Date(fleet.moveEnd)) : 'null',
 					);
 
-					fleet.fontColor = 'red';
+					fleet.fontColor = 'tomato';
 					updateAssistStatus(fleet);
 					userFleets[i].stalled = true;
 					fleetStallCount++;
