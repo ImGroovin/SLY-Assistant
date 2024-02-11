@@ -2646,7 +2646,7 @@
 							cLog(2, `${FleetTimeStamp(userFleets[i].label)} Calculated miningDuration: ${miningDuration}`);
 							cLog(2, `${FleetTimeStamp(userFleets[i].label)} fuel: ${currentFuelCnt}/${fuelNeeded}`);
 							cLog(2, `${FleetTimeStamp(userFleets[i].label)} ammo: ${currentAmmoCnt}/${ammoForDuration}`);
-							cLog(2, `${FleetTimeStamp(userFleets[i].label)} ammoForDuration: ${ammoForDuration} = miningDuration ${miningDuration} * (ammoConsumptionRate ${userFleets[i].ammoConsumptionRate} / 10000)`);
+							//cLog(2, `${FleetTimeStamp(userFleets[i].label)} ammoForDuration: ${ammoForDuration} = miningDuration ${miningDuration} * (ammoConsumptionRate ${userFleets[i].ammoConsumptionRate} / 10000)`);
 							cLog(2, `${FleetTimeStamp(userFleets[i].label)} food: ${currentFoodCnt}/${foodForDuration}`);
 
 							if (fleetCoords[0] == starbaseX && fleetCoords[1] == starbaseY) {
@@ -3129,7 +3129,7 @@
 					let destCoords = userFleets[i].scanBlock[userFleets[i].scanBlockIdx];
 					await handleScan(i, fleetCoords, destCoords);
 				} else if (fleetParsedData.assignment == 'Mine') {
-					if(fleetMining) {
+					if(fleetState == 'MineAsteroid' && !mining) {
 						cLog(1,`${FleetTimeStamp(userFleets[i].label)} Fleet State Mismatch - Updating to Mining again`);
 						updateFleetState(userFleets[i], 'Mine [' + TimeToStr(new Date(Date.now())) + ']');
 					}
