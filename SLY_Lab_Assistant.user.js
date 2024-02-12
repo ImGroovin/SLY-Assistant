@@ -261,7 +261,7 @@
 	function BoolToStr(bool) { return bool ? 'Y' : 'N' };
 	function ConvertCoords(coords) { return coords.split(',').map(coord => parseInt(coord.trim()));	}
 
-	function createProgramDerivedAccount(derived, derivedFrom1, derivedFrom2, fleet) {
+	function createPDA(derived, derivedFrom1, derivedFrom2, fleet) {
 			return new Promise(async resolve => {
 					const keys = [{
 							pubkey: userPublicKey,
@@ -293,7 +293,7 @@
 							programId: programAddy,
 							data: []
 					})}
-					let txResult = await txSignAndSend(tx, fleet, 'createProgramDerivedAccount');
+					let txResult = await txSignAndSend(tx, fleet, 'CreatePDA');
 					resolve(txResult);
 			});
 	}
@@ -1041,7 +1041,7 @@
 					let currentResource = fleetCurrentPod.value.find(item => item.account.data.parsed.info.mint === tokenMint);
 					let fleetResourceAcct = currentResource ? currentResource.pubkey : fleetResourceToken;
 					let resourceCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == tokenMint);
-					await getAccountInfo(fleet.label, 'Starbase cargo token', starbaseCargoToken) || await createProgramDerivedAccount(starbaseCargoToken, starbasePlayerCargoHold.publicKey, new solanaWeb3.PublicKey(tokenMint), fleet);
+					await getAccountInfo(fleet.label, 'Starbase cargo token', starbaseCargoToken) || await createPDA(starbaseCargoToken, starbasePlayerCargoHold.publicKey, new solanaWeb3.PublicKey(tokenMint), fleet);
 					let tx = { instruction: await sageProgram.methods.withdrawCargoFromFleet({ amount: new BrowserAnchor.anchor.BN(amount), keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx) }).accountsStrict({
 							gameAccountsFleetAndOwner: {
 									gameFleetAndOwner: {
@@ -1117,7 +1117,7 @@
 			
 			if (amount > 0) {	
 				//Get/create target account
-				await getAccountInfo(fleet.label, 'fleet cargo token', tokenTo) || await createProgramDerivedAccount(tokenTo, cargoPodTo, new solanaWeb3.PublicKey(tokenMint), fleet);
+				await getAccountInfo(fleet.label, 'fleet cargo token', tokenTo) || await createPDA(tokenTo, cargoPodTo, new solanaWeb3.PublicKey(tokenMint), fleet);
 
 				let [starbaseCargoToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
 					[
@@ -1129,7 +1129,7 @@
 				);
 
 				//Get/create source account (why?)
-				//await getAccountInfo(fleet.label, 'Starbase cargo token', starbaseCargoToken) || await createProgramDerivedAccount(starbaseCargoToken, starbasePlayerCargoHold.publicKey, new solanaWeb3.PublicKey(tokenMint), fleet);
+				//await getAccountInfo(fleet.label, 'Starbase cargo token', starbaseCargoToken) || await createPDA(starbaseCargoToken, starbasePlayerCargoHold.publicKey, new solanaWeb3.PublicKey(tokenMint), fleet);
 
 				//Build tx
 				let tx = { instruction: await sageProgram.methods.depositCargoToFleet({ amount: new BrowserAnchor.anchor.BN(amount), keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx) }).accountsStrict({
@@ -1195,9 +1195,9 @@
 					],
 					new solanaWeb3.PublicKey(programAddy)
 			);
-			await getAccountInfo(fleet.label, 'fleet SDU token', fleetSduToken) || await createProgramDerivedAccount(fleetSduToken, fleet.cargoHold, new solanaWeb3.PublicKey(SDUAddy), fleet);
-			await getAccountInfo(fleet.label, 'fleet repair kit token', fleetRepairKitToken) || await createProgramDerivedAccount(fleetRepairKitToken, fleet.cargoHold, new solanaWeb3.PublicKey(toolsAddy), fleet);
-			await getAccountInfo(fleet.label, 'fleet fuel token', fleetFuelToken) || await createProgramDerivedAccount(fleetFuelToken, fleet.fuelTank, new solanaWeb3.PublicKey(fuelAddy)), fleet;
+			await getAccountInfo(fleet.label, 'fleet SDU token', fleetSduToken) || await createPDA(fleetSduToken, fleet.cargoHold, new solanaWeb3.PublicKey(SDUAddy), fleet);
+			await getAccountInfo(fleet.label, 'fleet repair kit token', fleetRepairKitToken) || await createPDA(fleetRepairKitToken, fleet.cargoHold, new solanaWeb3.PublicKey(toolsAddy), fleet);
+			await getAccountInfo(fleet.label, 'fleet fuel token', fleetFuelToken) || await createPDA(fleetFuelToken, fleet.fuelTank, new solanaWeb3.PublicKey(fuelAddy)), fleet;
 			var userFleetIndex = userFleets.findIndex(item => {return item.publicKey === fleet.publicKey});
 			userFleets[userFleetIndex].sduToken = fleetSduToken;
 			userFleets[userFleetIndex].repairKitToken = fleetRepairKitToken;
@@ -1291,14 +1291,14 @@
 					let fleetCurrentAmmoBank = await solanaReadConnection.getParsedTokenAccountsByOwner(fleet.ammoBank, {programId: new solanaWeb3.PublicKey(tokenProgAddy)});
 					let currentAmmo = fleetCurrentAmmoBank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.ammo.toString());
 					let fleetAmmoAcct = currentAmmo ? currentAmmo.pubkey : fleetAmmoToken;
-					//await solanaReadConnection.getAccountInfo(fleetAmmoAcct) || await createProgramDerivedAccount(fleetAmmoAcct, fleet.ammoBank, sageGameAcct.account.mints.ammo);
+					//await solanaReadConnection.getAccountInfo(fleetAmmoAcct) || await createPDA(fleetAmmoAcct, fleet.ammoBank, sageGameAcct.account.mints.ammo);
 
 					const accInfo = await getAccountInfo(fleet.label, 'fleet resource token', fleetResourceToken);
 					cLog(2, `${FleetTimeStamp(fleet.label)} Mining getAccountInfo result`,accInfo);
 					if(!accInfo) {
-						const cpda = await createProgramDerivedAccount(fleetResourceToken, fleet.cargoHold, resourceToken, fleet);
+						const cpda = await createPDA(fleetResourceToken, fleet.cargoHold, resourceToken, fleet);
 
-						cLog(2, `${FleetTimeStamp(fleet.label)} Mining createProgramDerivedAccount result`, cpda);
+						cLog(2, `${FleetTimeStamp(fleet.label)} Mining createPDA result`, cpda);
 					}
 					let foodCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.food);
 					let ammoCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.ammo);
@@ -3381,9 +3381,9 @@
 					new solanaWeb3.PublicKey(programAddy)
 				);
 
-				await getAccountInfo(fleetLabel, 'fleet SDU token', fleetSduToken) || await createProgramDerivedAccount(fleetSduToken, fleet.account.cargoHold, new solanaWeb3.PublicKey(SDUAddy), fleet);
-				await getAccountInfo(fleetLabel, 'fleet Repair Kit token', fleetRepairKitToken) || await createProgramDerivedAccount(fleetRepairKitToken, fleet.account.cargoHold, new solanaWeb3.PublicKey(toolsAddy), fleet);
-				await getAccountInfo(fleetLabel, 'fleet Fuel token', fleetFuelToken) || await createProgramDerivedAccount(fleetFuelToken, fleet.account.fuelTank, new solanaWeb3.PublicKey(fuelAddy), fleet);
+				await getAccountInfo(fleetLabel, 'fleet SDU token', fleetSduToken) || await createPDA(fleetSduToken, fleet.account.cargoHold, new solanaWeb3.PublicKey(SDUAddy), fleet);
+				await getAccountInfo(fleetLabel, 'fleet Repair Kit token', fleetRepairKitToken) || await createPDA(fleetRepairKitToken, fleet.account.cargoHold, new solanaWeb3.PublicKey(toolsAddy), fleet);
+				await getAccountInfo(fleetLabel, 'fleet Fuel token', fleetFuelToken) || await createPDA(fleetFuelToken, fleet.account.fuelTank, new solanaWeb3.PublicKey(fuelAddy), fleet);
 				
 				let fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(fleet.account.cargoHold, {programId: new solanaWeb3.PublicKey(tokenProgAddy)});
 				let currentToolCnt = fleetCurrentCargo.value.find(item => item.pubkey.toString() === fleetRepairKitToken.toString());
