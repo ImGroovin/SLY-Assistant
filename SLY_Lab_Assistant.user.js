@@ -3146,7 +3146,7 @@
 					let destCoords = userFleets[i].scanBlock[userFleets[i].scanBlockIdx];
 					await handleScan(i, fleetCoords, destCoords);
 				} else if (fleetParsedData.assignment == 'Mine') {
-					if(fleetState == 'MineAsteroid' && !mining) {
+					if(fleetState == 'MineAsteroid' && !userFleets[i].state.includes('Mine')) {
 						cLog(1,`${FleetTimeStamp(userFleets[i].label)} Fleet State Mismatch - Updating to Mining again`);
 						updateFleetState(userFleets[i], 'Mine [' + TimeToStr(new Date(Date.now())) + ']');
 					}
