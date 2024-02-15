@@ -163,6 +163,7 @@
 		{name: 'Copper Wire', token: 'cwirGHLB2heKjCeTy4Mbp4M443fU4V7vy2JouvYbZna'},
 		{name: 'Magnet', token: 'MAGNMDeDJLvGAnriBvzWruZHfXNwWHhxnoNF75AQYM5'},
 		{name: 'Polymer', token: 'PoLYs2hbRt5iDibrkPT9e6xWuhSS45yZji5ChgJBvcB'},
+		{name: 'Crystal Lattice', token: 'CRYSNnUd7cZvVfrEVtVNKmXiCPYdZ1S5pM5qG2FDVZHF'},
 	];
 	const r4Tokens = [
 		{name: 'Fuel', token: fuelAddy},
@@ -1640,7 +1641,7 @@
 			transportLabel1.style.width = '84px';
 			transportLabel1.style.minWidth = '84px';
 
-			let transportResources = ['','Ammo','Food','Fuel','SDU','Toolkit','Arco','Biomass','Carbon','Copper Ore','Diamond','Hydrogen','Iron Ore','Lumanite','Rochinol','Framework','Graphene','Radiation Absorber','Electronics','Particle Accelerator','Power Source','Electromagnet','Copper Wire','Magnet','Polymer'];
+			let transportResources = ['','Ammo','Food','Fuel','SDU','Toolkit','Arco','Biomass','Carbon','Copper Ore','Diamond','Hydrogen','Iron Ore','Lumanite','Rochinol','Framework','Graphene','Radiation Absorber','Electronics','Particle Accelerator','Power Source','Electromagnet','Copper Wire','Magnet','Polymer','Crystal Lattice'];
 			let transportOptStr = '';
 			transportResources.forEach( function(resource) {transportOptStr += '<option value="' + resource + '">' + resource + '</option>';});
 			let transportResource1 = document.createElement('select');
