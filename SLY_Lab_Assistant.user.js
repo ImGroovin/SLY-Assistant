@@ -356,7 +356,8 @@
 	}
 
 	function calculateWarpFuelBurn(fleet, distance) {
-			return distance * (fleet.warpFuelConsumptionRate / 100)
+    const warpCnt = fleet.maxWarpDistance > 0 ? distance / (fleet.maxWarpDistance / 100) : 1;
+    return distance * (fleet.warpFuelConsumptionRate / 100) + warpCnt;
 	}
 
 	function calculateSubwarpTime(fleet, distance) {
