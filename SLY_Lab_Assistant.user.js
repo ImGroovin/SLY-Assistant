@@ -3249,7 +3249,7 @@
 		}
 
 		//Auto-reload when too many fleets fail
-		if(reloadPageOnFailedFleets && reloadPageOnFailedFleets < fleetStallCount) {
+		if(reloadPageOnFailedFleets && fleetStallCount && reloadPageOnFailedFleets <= fleetStallCount) {
 			cLog(1, `ASSISTANT: ${fleetStallCount} fleets have stalled - reloading ...`);
 			location.reload();
 			return;
