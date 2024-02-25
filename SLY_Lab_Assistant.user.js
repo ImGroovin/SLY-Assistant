@@ -3134,6 +3134,12 @@
 				let fleetMining = fleetState == 'MineAsteroid' ? extra : [];
 				userFleets[i].startingCoords = fleetCoords;
 
+				//Correct rare fleet state mismatch bug
+				if(fleetState == 'Idle' && userFleets[i].state !== 'Idle') {
+					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Fleet State Mismatch - Updating from ${userFleets[i].state} to ${fleetState}`);
+					updateFleetState(userFleets[i], fleetState);
+				}
+
 				if ((userFleets[i].iterCnt < 2) && fleetState == 'StarbaseLoadingBay') {
 					if(fleetParsedData.assignment == 'Scan' || fleetParsedData.assignment == 'Mine' || fleetParsedData.assignment == 'Transport')
 						await execStartupUndock(i, fleetParsedData.assignment);
@@ -3147,13 +3153,15 @@
 					startupScanBlockCheck(i, fleetCoords);
 					let destCoords = userFleets[i].scanBlock[userFleets[i].scanBlockIdx];
 					await handleScan(i, fleetCoords, destCoords);
-				} else if (fleetParsedData.assignment == 'Mine') {
+				} 
+				else if (fleetParsedData.assignment == 'Mine') {
 					if(fleetState == 'MineAsteroid' && !userFleets[i].state.includes('Mine')) {
 						cLog(1,`${FleetTimeStamp(userFleets[i].label)} Fleet State Mismatch - Updating to Mining again`);
 						updateFleetState(userFleets[i], 'Mine [' + TimeToStr(new Date(Date.now())) + ']');
 					}
 					await handleMining(i, userFleets[i].state, fleetCoords, fleetMining);
-				} else if (fleetParsedData.assignment == 'Transport') {
+				} 
+				else if (fleetParsedData.assignment == 'Transport') {
 					await handleTransport(i, userFleets[i].state, fleetCoords);
 				}
 		} catch (err) {
