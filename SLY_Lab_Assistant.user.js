@@ -3135,7 +3135,7 @@
 				userFleets[i].startingCoords = fleetCoords;
 
 				//Correct rare fleet state mismatch bug
-				if(fleetState == 'Idle' && userFleets[i].state !== 'Idle') {
+				if(moving && fleetState == 'Idle') {
 					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Fleet State Mismatch - Updating from ${userFleets[i].state} to ${fleetState}`);
 					updateFleetState(userFleets[i], fleetState);
 				}
