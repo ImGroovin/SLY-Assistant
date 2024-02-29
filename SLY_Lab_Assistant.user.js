@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant Modded
 // @namespace    http://tampermonkey.net/
-// @version      0.4.3m4
+// @version      0.4.3m5
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
 // @match        https://*.labs.staratlas.com/
@@ -28,6 +28,8 @@
 	const scanBlockResetAfterResupply = false; //Start from the beginning of the pattern after resupplying at starbase?
 	const scanResupplyOnLowFuel = false; //When true, scanning fleet set to scanMove with low fuel will return to base to resupply fuel + toolkits
 	const scanSectorRegenTime = 90; //Number of seconds to wait after a successful scan to allow sector to regenerate
+	const scanPauseTime = 600; //Number of seconds to wait when sectors probabilities are too low
+	const scanStrikeTime = 60; //Number of seconds to scan a low probability sector before giving up and moving on (or pausing)
 	const statusPanelOpacity = 0.75; //How transparent the status panel should be (1 = completely opaque)
 	const autoStartScript = false; //Should assistant automatically start after initialization is complete?
 	const reloadPageOnFailedFleets = 0; //How many fleets need to stall before triggering an automatic page reload? (0 = never trigger)
@@ -2398,7 +2400,7 @@
 
 							let timeOnSector = Date.now() - userFleets[i].scanSectorStart;
 							let scanLow = scanCondition < userFleets[i].scanMin;
-							let timeUp = timeOnSector >= 60000;
+							let timeUp = timeOnSector >= (scanStrikeTime * 1000);
 							let strike = (scanLow && timeUp) ? true : false;
 							let shouldMove = strike && userFleets[i].scanMove;
 							userFleets[i].scanSkipCnt = strike ? userFleets[i].scanSkipCnt + 1 : 0;
@@ -2414,7 +2416,7 @@
 									userFleets[i].scanEnd = Date.now() + scanDelayMs;
 									userFleets[i].state = `Scanned [${Math.round(scanCondition)}%]${sduFound ? ` +${sduFound}` : ''}`;
 							} else {
-									userFleets[i].scanEnd = Date.now() + 600000;
+									userFleets[i].scanEnd = Date.now() + (scanPauseTime * 1000);
 									userFleets[i].state = `Scanning Paused [${TimeToStr(new Date(userFleets[i].scanEnd))}]`;
 									cLog(1,`${FleetTimeStamp(userFleets[i].label)} Scanning Paused due to low probability [${TimeToStr(new Date(userFleets[i].scanEnd))}]`);
 									userFleets[i].scanSkipCnt = 0;
