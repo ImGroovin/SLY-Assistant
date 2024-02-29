@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant Modded
 // @namespace    http://tampermonkey.net/
-// @version      0.4.3m5
+// @version      0.4.3m6
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
 // @match        https://*.labs.staratlas.com/
@@ -148,12 +148,14 @@
 	const resourceTokens = [
 		{name: 'Carbon', token: 'CARBWKWvxEuMcq3MqCxYfi7UoFVpL9c4rsQS99tw6i4X'},
 		{name: 'Iron Ore', token: 'FeorejFjRRAfusN9Fg3WjEZ1dRCf74o6xwT5vDt3R34J'},
+		{name: 'Iron', token: 'ironxrUhTEaBiR9Pgp6hy4qWx6V2FirDoXhsFP25GFP'},
 		{name: 'Diamond', token: 'DMNDKqygEN3WXKVrAD4ofkYBc4CKNRhFUbXP4VK7a944'},
 		{name: 'Lumanite', token: 'LUMACqD5LaKjs1AeuJYToybasTXoYQ7YkxJEc4jowNj'},
 		{name: 'Biomass', token: 'MASS9GqtJz6ABisAxcUn3FeR4phMqH1XfG6LPKJePog'},
 		{name: 'Arco', token: 'ARCoQ9dndpg6wE2rRexzfwgJR3NoWWhpcww3xQcQLukg'},
 		{name: 'Hydrogen', token: 'HYDR4EPHJcDPcaLYUcNCtrXUdt1PnaN4MvE655pevBYp'},
 		{name: 'Copper Ore', token: 'CUore1tNkiubxSwDEtLc3Ybs1xfWLs8uGjyydUYZ25xc'},
+		{name: 'Copper', token: 'CPPRam7wKuBkYzN5zCffgNU17RKaeMEns4ZD83BqBVNR'},
 		{name: 'Rochinol', token: 'RCH1Zhg4zcSSQK8rw2s6rDMVsgBEWa4kiv1oLFndrN5'},
 		{name: 'Framework', token: 'FMWKb7YJA5upZHbu5FjVRRoxdDw2FYFAu284VqUGF9C2'},
 		{name: 'Graphene', token: 'GRAPHKGoKtXtdPBx17h6fWopdT5tLjfAP8cDJ1SvvDn4'},
@@ -1644,7 +1646,7 @@
 			transportLabel1.style.width = '84px';
 			transportLabel1.style.minWidth = '84px';
 
-			let transportResources = ['','Ammo','Food','Fuel','SDU','Toolkit','Arco','Biomass','Carbon','Copper Ore','Diamond','Hydrogen','Iron Ore','Lumanite','Rochinol','Framework','Graphene','Radiation Absorber','Electronics','Particle Accelerator','Power Source','Electromagnet','Copper Wire','Magnet','Polymer','Crystal Lattice'];
+			let transportResources = ['','Ammo','Food','Fuel','SDU','Toolkit','Arco','Biomass','Carbon','Copper Ore', 'Copper','Diamond','Hydrogen','Iron Ore', 'Iron','Lumanite','Rochinol','Framework','Graphene','Radiation Absorber','Electronics','Particle Accelerator','Power Source','Electromagnet','Copper Wire','Magnet','Polymer','Crystal Lattice'];
 			let transportOptStr = '';
 			transportResources.forEach( function(resource) {transportOptStr += '<option value="' + resource + '">' + resource + '</option>';});
 			let transportResource1 = document.createElement('select');
