@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant Modded
 // @namespace    http://tampermonkey.net/
-// @version      0.4.3m6
+// @version      0.4.3m7
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
 // @match        https://*.labs.staratlas.com/
@@ -2377,9 +2377,11 @@
 													cLog(1,`${FleetTimeStamp(userFleets[i].label)} Skipping movement`);
 											}
 									} else {
-											cLog(1,`${fuelReadout} (low)`);
-											if(scanResupplyOnLowFuel) await handleResupply(i, fleetCoords);
+										cLog(1,`${fuelReadout} (low)`);
+										if(scanResupplyOnLowFuel) {
+											await handleResupply(i, fleetCoords);
 											moved = true;
+										}
 									}
 							}
 					}
