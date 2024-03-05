@@ -590,8 +590,7 @@
 						return {txHash, confirmation: signatureStatus}
 				}
 
-				//await wait(2000);
-				await wait(confirmationCheckingDelay);
+				await wait(Math.max(200, confirmationCheckingDelay));
 				let epochInfo = await solanaReadConnection.getEpochInfo({ commitment: 'confirmed' });
 				curBlockHeight = epochInfo.blockHeight;
 		}
