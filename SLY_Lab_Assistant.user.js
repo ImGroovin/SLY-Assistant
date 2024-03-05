@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant Modded
 // @namespace    http://tampermonkey.net/
-// @version      0.4.3m7
+// @version      0.4.3m8
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
 // @match        https://*.labs.staratlas.com/
@@ -20,11 +20,12 @@
 
 	//Configurable Options
 	const priorityFee = 1; // Priority Fee added to each transaction in Lamports. Set to 0 (zero) to disable priority fees. 1 Lamport = 0.000000001 SOL
+	const confirmationCheckingDelay = 200; //How many milliseconds to wait before re-reading the chain for confirmation
 	const debugLogLevel = 3; //How much console logging you want to see (higher number = more, 0 = none)
 	const transportUseAmmoBank = true; //Determines if your transports should use their ammo banks to move ammo (in addition to their cargo holds)
 	const transportStopOnError = true; //Should transport fleet stop completely if there's an error (example: not enough resource/fuel/etc.)
 	const scanBlockPattern = 'square'; //Valid patterns: square, ring, spiral, up, down, left, right, sly
-	const scanBlockLength = 5; //Length of the line-based patterns (does not apply to square or ring)
+	const scanBlockLength = 5; //Length of the line-based patterns (only applies to up, down, left and right)
 	const scanBlockResetAfterResupply = false; //Start from the beginning of the pattern after resupplying at starbase?
 	const scanResupplyOnLowFuel = false; //When true, scanning fleet set to scanMove with low fuel will return to base to resupply fuel + toolkits
 	const scanSectorRegenTime = 90; //Number of seconds to wait after a successful scan to allow sector to regenerate
@@ -33,6 +34,7 @@
 	const statusPanelOpacity = 0.75; //How transparent the status panel should be (1 = completely opaque)
 	const autoStartScript = false; //Should assistant automatically start after initialization is complete?
 	const reloadPageOnFailedFleets = 0; //How many fleets need to stall before triggering an automatic page reload? (0 = never trigger)
+	const createPDAsOnInit = true; //Should the basic fleet token accounts (SDU, toolkits & fuel) be created at script init?  NOTE: Use at your own risk!  This may cause errors for new fleets!
 
 	//Used for reading solana data
 	let readRPCs = [
@@ -589,7 +591,7 @@
 				}
 
 				//await wait(2000);
-				await wait(200);
+				await wait(confirmationCheckingDelay);
 				let epochInfo = await solanaReadConnection.getEpochInfo({ commitment: 'confirmed' });
 				curBlockHeight = epochInfo.blockHeight;
 		}
@@ -2341,49 +2343,51 @@
 			if (readyToScan) {
 					let moved = false;
 					if ((fleetCoords[0] !== destCoords[0] || fleetCoords[1] !== destCoords[1])) {
-							if (!userFleets[i].state.includes('Warp C/D')) {
-									let fleetCurrentFuelTank = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey(tokenProgAddy)});
-									let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
-									let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
-									let starbaseX = userFleets[i].starbaseCoord.split(',')[0].trim();
-									let starbaseY = userFleets[i].starbaseCoord.split(',')[1].trim();
-									let furthestPoint = userFleets[i].scanBlock.reduce((max, val) => calculateMovementDistance(max, [starbaseX,starbaseY]) > calculateMovementDistance(val, [starbaseX,starbaseY]) ? max : val);
-									let distToStarbase = Math.max(calculateMovementDistance(fleetCoords, [starbaseX,starbaseY]), calculateMovementDistance(furthestPoint, [starbaseX,starbaseY]));
-									//cLog(2, `${FleetTimeStamp(userFleets[i].label)} distToStarbase: ${distToStarbase}`);
-									let fuelNeeded = 0;
-									//let exactFuelNeeded = 0;
-									if (userFleets[i].moveType == 'warp') {
-											fuelNeeded = calculateWarpFuelBurn(userFleets[i], distToStarbase) + calculateWarpFuelBurn(userFleets[i], 2);
-											//exactFuelNeeded = calculateWarpFuelBurn(userFleets[i], distToStarbase);
-									} else {
-											fuelNeeded = calculateSubwarpFuelBurn(userFleets[i], distToStarbase) + calculateSubwarpFuelBurn(userFleets[i], 2);
-											//exactFuelNeeded = calculateSubwarpFuelBurn(userFleets[i], distToStarbase);
-									}
-									//cLog(2, `${FleetTimeStamp(userFleets[i].label)} currentFuelCnt: ${currentFuelCnt}`);
-									//cLog(2, `${FleetTimeStamp(userFleets[i].label)} fuelNeeded: ${exactFuelNeeded}`);
-									let fuelReadout = `${FleetTimeStamp(userFleets[i].label)} Fuel: ${Math.round(fuelNeeded)} / ${Math.round(currentFuelCnt)}`;
-									if (currentFuelCnt > fuelNeeded) {
-											cLog(1,fuelReadout);
-											let moveDist = calculateMovementDistance(fleetCoords, destCoords);
-											if (moveDist > 0) {
-													moved = true;
-													const scanEndsIn = Math.max(0, userFleets[i].scanEnd - Date.now());
-													//Clamp the scan end time to the cooldown if it is higher (due to paused scanning)
-													userFleets[i].scanEnd = scanEndsIn > userFleets[i].scanCooldown ? userFleets[i].scanCooldown : scanEndsIn;
-													await handleMovement(i, moveDist, destCoords[0], destCoords[1]);
-													cLog(1,`${FleetTimeStamp(userFleets[i].label)} Movement finished`);
-													userFleets[i].scanSectorStart = Date.now();
-											} else {
-													cLog(1,`${FleetTimeStamp(userFleets[i].label)} Skipping movement`);
-											}
-									} else {
-										cLog(1,`${fuelReadout} (low)`);
-										if(scanResupplyOnLowFuel) {
-											await handleResupply(i, fleetCoords);
-											moved = true;
-										}
-									}
+						if (!userFleets[i].state.includes('Warp C/D')) {
+							let fleetCurrentFuelTank = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: new solanaWeb3.PublicKey(tokenProgAddy)});
+							let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
+							let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
+							let starbaseX = userFleets[i].starbaseCoord.split(',')[0].trim();
+							let starbaseY = userFleets[i].starbaseCoord.split(',')[1].trim();
+							let furthestPoint = userFleets[i].scanBlock.reduce((max, val) => calculateMovementDistance(max, [starbaseX,starbaseY]) > calculateMovementDistance(val, [starbaseX,starbaseY]) ? max : val);
+							let distToStarbase = Math.max(calculateMovementDistance(fleetCoords, [starbaseX,starbaseY]), calculateMovementDistance(furthestPoint, [starbaseX,starbaseY]));
+							//cLog(2, `${FleetTimeStamp(userFleets[i].label)} distToStarbase: ${distToStarbase}`);
+							let fuelNeeded = 0;
+							//let exactFuelNeeded = 0;
+							if (userFleets[i].moveType == 'warp') {
+									fuelNeeded = calculateWarpFuelBurn(userFleets[i], distToStarbase) + calculateWarpFuelBurn(userFleets[i], 2);
+									//exactFuelNeeded = calculateWarpFuelBurn(userFleets[i], distToStarbase);
+							} else {
+									fuelNeeded = calculateSubwarpFuelBurn(userFleets[i], distToStarbase) + calculateSubwarpFuelBurn(userFleets[i], 2);
+									//exactFuelNeeded = calculateSubwarpFuelBurn(userFleets[i], distToStarbase);
 							}
+							//cLog(2, `${FleetTimeStamp(userFleets[i].label)} currentFuelCnt: ${currentFuelCnt}`);
+							//cLog(2, `${FleetTimeStamp(userFleets[i].label)} fuelNeeded: ${exactFuelNeeded}`);
+							let fuelReadout = `${FleetTimeStamp(userFleets[i].label)} Fuel: ${Math.round(fuelNeeded)} / ${Math.round(currentFuelCnt)}`;
+							if (currentFuelCnt > fuelNeeded) {
+									cLog(1,fuelReadout);
+									let moveDist = calculateMovementDistance(fleetCoords, destCoords);
+									if (moveDist > 0) {
+											moved = true;
+											const scanEndsIn = Math.max(0, userFleets[i].scanEnd - Date.now());
+											//Clamp the scan end time to the cooldown if it is higher (due to paused scanning)
+											userFleets[i].scanEnd = scanEndsIn > userFleets[i].scanCooldown ? userFleets[i].scanCooldown : scanEndsIn;
+											await handleMovement(i, moveDist, destCoords[0], destCoords[1]);
+											cLog(1,`${FleetTimeStamp(userFleets[i].label)} Movement finished`);
+											userFleets[i].scanSectorStart = Date.now();
+									} else {
+											cLog(1,`${FleetTimeStamp(userFleets[i].label)} Skipping movement`);
+									}
+							} else {
+								cLog(1,`${fuelReadout} (low)`);
+								if(scanResupplyOnLowFuel) {
+									await handleResupply(i, fleetCoords);
+									moved = true;
+								} else {
+									cLog(3, moved);
+								}
+							}
+						}
 					}
 					if (!moved && Date.now() > userFleets[i].scanEnd) {
 							//No longer required due to each fleet running on it's own timer
@@ -3397,9 +3401,11 @@
 					new solanaWeb3.PublicKey(programAddy)
 				);
 
-				await getAccountInfo(fleetLabel, 'fleet SDU token', fleetSduToken) || await createPDA(fleetSduToken, fleet.account.cargoHold, new solanaWeb3.PublicKey(SDUAddy), fleet);
-				await getAccountInfo(fleetLabel, 'fleet Repair Kit token', fleetRepairKitToken) || await createPDA(fleetRepairKitToken, fleet.account.cargoHold, new solanaWeb3.PublicKey(toolsAddy), fleet);
-				await getAccountInfo(fleetLabel, 'fleet Fuel token', fleetFuelToken) || await createPDA(fleetFuelToken, fleet.account.fuelTank, new solanaWeb3.PublicKey(fuelAddy), fleet);
+				if(createPDAsOnInit) {
+					await getAccountInfo(fleetLabel, 'fleet SDU token', fleetSduToken) || await createPDA(fleetSduToken, fleet.account.cargoHold, new solanaWeb3.PublicKey(SDUAddy), fleet);
+					await getAccountInfo(fleetLabel, 'fleet Repair Kit token', fleetRepairKitToken) || await createPDA(fleetRepairKitToken, fleet.account.cargoHold, new solanaWeb3.PublicKey(toolsAddy), fleet);
+					await getAccountInfo(fleetLabel, 'fleet Fuel token', fleetFuelToken) || await createPDA(fleetFuelToken, fleet.account.fuelTank, new solanaWeb3.PublicKey(fuelAddy), fleet);
+				}
 				
 				let fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(fleet.account.cargoHold, {programId: new solanaWeb3.PublicKey(tokenProgAddy)});
 				let currentToolCnt = fleetCurrentCargo.value.find(item => item.pubkey.toString() === fleetRepairKitToken.toString());
@@ -3445,9 +3451,9 @@
 					scanSectorStart: 0, 
 					scanMin: fleetScanMin, 
 					scanMove: fleetScanMove, 
-					toolCnt: currentToolCnt.account.data.parsed.info.tokenAmount.uiAmount, 
+					toolCnt: currentToolCnt ? currentToolCnt.account.data.parsed.info.tokenAmount.uiAmount : 0,
 					sduCnt: 0, 
-					fuelCnt: currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount, 
+					fuelCnt: currentFuelCnt ? currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount : 0,
 					moveType: fleetMoveType, 
 					mineResource: fleetMineResource, 
 					minePlanet: null,
