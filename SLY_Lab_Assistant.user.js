@@ -2393,7 +2393,7 @@
 					if (moveDist > userFleets[i].maxWarpDistance / 100) {
 						[moveX, moveY] = calcNextWarpPoint(userFleets[i].maxWarpDistance, extra, [moveX, moveY]);
 
-						//Is all of this needed?
+						//Saves temporary waypoints for transports in case the page is refreshed mid-journey while using warp
 						const fleetPK = userFleets[i].publicKey.toString();
 						const fleetSavedData = await GM.getValue(fleetPK, '{}');
 						const fleetParsedData = JSON.parse(fleetSavedData);
@@ -2622,12 +2622,12 @@
 			cLog(1,`${FleetTimeStamp(userFleets[i].label)} Refueling`);
 			await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, userFleets[i].fuelToken, fuelAddy, fuelCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].fuelCapacity - currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount);
 
-			//Allow rpcs to catch up
+			//Allow rpc to catch up
 			await wait(2000);
 
 			//Update toolkit count
 			fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
-			toolsAccount = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === toolsAddy);
+			toolsAccount = fleetCurrentCargo.value.find(item => item.pubkey.toString() === userFleets[i].repairKitToken.toString())
 			userFleets[i].toolCnt = toolsAccount ? toolsAccount.account.data.parsed.info.tokenAmount.uiAmount : 0;
 
 			//Update fuel count
@@ -2645,7 +2645,7 @@
 			}
 
 			//Was enough fuel loaded?
-			if(userFleets[i].fuelCnt < userFleets[i].fuelCapacity) {
+			if(userFleets[i].fuelCnt < userFleets[i].fuelCapacity * 0.75) {
 				resupplyError = true;
 				cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough fuel at starbase`);
 				updateFleetState(userFleets[i], `ERROR: No Fuel`);
