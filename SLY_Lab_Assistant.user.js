@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant Modded
 // @namespace    http://tampermonkey.net/
-// @version      0.4.3m11
+// @version      0.4.3m11 hotfix
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
 // @match        https://*.labs.staratlas.com/
@@ -2394,14 +2394,12 @@
 						[moveX, moveY] = calcNextWarpPoint(userFleets[i].maxWarpDistance, extra, [moveX, moveY]);
 
 						//Is all of this needed?
-						/*
 						const fleetPK = userFleets[i].publicKey.toString();
 						const fleetSavedData = await GM.getValue(fleetPK, '{}');
 						const fleetParsedData = JSON.parse(fleetSavedData);
 						cLog(3, `${FleetTimeStamp(userFleets[i].label)} moveTargets`, fleetParsedData.moveTarget, userFleets[i].moveTarget);
 						fleetParsedData.moveTarget = userFleets[i].moveTarget;
 						await GM.setValue(fleetPK, JSON.stringify(fleetParsedData));
-						*/
 
 						//Update distance based on new warp target
 						moveDist = calculateMovementDistance(extra, [moveX,moveY]);
