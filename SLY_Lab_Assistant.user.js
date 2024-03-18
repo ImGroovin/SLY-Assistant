@@ -190,6 +190,7 @@
 			const origMethod = target[key];
 			if(typeof origMethod === 'function'){
 				return async function (...args) {
+					solanaWriteCount++;
 					return await doProxyStuff(target, origMethod, args, writeRPCs, 'WRITE');
 				}
 			}
@@ -200,6 +201,7 @@
 			const origMethod = target[key];
 			if(typeof origMethod === 'function'){
 				return async function (...args) {
+					solanaReadCount++;
 					return await doProxyStuff(target, origMethod, args, readRPCs, 'READ');
 				}
 			}
@@ -210,6 +212,8 @@
 	const solanaReadConnection = new Proxy(rawSolanaReadConnection, readConnectionProxy);
 	const rawSolanaWriteConnection = new solanaWeb3.Connection(writeRPCs[0], 'confirmed');
 	const solanaWriteConnection = new Proxy(rawSolanaWriteConnection, writeConnectionProxy);
+	let solanaReadCount = 0;
+	let solanaWriteCount = 0;
 
 	//Not sure what this does, but it seems to do some reads, so sticking it on the read connection
 	const anchorProvider = new BrowserAnchor.anchor.AnchorProvider(solanaReadConnection, null, null);
@@ -2275,20 +2279,19 @@
 }
 
 	function assistModalToggle() {
-			let targetElem = document.querySelector('#assistModal');
-			if (targetElem.style.display === 'none') {
-					document.querySelectorAll('#assistModal .assist-fleet-row').forEach(e => e.remove());
-					document.querySelectorAll('#assistModal .assist-scan-row').forEach(e => e.remove());
-					document.querySelectorAll('#assistModal .assist-mine-row').forEach(e => e.remove());
-					document.querySelectorAll('#assistModal .assist-pad-row').forEach(e => e.remove());
-					document.querySelectorAll('#assistModal .assist-transport-row').forEach(e => e.remove());
-					for (let fleet of userFleets) {
-							addAssistInput(fleet);
-					}
-					targetElem.style.display = 'block';
-			} else {
-					targetElem.style.display = 'none';
-			}
+		cLog(4,`${FleetTimeStamp('SYSTEM')} Solana Reads: ${solanaReadCount} / Writes: ${solanaWriteCount}`);
+		let targetElem = document.querySelector('#assistModal');
+		if (targetElem.style.display === 'none') {
+			document.querySelectorAll('#assistModal .assist-fleet-row').forEach(e => e.remove());
+			document.querySelectorAll('#assistModal .assist-scan-row').forEach(e => e.remove());
+			document.querySelectorAll('#assistModal .assist-mine-row').forEach(e => e.remove());
+			document.querySelectorAll('#assistModal .assist-pad-row').forEach(e => e.remove());
+			document.querySelectorAll('#assistModal .assist-transport-row').forEach(e => e.remove());
+			for (let fleet of userFleets) addAssistInput(fleet);
+			targetElem.style.display = 'block';
+		} else {
+			targetElem.style.display = 'none';
+		}
 	}
 
 	function assistStatusToggle() {
@@ -3384,10 +3387,10 @@
 			setTimeout(() => { startFleet(i);	}, 500 * (i + 1));
 		}
 
-		setTimeout(fleetsHealthCheck, 5000);
+		setTimeout(fleetHealthCheck, 5000);
 	}
 
-	async function fleetsHealthCheck() {
+	async function fleetHealthCheck() {
 		if (!enableAssistant) return;
 
 		for (let i=0, n=userFleets.length; i < n; i++) {
@@ -3430,7 +3433,7 @@
 			return;
 		}
 
-		if(enableAssistant)	setTimeout(fleetsHealthCheck, 10000);
+		if(enableAssistant)	setTimeout(fleetHealthCheck, 10000);
 	}
 
 	async function toggleAssistant() {
