@@ -54,7 +54,6 @@
 
 	let enableAssistant = false;
 	let initComplete = false;
-	let fleetStallCount = 0;
 	
 	let globalSettings;
 	const settingsGmKey = 'globalSettings';
@@ -2503,7 +2502,7 @@
 							//cLog(2, `${FleetTimeStamp(userFleets[i].label)} currentFuelCnt: ${currentFuelCnt}`);
 							let fuelReadout = `${FleetTimeStamp(userFleets[i].label)} Fuel: ${Math.round(fuelNeeded)} / ${Math.round(currentFuelCnt)}`;
 							if (currentFuelCnt > fuelNeeded) {
-									cLog(1,fuelReadout);
+									cLog(1, `${FleetTimeStamp(userFleets[i].label)} Fuel:`, fuelReadout);
 									let moveDist = calculateMovementDistance(fleetCoords, destCoords);
 									if (moveDist > 0) {
 											moved = true;
@@ -2517,12 +2516,12 @@
 											cLog(1,`${FleetTimeStamp(userFleets[i].label)} Skipping movement`);
 									}
 							} else {
-								cLog(1,`${fuelReadout} (low)`);
+								cLog(1, `${FleetTimeStamp(userFleets[i].label)} Fuel: ${fuelReadout} (low)`);
 								if(globalSettings.scanResupplyOnLowFuel) {
 									await handleResupply(i, fleetCoords);
 									moved = true;
 								} else {
-									cLog(3, moved);
+									cLog(3, `${FleetTimeStamp(userFleets[i].label)} Moved:`, moved);
 								}
 							}
 						}
@@ -2558,7 +2557,6 @@
 							userFleets[i].sduCnt = changesSDU.postBalance;
 							if (userFleets[i].scanSkipCnt < userFleets[i].scanBlock.length - 1) {
 									let scanDelayMs = userFleets[i].scanCooldown * 1000 + 2000;
-									//Wait at least 1.5 minutes for sector to regen
 									if(sduFound) scanDelayMs = Math.max(scanDelayMs, globalSettings.scanSectorRegenTime * 1000);
 									userFleets[i].scanEnd = Date.now() + scanDelayMs;
 									userFleets[i].state = `Scanned [${Math.round(scanCondition)}%]${sduFound ? ` +${sduFound}` : ''}`;
@@ -3391,6 +3389,7 @@
 	async function fleetHealthCheck() {
 		if (!enableAssistant) return;
 
+		let fleetStallCount = 0;
 		for (let i=0, n=userFleets.length; i < n; i++) {
 			const fleet = userFleets[i];
 
@@ -3407,7 +3406,7 @@
 				fleet.moveEnd ? fleet.moveEnd : 0,
 			);
 			
-			if(fleet.lastOp && !userFleets[i].stalled) {
+			if(fleet.lastOp) {
 				if(Date.now() - foo > 600000) {
 					cLog(3,`${FleetTimeStamp(userFleets[i].label)} Unresponsive`, 
 						foo ? TimeToStr(new Date(foo)) : 'null',
@@ -3418,7 +3417,6 @@
 
 					fleet.fontColor = 'tomato';
 					updateAssistStatus(fleet);
-					userFleets[i].stalled = true;
 					fleetStallCount++;
 				}
 			}
