@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant Modded
 // @namespace    http://tampermonkey.net/
-// @version      0.4.3m11 hotfix
+// @version      0.4.3m12
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
 // @match        https://*.labs.staratlas.com/
@@ -68,11 +68,11 @@
 	function BoolToStr(bool) { return bool ? 'Y' : 'N' };
 	function CoordsValid(c) { return !isNaN(parseInt(c[0])) && !isNaN(parseInt(c[1])); }
 	function ConvertCoords(coords) { return coords.split(',').map(coord => parseInt(coord.trim()));	}
-	function CoordsEqual(x, y) {
-		return Array.isArray(x) && Array.isArray(y) &&
-			x.length === 2 && y.length === 2 &&
-			Number(x[0]) === Number(y[0]) &&
-			Number(x[1]) === Number(y[1])
+	function CoordsEqual(a, b) {
+		return Array.isArray(a) && Array.isArray(b) &&
+			a.length === 2 && b.length === 2 &&
+			Number(a[0]) === Number(b[0]) &&
+			Number(a[1]) === Number(b[1])
 	}
 	function parseIntDefault(value, defaultValue) {
 		const intValue = parseInt(value);
@@ -1329,7 +1329,7 @@
 				
 				//Send tx
 				txResult = await txSignAndSend(tx, fleet, 'LOAD');
-			} 
+			}
 			else txResult = {name: "NotEnoughResource"};
 
 			resolve(txResult);
@@ -2584,16 +2584,10 @@
 	}
 
 	async function handleResupply(i, fleetCoords) {
-		userFleets[i].resupplying = true;
-		if(globalSettings.scanBlockResetAfterResupply) userFleets[i].scanBlockIdx = 0;
-		let starbaseX = userFleets[i].starbaseCoord.split(',')[0].trim();
-		let starbaseY = userFleets[i].starbaseCoord.split(',')[1].trim();
+		const errorWaitTime = 10 * 60 * 1000;
+		const errorFuelRatio = 0.75;
 
-		if (fleetCoords[0] == starbaseX && fleetCoords[1] == starbaseY) { //At starbase
-			cLog(1,`${FleetTimeStamp(userFleets[i].label)} Resupply: Docking at starbase`);
-			await execDock(userFleets[i], userFleets[i].starbaseCoord);
-			
-			updateFleetState(userFleets[i], 'Unloading');
+		async function unloadSDU() {
 			cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading SDU`);
 			let fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
 			let currentSduCnt = fleetCurrentCargo.value.find(item => item.pubkey.toString() === userFleets[i].sduToken.toString())
@@ -2601,12 +2595,13 @@
 				await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, SDUAddy, userFleets[i].starbaseCoord, currentSduCnt.account.data.parsed.info.tokenAmount.uiAmount);
 				userFleets[i].sduCnt = 0;
 			}
-			updateFleetState(userFleets[i], 'Loading');
+		}
+		
+		async function loadTools() {
 			cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loading Tools`);
+			let fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
 			let toolsAccount = fleetCurrentCargo.value.find(item => item.pubkey.toString() === userFleets[i].repairKitToken.toString())
-			let fleetCurrentFuel = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: tokenProgramPK});
-			let currentFuelCnt = fleetCurrentFuel.value.find(item => item.pubkey.toString() === userFleets[i].fuelToken.toString())
-			if (userFleets[i].scanCost > 0) await execCargoFromStarbaseToFleet(
+			await execCargoFromStarbaseToFleet(
 				userFleets[i], 
 				userFleets[i].cargoHold, 
 				userFleets[i].repairKitToken, 
@@ -2616,11 +2611,7 @@
 				userFleets[i].cargoCapacity - toolsAccount.account.data.parsed.info.tokenAmount.uiAmount
 			);
 
-			//Refuel
-			cLog(1,`${FleetTimeStamp(userFleets[i].label)} Refueling`);
-			await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, userFleets[i].fuelToken, fuelAddy, fuelCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].fuelCapacity - currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount);
-
-			//Allow rpc to catch up
+			//Wait for RPC to catch up
 			await wait(2000);
 
 			//Update toolkit count
@@ -2628,40 +2619,72 @@
 			toolsAccount = fleetCurrentCargo.value.find(item => item.pubkey.toString() === userFleets[i].repairKitToken.toString())
 			userFleets[i].toolCnt = toolsAccount ? toolsAccount.account.data.parsed.info.tokenAmount.uiAmount : 0;
 
+			//Were enough tools loaded?
+			if (userFleets[i].toolCnt < userFleets[i].scanCost) {
+				cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough toolkits at starbase - waiting for more`);
+				updateFleetState(userFleets[i], `ERROR: No Toolkits ⌛ ${TimeToStr(new Date(Date.now() + errorWaitTime))}`);
+				
+				//Wait a while before trying again
+				await wait(errorWaitTime);
+				await loadTools();
+			}
+		}
+
+		async function loadFuel() {
+			cLog(1,`${FleetTimeStamp(userFleets[i].label)} Refueling`);
+			let fleetCurrentFuel = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: tokenProgramPK});
+			let currentFuelCnt = fleetCurrentFuel.value.find(item => item.pubkey.toString() === userFleets[i].fuelToken.toString())
+
+			await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, userFleets[i].fuelToken, fuelAddy, fuelCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].fuelCapacity - currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount);
+
+			//Allow rpc to catch up
+			await wait(2000);
+
 			//Update fuel count
 			fleetCurrentFuel = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: tokenProgramPK});
 			currentFuelCnt = fleetCurrentFuel.value.find(item => item.pubkey.toString() === userFleets[i].fuelToken.toString())
 			userFleets[i].fuelCnt = currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount;
 
-			let resupplyError = false;
-
-			//Were enough tools loaded?
-			if (userFleets[i].toolCnt < userFleets[i].scanCost) {
-				resupplyError = true;
-				cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough toolkits at starbase`);
-				updateFleetState(userFleets[i], `ERROR: No Toolkits`);
-			}
-
 			//Was enough fuel loaded?
-			if(userFleets[i].fuelCnt < userFleets[i].fuelCapacity * 0.75) {
-				resupplyError = true;
-				cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough fuel at starbase`);
-				updateFleetState(userFleets[i], `ERROR: No Fuel`);
+			if(userFleets[i].fuelCnt < userFleets[i].fuelCapacity * errorFuelRatio) {
+				cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough fuel at starbase - waiting for more`);
+				updateFleetState(userFleets[i], `ERROR: No Fuel ⌛ ${TimeToStr(new Date(Date.now() + errorWaitTime))}`);
+				
+				//Wait a while before trying again
+				await wait(errorWaitTime);
+				await loadFuel();
 			}
+		}
 
-			if(!resupplyError) {
-				//Re-create SDU token because SAGE deletes it after transferring them all to base
-				await createScannerPDAs(userFleets[i]);
+		userFleets[i].resupplying = true;
+		if(globalSettings.scanBlockResetAfterResupply) userFleets[i].scanBlockIdx = 0;
+		const baseCoords = ConvertCoords(userFleets[i].starbaseCoord);
+		
+		if (CoordsEqual(fleetCoords, baseCoords)) { //At starbase
+			cLog(1,`${FleetTimeStamp(userFleets[i].label)} Resupply: Docking at starbase`);
+			await execDock(userFleets[i], userFleets[i].starbaseCoord);
 
-				//Undock
-				await execUndock(userFleets[i], userFleets[i].starbaseCoord);
-			}
+			updateFleetState(userFleets[i], 'Unloading');
+			await unloadSDU();
+
+			updateFleetState(userFleets[i], 'Loading');
+			if (userFleets[i].scanCost > 0) await loadTools();
+			await loadFuel();
+
+			//Re-create SDU token because SAGE deletes it after transferring them all to base
+			await createScannerPDAs(userFleets[i]);
+
+			//Update last op to prevent fleet stall flagging
+			userFleets[i].lastOp = Date.now();
+
+			//Undock
+			await execUndock(userFleets[i], userFleets[i].starbaseCoord);
 		} else { //Not at starbase - move there
-			let moveDist = calculateMovementDistance(fleetCoords, [starbaseX,starbaseY]);
+			let moveDist = calculateMovementDistance(fleetCoords, baseCoords);
 			if (moveDist > 0 && !userFleets[i].state.includes('Warp C/D')) {
 				cLog(1,`${FleetTimeStamp(userFleets[i].label)} Resupply: Moving to base`);
 				updateFleetState(userFleets[i], 'Idle');
-				await handleMovement(i, moveDist, starbaseX, starbaseY);
+				await handleMovement(i, moveDist, baseCoords[0], baseCoords[1]);
 				cLog(1,`${FleetTimeStamp(userFleets[i].label)} Resupply: Arrived at base`);
 			} else {
 				cLog(1,`${FleetTimeStamp(userFleets[i].label)} Resupply: Already at base`);
@@ -3346,7 +3369,6 @@
 				updateAssistStatus(fleet);
 
 				if(!fleet.initilizedScanPDAs && fleetParsedData.assignment == 'Scan') {
-					cLog(1,`${FleetTimeStamp(fleet.label)} Initilizing Scanner PDAs`);
 					await createScannerPDAs(fleet);
 					fleet.initilizedScanPDAs = true;
 				}
