@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SAGE Lab Assistant Modded
 // @namespace    http://tampermonkey.net/
-// @version      0.4.3m12
+// @version      0.4.3m13
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by SkyLove512, anthonyra, niofox
 // @match        https://*.labs.staratlas.com/
@@ -91,6 +91,9 @@
 			// Priority Fee added to each transaction in Lamports. Set to 0 (zero) to disable priority fees. 1 Lamport = 0.000000001 SOL
 			priorityFee: parseIntDefault(globalSettings.priorityFee, 1),
 
+			//Percentage of the priority fees above should be used for all actions except scanning
+			lowPriorityFeeMultiplier: parseIntDefault(globalSettings.lowPriorityFeeMultiplier, 10),
+
 			//How many milliseconds to wait before re-reading the chain for confirmation
 			confirmationCheckingDelay: parseIntDefault(globalSettings.confirmationCheckingDelay, 200),
 
@@ -122,7 +125,7 @@
 			scanPauseTime: parseIntDefault(globalSettings.scanPauseTime, 600),
 
 			//Number of seconds to scan a low probability sector before giving up and moving on (or pausing)
-			scanStrikeTime: parseIntDefault(globalSettings.scanStrikeTime, 60),
+			scanStrikeCount: parseIntDefault(globalSettings.scanStrikeCount, 3),
 
 			//How transparent the status panel should be (1 = completely opaque)
 			statusPanelOpacity: parseIntDefault(globalSettings.statusPanelOpacity, 75),
@@ -146,13 +149,6 @@
 				(error.message.includes('failed to get')) ||
 				(error.message.includes('failed to send')) ||
 				(error.message.includes('Unable to complete request'))
-/*
-				(error instanceof TypeError && error.message === 'Failed to fetch') || 
-				(error instanceof TypeError && error.message.includes('failed to get')) || 
-				(error instanceof TypeError && error.message.includes('Unable to complete request')) || 
-				(error instanceof Error && error.message.includes('failed to send')) ||
-				(error instanceof Error && Number(error.message.slice(0,3)) > 299)
-*/				
 			);
 		}
 		
@@ -265,18 +261,12 @@
 	let userFleets = [];
 
 	let sageProgram = new BrowserAnchor.anchor.Program(sageIDL, sageProgramPK, anchorProvider);
-	cLog(2, 'sageProgram: ', sageProgram);
 	let [sageGameAcct] = await sageProgram.account.game.all();
-	//cLog(2, 'sageGameAcct: ', sageGameAcct);
 	let [sageSDUTrackerAcct] = await sageProgram.account.surveyDataUnitTracker.all();
-	//cLog(2, 'sageSDUTrackerAcct: ', sageSDUTrackerAcct);
-
 	let profileProgram = new BrowserAnchor.anchor.Program(profileIDL, profileProgramPK, anchorProvider);
 	let cargoProgram = new BrowserAnchor.anchor.Program(cargoIDL, cargoProgramPK, anchorProvider);
 	let [cargoStatsDefinitionAcct] = await cargoProgram.account.cargoStatsDefinition.all();
 	let cargoStatsDefSeqId = cargoStatsDefinitionAcct.account.seqId;
-	cLog(2, 'cargoProgram', cargoProgram);
-	//cLog(2, 'cargoStatsDefinitionAcct', cargoStatsDefinitionAcct);
 	let seqBN = new BrowserAnchor.anchor.BN(cargoStatsDefSeqId);
 	let seqArr = seqBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "be", 2);
 	let seq58 = bs58.encode(seqArr);
@@ -371,7 +361,7 @@
 							programId: programAddy,
 							data: []
 					})}
-					let txResult = await txSignAndSend(tx, fleet, 'CreatePDA');
+					let txResult = await txSignAndSend(tx, fleet, 'CreatePDA', 100);
 					resolve(txResult);
 			});
 	}
@@ -432,11 +422,6 @@
 			return fleet.warpSpeed > 0 ? distance / (fleet.warpSpeed / 1e6) : 0
 	}
 
-	function calculateWarpFuelBurn(fleet, distance) {
-    const warpCnt = fleet.maxWarpDistance > 0 ? distance / (fleet.maxWarpDistance / 100) : 1;
-    return distance * (fleet.warpFuelConsumptionRate / 100) + warpCnt;
-	}
-
 	function calcNextWarpPoint(warpRange, startCoords, endCoords) {
 		const [startX, startY] = [Number(startCoords[0]), Number(startCoords[1])];
 		const [endX, endY] = [Number(endCoords[0]), Number(endCoords[1])];
@@ -482,7 +467,7 @@
 			jumps++;
 		};
 	
-		cLog(4, `${FleetTimeStamp(fleet.label)} calcWarpFuelReq: ${fuelRequired} fuel over ${jumps} jumps`);
+		//cLog(4, `${FleetTimeStamp(fleet.label)} calcWarpFuelReq: ${fuelRequired} fuel over ${jumps} jumps`);
 		return fuelRequired;
 	};
 	
@@ -742,15 +727,18 @@
 		return await sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName);
 	}
 
-	function txSignAndSend(ix, fleet, opName) {
+	function txSignAndSend(ix, fleet, opName, priorityFeeMultiplier) {
 		return new Promise(async resolve => {
 			const fleetName = fleet ? fleet.label : 'unknown';
 			let macroOpStart = Date.now();
+			if(!priorityFeeMultiplier) priorityFeeMultiplier = globalSettings.lowPriorityFeeMultiplier;
+			priorityFeeMultiplier = priorityFeeMultiplier / 100;
 
 			let confirmed = false;
 			while (!confirmed) {
 				let tx = new solanaWeb3.Transaction();
-				const priorityFee = globalSettings.priorityFee * 5; //Convert Lamports to microLamports ?
+				const priorityFee = globalSettings.priorityFee ? Math.max(1, Math.ceil(priorityFeeMultiplier * globalSettings.priorityFee * 5)) : 0; //Convert Lamports to microLamports ?
+				cLog(4,`${FleetTimeStamp(fleetName)} <${opName}> 💳 Fee ${Math.ceil(priorityFee / 5)} lamp`);
 				if (priorityFee > 0) tx.add(solanaWeb3.ComputeBudgetProgram.setComputeUnitPrice({microLamports: priorityFee}));
 				if (ix.constructor === Array) {
 					ix.forEach(item => tx.add(item.instruction))
@@ -772,7 +760,7 @@
 				let txSerialized = txSigned[0].serialize();
 
 				let microOpStart = Date.now();
-				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> SEND`);
+				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> SEND ➡️`);
 				let response = await sendAndConfirmTx(txSerialized, tx.lastValidBlockHeight, null, fleet, opName);
 				let txHash = response.txHash;
 				let confirmation = response.confirmation;
@@ -842,7 +830,7 @@
 
 					updateFleetState(fleet, `Scanning [${TimeToStr(new Date(Date.now()))}]`);
 
-					let txResult = await txSignAndSend(tx, fleet, 'SCAN');
+					let txResult = await txSignAndSend(tx, fleet, 'SCAN', 100);
 
 					resolve(txResult);
 			});
@@ -974,7 +962,6 @@
 					}).instruction()}
 
 					updateFleetState(fleet, 'Warping');
-
 					let txResult = await txSignAndSend(tx, fleet, 'WARP');
 
 					const coordStr = `[${destX},${destY}]`;
@@ -1225,17 +1212,16 @@
 							isSigner: false,
 							isWritable: false
 					}]).instruction()}
-					let txResult = await txSignAndSend(tx, fleet, 'UNLOAD');
+					let txResult = await txSignAndSend(tx, fleet, 'UNLOAD', 100);
 					resolve(txResult);
 			});
 	}
 
 	async function createScannerPDAs(fleet) {
 		cLog(2,`${FleetTimeStamp(fleet.label)} Maintaining Scanner PDAs`);
-		fleet.sduToken = await getFleetCargoToken(fleet, SDUPK);
-		fleet.repairKitToken = await getFleetCargoToken(fleet, toolsPK);
-		fleet.fuelToken = await getFleetFuelToken(fleet);
-
+		//fleet.sduToken = await getFleetCargoToken(fleet, SDUPK);
+		//fleet.repairKitToken = await getFleetCargoToken(fleet, toolsPK);
+		//fleet.fuelToken = await getFleetFuelToken(fleet);
 		await getAccountInfo(fleet.label, 'fleet SDU token', fleet.sduToken) || await createPDA(fleet.sduToken, fleet.cargoHold, SDUPK, fleet);
 		await getAccountInfo(fleet.label, 'fleet repair kit token', fleet.repairKitToken) || await createPDA(fleet.repairKitToken, fleet.cargoHold, toolsPK, fleet);
 		await getAccountInfo(fleet.label, 'fleet fuel token', fleet.fuelToken) || await createPDA(fleet.fuelToken, fleet.fuelTank, fuelPK, fleet);
@@ -1278,6 +1264,7 @@
 			amount = amount > mostFound ? mostFound : amount;
 			
 			if (amount > 0) {	
+				//Make sure fleet token account exists
 				const tokenMintPK = new solanaWeb3.PublicKey(tokenMint)
 				await getAccountInfo(fleet.label, 'fleet cargo token', tokenTo) || await createPDA(tokenTo, cargoPodTo, tokenMintPK, fleet);
 
@@ -1328,7 +1315,7 @@
 				}]).instruction()}
 				
 				//Send tx
-				txResult = await txSignAndSend(tx, fleet, 'LOAD');
+				txResult = await txSignAndSend(tx, fleet, 'LOAD', 100);
 			}
 			else txResult = {name: "NotEnoughResource"};
 
@@ -1762,7 +1749,7 @@
 			transportLabel1.style.width = '84px';
 			transportLabel1.style.minWidth = '84px';
 
-			let transportResources = ['','Ammo','Food','Fuel','SDU','Toolkit','Arco','Biomass','Carbon','Copper Ore', 'Copper','Diamond','Hydrogen','Iron Ore', 'Iron','Lumanite','Rochinol','Framework','Graphene','Radiation Absorber','Electronics','Particle Accelerator','Power Source','Electromagnet','Copper Wire','Magnet','Polymer','Crystal Lattice'];
+			const transportResources = [''].concat(r4Tokens.map((r) => r.name)).concat(resourceTokens.map((r) => r.name));
 			let transportOptStr = '';
 			transportResources.forEach( function(resource) {transportOptStr += '<option value="' + resource + '">' + resource + '</option>';});
 			let transportResource1 = document.createElement('select');
@@ -2187,31 +2174,47 @@
 	}
 
 	async function saveConfigImport() {
-			let importText = document.querySelector('#importText');
-			let jsonConfig = JSON.parse(importText.value);
-			for (let key in jsonConfig) {
-					let fleetObj = jsonConfig[key];
-					let fleetJson = JSON.stringify(fleetObj);
-					await GM.setValue(key, fleetJson);
-			}
-			assistImportToggle();
+		let importText = document.querySelector('#importText');
+
+		//Guard against clicking the wrong button
+		if(importText.value.includes('sector_target')) {
+			console.log('switching to fleet targets import...');
+			await saveTargetsImport();
+			return;
+		}
+
+		let jsonConfig = JSON.parse(importText.value);
+		for (let key in jsonConfig) {
+				let fleetObj = jsonConfig[key];
+				let fleetJson = JSON.stringify(fleetObj);
+				await GM.setValue(key, fleetJson);
+		}
+		assistImportToggle();
 	}
 
 	async function saveTargetsImport() {
 		let importText = document.querySelector('#importText');
+
+		//Guard against clicking the wrong button
+		if(!importText.value.includes('sector_target')) {
+			console.log('switching to full fleet import...');
+			await saveConfigImport();
+			return;
+		}
+
 		let jsonTargets = JSON.parse(importText.value);
 		for (let key in jsonTargets) {
-				let destXStr = jsonTargets[key].sector_target[0].toString().trim();
-				let destYStr = jsonTargets[key].sector_target[1].toString().trim();
-				let scanBlock = buildScanBlock(destXStr, destYStr);
-				let fleetSavedData = await GM.getValue(key, '{}');
-				let fleetParsedData = JSON.parse(fleetSavedData);
-				fleetParsedData.dest = destXStr + ',' + destYStr;
-				fleetParsedData.scanBlock = scanBlock;
-				await GM.setValue(key, JSON.stringify(fleetParsedData));
-				let userFleetIndex = userFleets.findIndex(item => {return item.publicKey == key});
-				userFleets[userFleetIndex].destCoord = destXStr + ',' + destYStr;
-				userFleets[userFleetIndex].scanBlock = scanBlock;
+			let destXStr = jsonTargets[key].sector_target[0].toString().trim();
+			let destYStr = jsonTargets[key].sector_target[1].toString().trim();
+			let scanBlock = buildScanBlock(destXStr, destYStr);
+			let fleetSavedData = await GM.getValue(key, '{}');
+			let fleetParsedData = JSON.parse(fleetSavedData);
+			fleetParsedData.dest = destXStr + ',' + destYStr;
+			fleetParsedData.scanBlock = scanBlock;
+			await GM.setValue(key, JSON.stringify(fleetParsedData));
+			let userFleetIndex = userFleets.findIndex(item => {return item.publicKey == key});
+			userFleets[userFleetIndex].destCoord = destXStr + ',' + destYStr;
+			userFleets[userFleetIndex].scanBlock = scanBlock;
 		}
 		assistImportToggle();
 	}
@@ -2224,6 +2227,7 @@
 
 		globalSettings = {
 			priorityFee: parseIntDefault(document.querySelector('#priorityFee').value, 1),
+			lowPriorityFeeMultiplier: parseIntDefault(document.querySelector('#lowPriorityFeeMultiplier').value, 10),
 			confirmationCheckingDelay: parseIntDefault(document.querySelector('#confirmationCheckingDelay').value, 200),
 			debugLogLevel: parseIntDefault(document.querySelector('#debugLogLevel').value, 3),
 			transportUseAmmoBank: document.querySelector('#transportUseAmmoBank').checked,
@@ -2234,7 +2238,7 @@
 			scanResupplyOnLowFuel: document.querySelector('#scanResupplyOnLowFuel').checked,
 			scanSectorRegenTime: parseIntDefault(document.querySelector('#scanSectorRegenTime').value, 90),
 			scanPauseTime: parseIntDefault(document.querySelector('#scanPauseTime').value, 600),
-			scanStrikeTime: parseIntDefault(document.querySelector('#scanStrikeTime').value, 60),
+			scanStrikeCount: parseIntDefault(document.querySelector('#scanStrikeCount').value, 3),
 			statusPanelOpacity: parseIntDefault(document.querySelector('#statusPanelOpacity').value, 75),
 			autoStartScript: document.querySelector('#autoStartScript').checked,
 			reloadPageOnFailedFleets: parseIntDefault(document.querySelector('#reloadPageOnFailedFleets').value, 0),
@@ -2252,6 +2256,7 @@
 
 	async function addSettingsInput() {
 		document.querySelector('#priorityFee').value = globalSettings.priorityFee;
+		document.querySelector('#lowPriorityFeeMultiplier').value = globalSettings.lowPriorityFeeMultiplier;
 		document.querySelector('#confirmationCheckingDelay').value = globalSettings.confirmationCheckingDelay;
 		document.querySelector('#debugLogLevel').value = globalSettings.debugLogLevel;
 		document.querySelector('#transportUseAmmoBank').checked = globalSettings.transportUseAmmoBank;
@@ -2262,7 +2267,7 @@
 		document.querySelector('#scanResupplyOnLowFuel').checked =  globalSettings.scanResupplyOnLowFuel;
 		document.querySelector('#scanSectorRegenTime').value = globalSettings.scanSectorRegenTime;
 		document.querySelector('#scanPauseTime').value = globalSettings.scanPauseTime;
-		document.querySelector('#scanStrikeTime').value = globalSettings.scanStrikeTime;
+		document.querySelector('#scanStrikeCount').value = globalSettings.scanStrikeCount;
 		document.querySelector('#statusPanelOpacity').value = globalSettings.statusPanelOpacity;
 		document.querySelector('#autoStartScript').checked = globalSettings.autoStartScript;
 		document.querySelector('#reloadPageOnFailedFleets').value = globalSettings.reloadPageOnFailedFleets;
@@ -2275,7 +2280,7 @@
 			targetElem.style.display = 'block';
 		} 
 		else targetElem.style.display = 'none';
-}
+	}
 
 	function assistModalToggle() {
 		cLog(4,`${FleetTimeStamp('SYSTEM')} Solana Reads: ${solanaReadCount} / Writes: ${solanaWriteCount}`);
@@ -2358,10 +2363,7 @@
 		//Fleet idle and needs to be moved?
 		if (fleetState == 'Idle' && extra.length > 1 && moveDist && moveX !== null && moveX !== '' && moveY != null && moveY !== '') {
 			if (extra[0] !== moveX || extra[1] !== moveY) {
-				const oldWarpCost = calculateWarpFuelBurn(userFleets[i], moveDist);
 				let warpCost = calcWarpFuelReq(userFleets[i], extra, [moveX, moveY]);
-				cLog(4, `${FleetTimeStamp(userFleets[i].label)} handleMovement:`, extra, [moveX, moveY]);
-				cLog(4, `${FleetTimeStamp(userFleets[i].label)} oldWarpCost: ${oldWarpCost}`);
 				cLog(4, `${FleetTimeStamp(userFleets[i].label)} warpCost: ${warpCost}`);
 				let subwarpCost = calculateSubwarpFuelBurn(userFleets[i], moveDist);
 				let fleetCurrentFuelTank = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: tokenProgramPK});
@@ -2396,7 +2398,7 @@
 						const fleetPK = userFleets[i].publicKey.toString();
 						const fleetSavedData = await GM.getValue(fleetPK, '{}');
 						const fleetParsedData = JSON.parse(fleetSavedData);
-						cLog(3, `${FleetTimeStamp(userFleets[i].label)} moveTargets`, fleetParsedData.moveTarget, userFleets[i].moveTarget);
+						//cLog(3, `${FleetTimeStamp(userFleets[i].label)} moveTargets`, fleetParsedData.moveTarget, userFleets[i].moveTarget);
 						fleetParsedData.moveTarget = userFleets[i].moveTarget;
 						await GM.setValue(fleetPK, JSON.stringify(fleetParsedData));
 
@@ -2465,122 +2467,130 @@
 	}
 
 	async function handleScan(i, fleetCoords, destCoords) {
-			let fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
-			let cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
-			let currentToolAcct = fleetCurrentCargo.value.find(item => item.pubkey.toString() === userFleets[i].repairKitToken.toString());
-			let currentToolCnt = currentToolAcct.account.data.parsed.info.delegatedAmount ? currentToolAcct.account.data.parsed.info.delegatedAmount.uiAmount : 0;
-			let readyToScan = true;
+		let fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
+		let cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
+		let currentToolAcct = fleetCurrentCargo.value.find(item => item.pubkey.toString() === userFleets[i].repairKitToken.toString());
+		let currentToolCnt = currentToolAcct.account.data.parsed.info.delegatedAmount ? currentToolAcct.account.data.parsed.info.delegatedAmount.uiAmount : 0;
+		
+		if(
+			//Cargo full check for data runner fleets
+			((userFleets[i].scanCost == 0) && (userFleets[i].cargoCapacity - cargoCnt < 100)) ||
+			//Toolkit count check for regular scanning fleets	
+			(currentToolCnt < userFleets[i].scanCost)
+		) {
+			await handleResupply(i, fleetCoords);
+			return;
+		}
 
-			if (userFleets[i].scanCost == 0) {
-				if (userFleets[i].cargoCapacity - cargoCnt < 100) readyToScan = false;
-			} else if (currentToolCnt < userFleets[i].scanCost) readyToScan = false;
+		let moved = false;
+		if ((fleetCoords[0] !== destCoords[0] || fleetCoords[1] !== destCoords[1])) {
+			if (!userFleets[i].state.includes('Warp C/D')) {
+				const starbaseCoords = ConvertCoords(userFleets[i].starbaseCoord);
+				//cLog(4, `${FleetTimeStamp(userFleets[i].label)} starbaseCoords: ${starbaseCoords}`);
 
-			if (readyToScan) {
-					let moved = false;
-					if ((fleetCoords[0] !== destCoords[0] || fleetCoords[1] !== destCoords[1])) {
-						if (!userFleets[i].state.includes('Warp C/D')) {
-							let fleetCurrentFuelTank = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: tokenProgramPK});
-							let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
-							let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
-							let starbaseX = userFleets[i].starbaseCoord.split(',')[0].trim();
-							let starbaseY = userFleets[i].starbaseCoord.split(',')[1].trim();
-							let furthestPoint = userFleets[i].scanBlock.reduce((max, val) => calculateMovementDistance(max, [starbaseX,starbaseY]) > calculateMovementDistance(val, [starbaseX,starbaseY]) ? max : val);
-							let distToStarbase = Math.max(calculateMovementDistance(fleetCoords, [starbaseX,starbaseY]), calculateMovementDistance(furthestPoint, [starbaseX,starbaseY]));
-							//cLog(2, `${FleetTimeStamp(userFleets[i].label)} distToStarbase: ${distToStarbase}`);
-							let fuelNeeded = 0;
-							if (userFleets[i].moveType == 'warp') {
-									const oldFuelNeeded = calculateWarpFuelBurn(userFleets[i], distToStarbase) + calculateWarpFuelBurn(userFleets[i], 2);
-									fuelNeeded = 
-										calcWarpFuelReq(userFleets[i], fleetCoords, [starbaseX, starbaseY]) + 
-										calcWarpFuelReq(userFleets[i], fleetCoords, destCoords);
-									cLog(4, `${FleetTimeStamp(userFleets[i].label)} handleScan:`, fleetCoords, [starbaseX, starbaseY], destCoords);
-									cLog(4, `${FleetTimeStamp(userFleets[i].label)} oldWarpCost: ${oldFuelNeeded}`);
-									cLog(4, `${FleetTimeStamp(userFleets[i].label)} warpCost: ${fuelNeeded}`);
-							} else {
-									fuelNeeded = calculateSubwarpFuelBurn(userFleets[i], distToStarbase) + calculateSubwarpFuelBurn(userFleets[i], 2);
-							}
-							//cLog(2, `${FleetTimeStamp(userFleets[i].label)} currentFuelCnt: ${currentFuelCnt}`);
-							let fuelReadout = `${FleetTimeStamp(userFleets[i].label)} Fuel: ${Math.round(fuelNeeded)} / ${Math.round(currentFuelCnt)}`;
-							if (currentFuelCnt > fuelNeeded) {
-									cLog(1, `${FleetTimeStamp(userFleets[i].label)} Fuel:`, fuelReadout);
-									let moveDist = calculateMovementDistance(fleetCoords, destCoords);
-									if (moveDist > 0) {
-											moved = true;
-											const scanEndsIn = Math.max(0, userFleets[i].scanEnd - Date.now());
-											//Clamp the scan end time to the cooldown if it is higher (due to paused scanning)
-											userFleets[i].scanEnd = scanEndsIn > userFleets[i].scanCooldown ? userFleets[i].scanCooldown : scanEndsIn;
-											await handleMovement(i, moveDist, destCoords[0], destCoords[1]);
-											cLog(1,`${FleetTimeStamp(userFleets[i].label)} Movement finished`);
-											userFleets[i].scanSectorStart = Date.now();
-									} else {
-											cLog(1,`${FleetTimeStamp(userFleets[i].label)} Skipping movement`);
-									}
-							} else {
-								cLog(1, `${FleetTimeStamp(userFleets[i].label)} Fuel: ${fuelReadout} (low)`);
-								if(globalSettings.scanResupplyOnLowFuel) {
-									await handleResupply(i, fleetCoords);
-									moved = true;
-								} else {
-									cLog(3, `${FleetTimeStamp(userFleets[i].label)} Moved:`, moved);
-								}
-							}
+				let fuelNeeded = 0;
+				if (userFleets[i].moveType == 'warp') {
+					const warpCostFromFleetToDest = calcWarpFuelReq(userFleets[i], fleetCoords, destCoords);
+					const warpCostFromDestToStarbase = calcWarpFuelReq(userFleets[i], destCoords, starbaseCoords);
+					fuelNeeded = warpCostFromFleetToDest + warpCostFromDestToStarbase;
+					cLog(4, `${FleetTimeStamp(userFleets[i].label)} Warp cost to target: ${warpCostFromFleetToDest}`);
+					cLog(4, `${FleetTimeStamp(userFleets[i].label)} Warp cost to return: ${warpCostFromDestToStarbase}`);
+					cLog(4, `${FleetTimeStamp(userFleets[i].label)} Warp cost total: ${fuelNeeded}`);
+				} else {
+					const distToTarget = calculateMovementDistance(fleetCoords, destCoords);
+					const distFromTargetToStarbase = calculateMovementDistance(destCoords, starbaseCoords);
+					fuelNeeded = calculateSubwarpFuelBurn(userFleets[i], distToTarget + distFromTargetToStarbase);
+					cLog(4, `${FleetTimeStamp(userFleets[i].label)} Subwarp cost total: ${fuelNeeded}`);
+				}
+
+				const fleetCurrentFuelTank = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: tokenProgramPK});
+				const currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
+				const currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
+				const fuelReadout = `Fuel: need ${Math.round(fuelNeeded)} / have ${Math.round(currentFuelCnt)}`;
+				if (currentFuelCnt > fuelNeeded) {
+						cLog(1, `${FleetTimeStamp(userFleets[i].label)}`, fuelReadout);
+						let moveDist = calculateMovementDistance(fleetCoords, destCoords);
+						if (moveDist > 0) {
+								moved = true;
+								const scanEndsIn = Math.max(0, userFleets[i].scanEnd - Date.now());
+								//Clamp the scan end time to the cooldown if it is higher (due to paused scanning)
+								userFleets[i].scanEnd = scanEndsIn > userFleets[i].scanCooldown ? userFleets[i].scanCooldown : scanEndsIn;
+								await handleMovement(i, moveDist, destCoords[0], destCoords[1]);
+								cLog(1,`${FleetTimeStamp(userFleets[i].label)} Movement finished`);
+								userFleets[i].scanStrikes = 0;
+						} else {
+								cLog(1,`${FleetTimeStamp(userFleets[i].label)} Skipping movement`);
 						}
+				} else {
+					cLog(1, `${FleetTimeStamp(userFleets[i].label)} ${fuelReadout} (low)`);
+					if(globalSettings.scanResupplyOnLowFuel) {
+						await handleResupply(i, fleetCoords);
+						moved = true;
+					} else {
+						cLog(3, `${FleetTimeStamp(userFleets[i].label)} Moved:`, moved);
 					}
-
-					if (!moved && Date.now() > userFleets[i].scanEnd) {
-							//No longer required due to each fleet running on it's own timer
-							//userFleets[i].scanEnd = Date.now() + (userFleets[i].scanCooldown * 1000 + 600000); // failsafe to avoid duplicate scans in case Solana is lagging
-							userFleets[i].lastScanCoord = userFleets[i].destCoord;
-							let scanResult = await execScan(userFleets[i]);
-							userFleets[i].scanSectorStart = userFleets[i].scanSectorStart == 0 ? Date.now() : userFleets[i].scanSectorStart;
-							let changesSDU = scanResult ? getBalanceChange(scanResult, userFleets[i].sduToken.toString()) : {postBalance: userFleets[i].sduCnt, preBalance: userFleets[i].sduCnt};
-							let changesTool = scanResult ? getBalanceChange(scanResult, userFleets[i].repairKitToken.toString()) : {postBalance: userFleets[i].toolCnt - userFleets[i].scanCost, preBalance: userFleets[i].toolCnt};
-							let scanConditionLog = scanResult && scanResult.meta.logMessages ? scanResult.meta.logMessages.find(item => item.startsWith("Program log: SDU probability:")) : null;
-							let scanCondition = scanConditionLog ? (Number(scanConditionLog.split(' ').pop())*100).toFixed(4) : 0;
-							let sduFound = 0;
-							if (changesSDU.postBalance != changesSDU.preBalance) {
-									sduFound = changesSDU.postBalance - changesSDU.preBalance;
-									userFleets[i].scanSectorStart = scanCondition < userFleets[i].scanMin ? userFleets[i].scanSectorStart : Date.now();
-									userFleets[i].scanSkipCnt = 0;
-							}
-
-							let timeOnSector = Date.now() - userFleets[i].scanSectorStart;
-							let scanLow = scanCondition < userFleets[i].scanMin;
-							let timeUp = timeOnSector >= (globalSettings.scanStrikeTime * 1000);
-							let strike = (scanLow && timeUp) ? true : false;
-							let shouldMove = strike && userFleets[i].scanMove;
-							userFleets[i].scanSkipCnt = strike ? userFleets[i].scanSkipCnt + 1 : 0;
-							cLog(1,`${FleetTimeStamp(userFleets[i].label)} 📡 ${Math.round(scanCondition)}%${sduFound > 0 ? ` | FOUND: ${sduFound}` : ''}`);
-							let nextMoveIdx = userFleets[i].scanBlockIdx > userFleets[i].scanBlock.length - 2 ? 0 : userFleets[i].scanBlockIdx+1;
-							userFleets[i].scanBlockIdx = shouldMove ? nextMoveIdx : userFleets[i].scanBlockIdx;
-							userFleets[i].toolCnt = changesTool.postBalance;
-							userFleets[i].sduCnt = changesSDU.postBalance;
-							if (userFleets[i].scanSkipCnt < userFleets[i].scanBlock.length - 1) {
-									let scanDelayMs = userFleets[i].scanCooldown * 1000 + 2000;
-									if(sduFound) scanDelayMs = Math.max(scanDelayMs, globalSettings.scanSectorRegenTime * 1000);
-									userFleets[i].scanEnd = Date.now() + scanDelayMs;
-									userFleets[i].state = `Scanned [${Math.round(scanCondition)}%]${sduFound ? ` +${sduFound}` : ''}`;
-							} else {
-									userFleets[i].scanEnd = Date.now() + (globalSettings.scanPauseTime * 1000);
-									userFleets[i].state = `Scanning Paused [${TimeToStr(new Date(userFleets[i].scanEnd))}]`;
-									cLog(1,`${FleetTimeStamp(userFleets[i].label)} Scanning Paused due to low probability [${TimeToStr(new Date(userFleets[i].scanEnd))}]`);
-									userFleets[i].scanSkipCnt = 0;
-							}
-
-							updateAssistStatus(userFleets[i]);
-
-							const newToolCount = currentToolCnt - userFleets[i].scanCost;
-							//cLog(2, `${FleetTimeStamp(userFleets[i].label)} Tools: ${userFleets[i].toolCnt} | ${newToolCount}`);
-							if(newToolCount < userFleets[i].scanCost)
-							{
-								//Start resupply immediately rather than waiting for scan cooldown
-								userFleets[i].scanEnd = Date.now();
-								//cLog(2, `${FleetTimeStamp(userFleets[i].label)} Starting resupply`);
-							}
-					}
-			} else {
-				await handleResupply(i, fleetCoords);
+				}
 			}
+		}
+
+		if (!moved && Date.now() > userFleets[i].scanEnd) {
+			userFleets[i].lastScanCoord = userFleets[i].destCoord;
+			if(!userFleets[i].scanStrikes) userFleets[i].scanStrikes = 0;
+			const scanResult = await execScan(userFleets[i]);
+			const changesSDU = scanResult ? getBalanceChange(scanResult, userFleets[i].sduToken.toString()) : {postBalance: userFleets[i].sduCnt, preBalance: userFleets[i].sduCnt};
+			const changesTool = scanResult ? getBalanceChange(scanResult, userFleets[i].repairKitToken.toString()) : {postBalance: userFleets[i].toolCnt - userFleets[i].scanCost, preBalance: userFleets[i].toolCnt};
+			const scanConditionLog = scanResult && scanResult.meta.logMessages ? scanResult.meta.logMessages.find(item => item.startsWith("Program log: SDU probability:")) : null;
+			const scanCondition = scanConditionLog ? (Number(scanConditionLog.split(' ').pop())*100).toFixed(4) : 0;
+			userFleets[i].toolCnt = changesTool.postBalance;
+			userFleets[i].sduCnt = changesSDU.postBalance;
+
+			let sduFound = 0;
+			if (changesSDU.postBalance != changesSDU.preBalance) {
+					sduFound = changesSDU.postBalance - changesSDU.preBalance;
+					userFleets[i].scanSkipCnt = 0;
+			}
+
+			cLog(1,`${FleetTimeStamp(userFleets[i].label)} 📡 ${Math.round(scanCondition)}%${sduFound > 0 ? ` | 💰 FOUND: ${sduFound}` : ''}`);
+			if(!sduFound && scanCondition < userFleets[i].scanMin) {
+				userFleets[i].scanStrikes++;
+				cLog(3,`${FleetTimeStamp(userFleets[i].label)} ⚡️ Strike ${userFleets[i].scanStrikes} / ${globalSettings.scanStrikeCount}`);
+			} else {
+				userFleets[i].scanStrikes = 0;
+				cLog(3,`${FleetTimeStamp(userFleets[i].label)} 🔙 Strikes reset`);
+			}
+
+			const struckOut = userFleets[i].scanStrikes >= globalSettings.scanStrikeCount;
+			if(struckOut) {
+				cLog(3,`${FleetTimeStamp(userFleets[i].label)} 🔺 Sector struck out`);
+				userFleets[i].scanSkipCnt++;
+			}
+
+			//Iterate pattern positioning id (or reset to 0 if reached end)
+			if(userFleets[i].scanMove && struckOut)
+				userFleets[i].scanBlockIdx = userFleets[i].scanBlockIdx > userFleets[i].scanBlock.length - 2 ? 0 : userFleets[i].scanBlockIdx+1;
+
+			const needPause = 
+				(struckOut && !userFleets[i].scanMove) ||
+				(userFleets[i].scanMove && userFleets[i].scanSkipCnt >= userFleets[i].scanBlock.length - 1)
+			
+			if (needPause) {
+				userFleets[i].scanEnd = Date.now() + (globalSettings.scanPauseTime * 1000);
+				userFleets[i].state = `Scanning Paused [${TimeToStr(new Date(userFleets[i].scanEnd))}]`;
+				cLog(1,`${FleetTimeStamp(userFleets[i].label)} Scanning Paused due to low probability [${TimeToStr(new Date(userFleets[i].scanEnd))}]`);
+				userFleets[i].scanSkipCnt = 0;
+				userFleets[i].scanStrikes = 0;
+			} else {
+				let scanDelayMs = userFleets[i].scanCooldown * 1000 + 2000;
+				if(sduFound) scanDelayMs = Math.max(scanDelayMs, globalSettings.scanSectorRegenTime * 1000);
+				userFleets[i].scanEnd = Date.now() + scanDelayMs;
+				userFleets[i].state = `Scanned [${Math.round(scanCondition)}%]${sduFound ? ` +${sduFound}` : ''}`;
+			}
+
+			updateAssistStatus(userFleets[i]);
+
+			//Start resupply immediately rather than waiting for scan cooldown
+			if(currentToolCnt - userFleets[i].scanCost < userFleets[i].scanCost) userFleets[i].scanEnd = Date.now();
+		}
 	}
 
 	async function handleResupply(i, fleetCoords) {
@@ -2589,35 +2599,48 @@
 
 		async function unloadSDU() {
 			cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading SDU`);
-			let fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
-			let currentSduCnt = fleetCurrentCargo.value.find(item => item.pubkey.toString() === userFleets[i].sduToken.toString())
-			if (currentSduCnt && currentSduCnt.account.data.parsed.info.tokenAmount.uiAmount > 0) {
-				await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, SDUAddy, userFleets[i].starbaseCoord, currentSduCnt.account.data.parsed.info.tokenAmount.uiAmount);
-				userFleets[i].sduCnt = 0;
+
+			//Get SDU count
+			const fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
+			const currentSduCnt = fleetCurrentCargo.value.find(item => item.pubkey.toString() === userFleets[i].sduToken.toString())
+			const sduCount = currentSduCnt ? currentSduCnt.account.data.parsed.info.tokenAmount.uiAmount : 0;
+
+			//Unload all but 1 to keep SDU token account open
+			if (sduCount > 1) {
+				const sduToUnload = sduCount - 1;
+				await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, SDUAddy, userFleets[i].starbaseCoord, sduToUnload);
+				cLog(2,`${FleetTimeStamp(userFleets[i].label)} Unloaded ${sduToUnload} SDU`);
+				userFleets[i].sduCnt = 1;
 			}
 		}
-		
+
 		async function loadTools() {
 			cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loading Tools`);
-			let fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
-			let toolsAccount = fleetCurrentCargo.value.find(item => item.pubkey.toString() === userFleets[i].repairKitToken.toString())
+
+			//Update this just in case it's missing
+			//await getAccountInfo(userFleets[i].label, 'fleet repair kit token', userFleets[i].repairKitToken) || await createPDA(userFleets[i].repairKitToken, userFleets[i].cargoHold, toolsPK, userFleets[i]);
+
+			//Calculate occupied cargo count
+			const preLoadCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
+			const preLoadCargoCount = preLoadCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
+	
+			//Fill remaining cargo with toolkits
 			await execCargoFromStarbaseToFleet(
-				userFleets[i], 
-				userFleets[i].cargoHold, 
-				userFleets[i].repairKitToken, 
-				toolsAddy, 
-				repairKitCargoTypeAcct, 
-				userFleets[i].starbaseCoord, 
-				userFleets[i].cargoCapacity - toolsAccount.account.data.parsed.info.tokenAmount.uiAmount
+				userFleets[i],
+				userFleets[i].cargoHold,
+				userFleets[i].repairKitToken,
+				toolsAddy,
+				repairKitCargoTypeAcct,
+				userFleets[i].starbaseCoord,
+				userFleets[i].cargoCapacity - preLoadCargoCount
 			);
 
 			//Wait for RPC to catch up
 			await wait(2000);
 
 			//Update toolkit count
-			fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
-			toolsAccount = fleetCurrentCargo.value.find(item => item.pubkey.toString() === userFleets[i].repairKitToken.toString())
-			userFleets[i].toolCnt = toolsAccount ? toolsAccount.account.data.parsed.info.tokenAmount.uiAmount : 0;
+			const repairKitCargo = await solanaReadConnection.getTokenAccountBalance(userFleets[i].repairKitToken);
+			userFleets[i].toolCnt = repairKitCargo.value.amount;
 
 			//Were enough tools loaded?
 			if (userFleets[i].toolCnt < userFleets[i].scanCost) {
@@ -2635,7 +2658,14 @@
 			let fleetCurrentFuel = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: tokenProgramPK});
 			let currentFuelCnt = fleetCurrentFuel.value.find(item => item.pubkey.toString() === userFleets[i].fuelToken.toString())
 
-			await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, userFleets[i].fuelToken, fuelAddy, fuelCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].fuelCapacity - currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount);
+			await execCargoFromStarbaseToFleet(
+				userFleets[i],
+				userFleets[i].fuelTank,
+				userFleets[i].fuelToken,
+				fuelAddy, fuelCargoTypeAcct,
+				userFleets[i].starbaseCoord,
+				userFleets[i].fuelCapacity - currentFuelCnt.account.data.parsed.info.tokenAmount.uiAmount
+			);
 
 			//Allow rpc to catch up
 			await wait(2000);
@@ -2671,7 +2701,7 @@
 			if (userFleets[i].scanCost > 0) await loadTools();
 			await loadFuel();
 
-			//Re-create SDU token because SAGE deletes it after transferring them all to base
+			//Redundancy check to ensure all PDAs are present
 			await createScannerPDAs(userFleets[i]);
 
 			//Update last op to prevent fleet stall flagging
@@ -2940,7 +2970,7 @@
 				//Fetch update mining state from chain
 				const fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
 				const [fleetState, extra] = getFleetState(fleetAcctInfo);
-				cLog(3, `${FleetTimeStamp(userFleets[i].label)} chain fleet state: ${fleetState}`);
+				cLog(4, `${FleetTimeStamp(userFleets[i].label)} chain fleet state: ${fleetState}`);
 				fleetMining = fleetState == 'MineAsteroid' ? extra : [];			
 			}
 			
@@ -3075,7 +3105,7 @@
 		const account = token ? token.pubkey : await getFleetFuelToken(fleet);
 		const amount = token ? token.account.data.parsed.info.tokenAmount.uiAmount : 0;
 
-		cLog(4, `${FleetTimeStamp(fleet.label)} getFleetFuelData -> calcWarpFuelReq:`, currentPos, targetPos);
+		//cLog(4, `${FleetTimeStamp(fleet.label)} getFleetFuelData -> calcWarpFuelReq:`, currentPos, targetPos);
 		return {
 			account,
 			token,
@@ -3333,8 +3363,11 @@
 				else if (fleetParsedData.assignment == 'Scan' && fleetState == 'Idle') {
 					updateFleetState(userFleets[i], fleetState);
 					startupScanBlockCheck(i, fleetCoords);
-					let destCoords = userFleets[i].scanBlock[userFleets[i].scanBlockIdx];
-					await handleScan(i, fleetCoords, destCoords);
+					const curentSBI = userFleets[i].scanBlockIdx;
+					await handleScan(i, fleetCoords, userFleets[i].scanBlock[curentSBI]);
+
+					//Move instantly if a move is needed as the result of the previous scan
+					if(curentSBI !== userFleets[i].scanBlockIdx)	await handleScan(i, fleetCoords, userFleets[i].scanBlock[userFleets[i].scanBlockIdx]);
 				} 
 				else if (fleetParsedData.assignment == 'Mine') {
 					if(fleetState == 'MineAsteroid' && !userFleets[i].state.includes('Mine')) {
@@ -3623,7 +3656,7 @@
 					scanBlockIdx: fleetScanBlockIdx, 
 					scanEnd: 0, 
 					scanSkipCnt: 0, 
-					scanSectorStart: 0, 
+					scanStrikes: 0, 
 					scanMin: fleetScanMin, 
 					scanMove: fleetScanMove, 
 					toolCnt: currentToolCnt ? currentToolCnt.account.data.parsed.info.tokenAmount.uiAmount : 0,
@@ -3702,7 +3735,7 @@
 			settingsModal.style.display = 'none';
 			let settingsModalContent = document.createElement('div');
 			settingsModalContent.classList.add('assist-modal-content');
-			settingsModalContent.innerHTML = '<div class="assist-modal-header"> <img src="' + iconStr + '" /> <span style="padding-left: 15px;">SLY Lab Assistant v' + GM_info.script.version + '</span> <div class="assist-modal-header-right"> <button class=" assist-modal-btn assist-modal-save">Save</button> <span class="assist-modal-close">x</span> </div></div><div class="assist-modal-body"> <span id="settings-modal-error"></span> <div id="settings-modal-header">Global Settings</div> <div>Priority Fee <input id="priorityFee" type="number" min="0" max="100000000" placeholder="1" ></input> <span>Added to each transaction. Set to 0 (zero) to disable. 1 Lamport = 0.000000001 SOL</span> </div> <div>Tx Poll Delay <input id="confirmationCheckingDelay" type="number" min="200" max="10000" placeholder="200"></input> <span>How many milliseconds to wait before re-reading the chain for confirmation</span> </div> <div>Console Logging <input id="debugLogLevel" type="number" min="0" max="9" placeholder="3"></input> <span>How much console logging you want to see (higher number = more, 0 = none)</span> </div> <div>Use Ammo Banks for Transport? <input id="transportUseAmmoBank" type="checkbox"></input> <span>Should transports also use their ammo banks to help move ammo?</span> </div> <div>Stop Transports On Error <input id="transportStopOnError" type="checkbox"></input> <span>Should transport fleet stop completely if there is an error (example: not enough resource/fuel/etc.)?</span> </div> <div>Moving Scan Pattern <select id="scanBlockPattern"> <option value="square">square</option> <option value="ring">ring</option> <option value="spiral">spiral</option> <option value="up">up</option> <option value="down">down</option> <option value="left">left</option> <option value="right">right</option> <option value="sly">sly</option> </select> <span>Only applies to fleets set to Move While Scanning</span> </div> <div>Scan Block Length <input id="scanBlockLength" type="number" min="2" max="50" placeholder="5"></input> <span>How far fleets should go for the up, down, left and right scanning patterns</span> </div> <div>Scan Block Resets After Resupply? <input id="scanBlockResetAfterResupply" type="checkbox"></input> <span>Start from the beginning of the pattern after resupplying at starbase?</span> </div> <div>Scan Resupply On Low Fuel? <input id="scanResupplyOnLowFuel" type="checkbox"></input> <span>Do scanning fleets set to Move While Scanning return to base to resupply when fuel is too low to move?</span> </div> <div>Scan Sector Regeneration Delay <input id="scanSectorRegenTime" type="number" min="0" placeholder="90"></input> <span>Number of seconds to wait after finding SDU</span> </div> <div>Scan Pause Time <input id="scanPauseTime" type="number" min="240" max="6000" placeholder="600"></input> <span>Number of seconds to wait when sectors probabilities are too low</span> </div> <div>Scan Strike Time <input id="scanStrikeTime" type="number" min="0" max="300" placeholder="120"></input> <span>Number of seconds to scan a low probability sector before giving up and moving on (or pausing)</span> </div> <div>Status Panel Opacity <input id="statusPanelOpacity" type="range" min="1" max="100" value="75"></input> <span>(requires page refresh)</span> </div> <div>---</div> <div>Advanced Settings</div> <div>Auto Start Script <input id="autoStartScript" type="checkbox"></input> <span>Should Lab Assistant automatically start after initialization is complete?</span> </div> <div>Reload On Stuck Fleets <input id="reloadPageOnFailedFleets" type="number" min="0" max="999" placeholder="0"></input> <span>Automatically refresh the page if this many fleets get stuck (0 = never)</span> </div></div>';
+			settingsModalContent.innerHTML = '<div class="assist-modal-header"> <img src="' + iconStr + '" /> <span style="padding-left: 15px;">SLY Lab Assistant v' + GM_info.script.version + '</span> <div class="assist-modal-header-right"> <button class=" assist-modal-btn assist-modal-save">Save</button> <span class="assist-modal-close">x</span> </div></div><div class="assist-modal-body"> <span id="settings-modal-error"></span> <div id="settings-modal-header">Global Settings</div> <div>Priority Fee <input id="priorityFee" type="number" min="0" max="100000000" placeholder="1" ></input> <span>Added to each transaction. Set to 0 (zero) to disable. 1 Lamport = 0.000000001 SOL</span> </div> <div>Low Priority Fee % <input id="lowPriorityFeeMultiplier" type="range" min="0" max="100" value="10" step="10"></input> <span>Percentage above priority fees that should be used for smaller transactions</span> </div> <div>Tx Poll Delay <input id="confirmationCheckingDelay" type="number" min="200" max="10000" placeholder="200"></input> <span>How many milliseconds to wait before re-reading the chain for confirmation</span> </div> <div>Console Logging <input id="debugLogLevel" type="number" min="0" max="9" placeholder="3"></input> <span>How much console logging you want to see (higher number = more, 0 = none)</span> </div> <div>Use Ammo Banks for Transport? <input id="transportUseAmmoBank" type="checkbox"></input> <span>Should transports also use their ammo banks to help move ammo?</span> </div> <div>Stop Transports On Error <input id="transportStopOnError" type="checkbox"></input> <span>Should transport fleet stop completely if there is an error (example: not enough resource/fuel/etc.)?</span> </div> <div>Moving Scan Pattern <select id="scanBlockPattern"> <option value="square">square</option> <option value="ring">ring</option> <option value="spiral">spiral</option> <option value="up">up</option> <option value="down">down</option> <option value="left">left</option> <option value="right">right</option> <option value="sly">sly</option> </select> <span>Only applies to fleets set to Move While Scanning</span> </div> <div>Scan Block Length <input id="scanBlockLength" type="number" min="2" max="50" placeholder="5"></input> <span>How far fleets should go for the up, down, left and right scanning patterns</span> </div> <div>Scan Block Resets After Resupply? <input id="scanBlockResetAfterResupply" type="checkbox"></input> <span>Start from the beginning of the pattern after resupplying at starbase?</span> </div> <div>Scan Resupply On Low Fuel? <input id="scanResupplyOnLowFuel" type="checkbox"></input> <span>Do scanning fleets set to Move While Scanning return to base to resupply when fuel is too low to move?</span> </div> <div>Scan Sector Regeneration Delay <input id="scanSectorRegenTime" type="number" min="0" placeholder="90"></input> <span>Number of seconds to wait after finding SDU</span> </div> <div>Scan Pause Time <input id="scanPauseTime" type="number" min="240" max="6000" placeholder="600"></input> <span>Number of seconds to wait when sectors probabilities are too low</span> </div> <div>Scan Strike Count <input id="scanStrikeCount" type="number" min="1" max="10" placeholder="3"></input> <span>Number of low % scans before moving on or pausing</span> </div> <div>Status Panel Opacity <input id="statusPanelOpacity" type="range" min="1" max="100" value="75"></input> <span>(requires page refresh)</span> </div> <div>---</div> <div>Advanced Settings</div> <div>Auto Start Script <input id="autoStartScript" type="checkbox"></input> <span>Should Lab Assistant automatically start after initialization is complete?</span> </div> <div>Reload On Stuck Fleets <input id="reloadPageOnFailedFleets" type="number" min="0" max="999" placeholder="0"></input> <span>Automatically refresh the page if this many fleets get stuck (0 = never)</span> </div></div>';
 			settingsModal.append(settingsModalContent);		
 
 			let importModal = document.createElement('div');
