@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.5.1
+// @version      0.5.2
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra
 // @match        https://*.based.staratlas.com/
@@ -19,22 +19,20 @@
 	'use strict';
 
 	//Used for reading solana data
-	let readRPCs = [
-		'https://rpc.hellomoon.io/57dbc69d-7e66-4454-b33e-fa6a4b46170f', //Hello Moon
-        'https://staratl-mainc06-2415.mainnet.rpcpool.com', //Triton
-        'https://mainnet.helius-rpc.com/?api-key=735486d8-ae86-4d26-829c-e34a2210d119', //Helius
-        'https://twilight-autumn-diagram.solana-mainnet.quiknode.pro/4fc53d638efd1cc0f80764bc457944bb325d1ff1', //Quicknode
-		'https://solana-api.syndica.io/access-token/WPoEqWQ2auQQY1zHRNGJyRBkvfOLqw58FqYucdYtmy8q9Z84MBWwqtfVf8jKhcFh/rpc', //Syndica (Old)
-	];
+	let customReadRPCs = [];
 
 	//Used for pushing transactions to solana chain
-	let writeRPCs = [
+	let customWriteRPCs = [];
+
+    let saRPCs = [
         'https://twilight-autumn-diagram.solana-mainnet.quiknode.pro/4fc53d638efd1cc0f80764bc457944bb325d1ff1', //Quicknode
 		'https://rpc.hellomoon.io/57dbc69d-7e66-4454-b33e-fa6a4b46170f', //Hello Moon
         'https://staratl-mainc06-2415.mainnet.rpcpool.com', //Triton
         'https://mainnet.helius-rpc.com/?api-key=735486d8-ae86-4d26-829c-e34a2210d119', //Helius
 		'https://solana-api.syndica.io/access-token/WPoEqWQ2auQQY1zHRNGJyRBkvfOLqw58FqYucdYtmy8q9Z84MBWwqtfVf8jKhcFh/rpc', //Syndica (Old)
 	];
+    let readRPCs = customReadRPCs.concat(saRPCs);
+    let writeRPCs = customWriteRPCs.concat(saRPCs);
 
 	//Program public keys
     /*
@@ -172,21 +170,21 @@
 			result = await origMethod.apply(target, args);
 		} catch (error1) {
 			cLog(2, `${proxyType} CONNECTION ERROR: `, error1);
+            cLog(2, `${proxyType} current RPC: ${target._rpcWsEndpoint}`);
 			if (isConnectivityError(error1)) {
 				let success = false;
 				let rpcIdx = 1;
 				while (!success && rpcIdx < rpcs.length) {
-					cLog(2, `${proxyType} rpcIdx: ${rpcIdx} success: ${success}`);
+					cLog(2, `${proxyType} trying ${rpcs[rpcIdx]}`);
 					const newConnection = new solanaWeb3.Connection(rpcs[rpcIdx], 'confirmed');
 					try {
 						result = await origMethod.apply(newConnection, args);
 						success = true;
-						cLog(2, `${proxyType} NEW: `, result);
 					} catch (error2) {
 						cLog(2, `${proxyType} INNER ERROR: `, error2);
 						if (!isConnectivityError(error2)) return error2;
 					}
-					rpcIdx = rpcIdx+1 < rpcs.length ? rpcIdx+1 : rpcs.length-1;
+					rpcIdx = rpcIdx+1 < rpcs.length ? rpcIdx+1 : 0;
 
 					//Prevent spam if errors are occurring immediately (disconnected from internet / unplugged cable)
 					await wait(500);
@@ -218,12 +216,16 @@
 		},
 	}
 
-	const rawSolanaReadConnection = new solanaWeb3.Connection(readRPCs[0], 'confirmed');
+    const readIdx = customReadRPCs.length > 0 ? 0 : Math.floor(Math.random() * saRPCs.length);
+    const writeIdx = customReadRPCs.length > 0 ? 0 : Math.floor(Math.random() * saRPCs.length);
+	const rawSolanaReadConnection = new solanaWeb3.Connection(readRPCs[readIdx], 'confirmed');
 	const solanaReadConnection = new Proxy(rawSolanaReadConnection, readConnectionProxy);
-	const rawSolanaWriteConnection = new solanaWeb3.Connection(writeRPCs[0], 'confirmed');
+	const rawSolanaWriteConnection = new solanaWeb3.Connection(writeRPCs[writeIdx], 'confirmed');
 	const solanaWriteConnection = new Proxy(rawSolanaWriteConnection, writeConnectionProxy);
 	let solanaReadCount = 0;
 	let solanaWriteCount = 0;
+    cLog(1, `Read RPC: ${readRPCs[readIdx]}`);
+    cLog(1, `Write RPC: ${writeRPCs[writeIdx]}`);
 
 	//Not sure what this does, but it seems to do some reads, so sticking it on the read connection
 	const anchorProvider = new BrowserAnchor.anchor.AnchorProvider(solanaReadConnection, null, null);
@@ -805,8 +807,11 @@
 	async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName) {
 		let {blockHeight: curBlockHeight} = await solanaReadConnection.getEpochInfo({ commitment: 'confirmed' });
 		let interimBlockHeight = curBlockHeight;
+        cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> curBlockHeight`, curBlockHeight);
+        cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> lastValidBlockHeight`, lastValidBlockHeight);
 		if (curBlockHeight > lastValidBlockHeight) return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
 		txHash = await solanaWriteConnection.sendRawTransaction(txSerialized, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
+        cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> txHash`, txHash);
 
 		while ((curBlockHeight - interimBlockHeight) < 10) {
 				const signatureStatus = await solanaReadConnection.getSignatureStatus(txHash);
@@ -879,10 +884,16 @@
 
 				let microOpStart = Date.now();
 				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> SEND ➡️`);
-				let response = await sendAndConfirmTx(txSerialized, tx.lastValidBlockHeight, null, fleet, opName);
+				let response = await sendAndConfirmTx(txSerialized, latestBH.lastValidBlockHeight, null, fleet, opName);
 				let txHash = response.txHash;
 				let confirmation = response.confirmation;
 				let txResult = txHash ? await solanaReadConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1}) : undefined;
+                if ((confirmation.value && confirmation.value.err && confirmation.value.err.InstructionError) || (txResult && txResult.meta && txResult.meta.err && txResult.meta.err.InstructionError)) {
+                    updateFleetState(fleet, 'ERROR: Ix Error');
+                    cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> ERROR ❌ The instruction resulted in an error.`);
+                    let ixError = txResult && txResult.meta && txResult.meta.logMessages ? txResult.meta.logMessages : 'Unknown';
+                    console.log('txResult.logMessages: ', ixError);
+                }
 
 				const confirmationTimeStr = `${Date.now() - microOpStart}ms`;
 
@@ -3111,7 +3122,7 @@
 				planet = planetCheck
 			}
 		}
-		let systemRichness = null;
+		let systemRichness = 0;
 		if (sageResource && sageResource.account) {
 			systemRichness = sageResource.account.systemRichness;
 		} else {
@@ -3221,7 +3232,7 @@
 			let needSupplies = false;
 
 			//Hard-coded 60 second duration check: no point resuming mining if it'll take less than 1 minute to finish
-			if(miningDuration < 60) {
+			if (miningDuration < 60) {
 				cLog(1,`${FleetTimeStamp(userFleets[i].label)} Supplies low, only ${miningDuration} seconds left`);
 				needSupplies = true;
 			}
@@ -3247,8 +3258,8 @@
 
 				if (fleetCoords[0] == starbaseX && fleetCoords[1] == starbaseY) {
 					await execDock(userFleets[i], userFleets[i].starbaseCoord);
-					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading ore`);
-					updateFleetState(userFleets[i], `Unloading ore`);
+					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading resource`);
+					updateFleetState(userFleets[i], `Unloading resource`);
 					if (currentResourceCnt > 0) {
 						await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, userFleets[i].mineResource, userFleets[i].starbaseCoord, currentResourceCnt);
 						//await wait(2000);
@@ -3313,7 +3324,7 @@
 			//At mining area?
 			else if (fleetCoords[0] == destX && fleetCoords[1] == destY) {
 				await execStartMining(userFleets[i], mineItem, sageResource, planet);
-				updateFleetState(userFleets[i], 'Mine [' + TimeToStr(new Date(Date.now()+(miningDuration * 1000))) + ']')
+				if (userFleets[i].state.slice(0, 5) !== 'ERROR') updateFleetState(userFleets[i], 'Mine [' + TimeToStr(new Date(Date.now()+(miningDuration * 1000))) + ']')
 
 				//Wait for data to propagate through the RPCs
 				await wait(5000);
@@ -3322,7 +3333,7 @@
 				const fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
 				const [fleetState, extra] = getFleetState(fleetAcctInfo);
 				cLog(4, `${FleetTimeStamp(userFleets[i].label)} chain fleet state: ${fleetState}`);
-				fleetMining = fleetState == 'MineAsteroid' ? extra : [];
+				fleetMining = fleetState == 'MineAsteroid' ? extra : null;
 			}
 
 			//Move to mining area
@@ -3334,6 +3345,8 @@
 
 		//Already mining?
 		if (userFleets[i].state.slice(0, 4) === 'Mine' && fleetMining) {
+            cLog(1, `${FleetTimeStamp(userFleets[i].label)} Debug fleetMining: ${fleetMining}`);
+            console.log('fleetMining: ', fleetMining);
 			let mineEnd = (fleetMining.start.toNumber() + miningDuration) * 1000;
 			userFleets[i].mineEnd = mineEnd;
 			updateFleetState(userFleets[i], 'Mine [' + TimeToStr(new Date(mineEnd)) + ']')
@@ -3695,7 +3708,7 @@
 				let [fleetState, extra] = getFleetState(fleetAcctInfo);
 				cLog(3, `${FleetTimeStamp(userFleets[i].label)} chain fleet state: ${fleetState}`);
 				let fleetCoords = fleetState == 'Idle' ? extra : [];
-				let fleetMining = fleetState == 'MineAsteroid' ? extra : [];
+				let fleetMining = fleetState == 'MineAsteroid' ? extra : null;
 				userFleets[i].startingCoords = fleetCoords;
 
 				//Correct rare fleet state mismatch bug
