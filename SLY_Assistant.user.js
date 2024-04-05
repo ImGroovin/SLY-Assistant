@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.5
+// @version      0.5.1
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra
 // @match        https://*.based.staratlas.com/
 // @require      https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js
-// @require      https://github.com/ImGroovin/SLY-Assistant/raw/main/anchor-browserified.js
-// @require      https://github.com/ImGroovin/SLY-Assistant/raw/main/buffer-browserified.js
-// @require      https://github.com/ImGroovin/SLY-Assistant/raw/main/bs58-browserified.js
+// @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/anchor-browserified.js
+// @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/buffer-browserified.js
+// @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/bs58-browserified.js
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=staratlas.com
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -371,6 +371,7 @@
             let cargoSize = await getCargoTypeSize(cargoType);
             cargoItems.push({'name': cargoName, 'token': craftable.account.mint.toString(), 'size': cargoSize});
         }
+        cargoItems.sort(function (a, b) { return a.name.toUpperCase().localeCompare(b.name.toUpperCase()); });
     }
 
 	function createPDA(derived, derivedFrom1, derivedFrom2, fleet) {
@@ -943,7 +944,7 @@
 			let foodCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.food);
 			let [sduTokenFrom] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
 				[
-						new solanaWeb3.PublicKey('8bBi84Yi7vwSWXSYKDbbHmqnFqqAS41MvPkSEdzFtbsk').toBuffer(),
+						sageSDUTrackerAcct.account.signer.toBuffer(),
 						tokenProgramPK.toBuffer(),
 						new solanaWeb3.PublicKey(sduItem.token).toBuffer()
 				],
@@ -2024,7 +2025,7 @@
 
 			let mineResLabel = document.createElement('span');
 			mineResLabel.innerHTML = 'Resource to mine:';
-			let assistResources = ['','Arco','Biomass','Carbon','Copper Ore','Diamond','Hydrogen','Iron Ore','Lumanite','Rochinol']
+			let assistResources = ['','Arco','Biomass','Carbon','Copper Ore','Diamond','Hydrogen','Iron Ore','Lumanite','Nitrogen','Rochinol','Silica','Titanium Ore']
 			let optionsStr = '';
 			let fleetMineRes = document.createElement('select');
 			assistResources.forEach( function(resource) {optionsStr += '<option value="' + resource + '">' + resource + '</option>';});
