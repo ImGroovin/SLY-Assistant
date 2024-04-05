@@ -217,7 +217,7 @@
 	}
 
     const readIdx = customReadRPCs.length > 0 ? 0 : Math.floor(Math.random() * saRPCs.length);
-    const writeIdx = customReadRPCs.length > 0 ? 0 : Math.floor(Math.random() * saRPCs.length);
+    const writeIdx = customWriteRPCs.length > 0 ? 0 : Math.floor(Math.random() * saRPCs.length);
 	const rawSolanaReadConnection = new solanaWeb3.Connection(readRPCs[readIdx], 'confirmed');
 	const solanaReadConnection = new Proxy(rawSolanaReadConnection, readConnectionProxy);
 	const rawSolanaWriteConnection = new solanaWeb3.Connection(writeRPCs[writeIdx], 'confirmed');
