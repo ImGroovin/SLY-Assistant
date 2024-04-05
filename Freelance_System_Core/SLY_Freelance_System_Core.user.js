@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         [FLY] Freelance System: Core
 // @namespace    http://tampermonkey.net/
-// @version      0.5
+// @version      0.5.1
 // @description  try to take over the world!
 // @author       SLY
 // @match        https://based.staratlas.com/
@@ -33,6 +33,7 @@
     let wallet = null;
     let userPublicKey = null;
     let userProfilePublicKey = null;
+    let userProfileKeyIdx = 0;
     let userProfile = null;
     let permissionedAccounts = [];
 
@@ -116,6 +117,7 @@
             userPublicKey = solflare.publicKey;
         }
 
+        /*
         // Find the Player Profile associated with the connected wallet
         [userProfile] = await solanaConnection.getProgramAccounts(
             profileProgramId,
@@ -133,6 +135,43 @@
 
         // Convert to a solanaWeb3 PublicKey object - probably unnecessary
         userProfilePublicKey = new solanaWeb3.PublicKey(userProfile.pubkey.toString());
+        */
+
+        let userProfiles = await solanaConnection.getProgramAccounts(profileProgramId);
+        let foundProf = [];
+
+        for (let userProf of userProfiles) {
+            let userProfData = userProf.account.data.subarray(30);
+            let iter = 0;
+            while (userProfData.length >= 80) {
+                let currProf = userProfData.subarray(0, 80);
+                let profDecoded = profileProgram.coder.types.decode('ProfileKey', currProf);
+                if (profDecoded.key.toString() === userPublicKey.toString()) {
+                    let [playerNameAcct] = await solanaConnection.getProgramAccounts(
+                        profileProgramId,
+                        {
+                            filters: [
+                                {
+                                    memcmp: {
+                                        offset: 9,
+                                        bytes: userProf.pubkey.toString(),
+                                    },
+                                },
+                            ],
+                        }
+                    );
+                    let playerName = playerNameAcct ? new TextDecoder().decode(playerNameAcct.account.data.subarray(42)) : '';
+                    foundProf.push({profile: userProf.pubkey.toString(), name: playerName, idx: iter})
+                }
+                userProfData = userProfData.subarray(80);
+                iter += 1;
+            }
+        }
+
+        //Wait for user to select a profile if more than 1 is available
+        let userProfile = foundProf.length > 1 ? await assistProfileToggle(foundProf) : foundProf[0];
+        userProfilePublicKey = new solanaWeb3.PublicKey(userProfile.profile);
+        userProfileKeyIdx = userProfile.idx;
 
         await getPermissionedAccounts();
         manageProfileToggle(permissionedAccounts);
@@ -274,7 +313,7 @@
         } else if (newKey.length < 1) {
             txResult = {name: "InputNeeded"};
         } else {
-            let tx = { instruction: await profileProgram.methods.addKeys(0, 0, [{
+            let tx = { instruction: await profileProgram.methods.addKeys(userProfileKeyIdx, 0, [{
                 scope: sageProgramId,
                 expireTime: new BrowserAnchor.anchor.BN(-1),
                 permissions: permissions
@@ -310,7 +349,7 @@
         if (targetAccount.idx === 0) {
             txResult = {name: "PrimaryAccount"};
         } else {
-            let tx = { instruction: await profileProgram.methods.removeKeys(0, [new BrowserAnchor.anchor.BN(targetAccount.idx), new BrowserAnchor.anchor.BN(targetAccount.idx+1)]).accountsStrict({
+            let tx = { instruction: await profileProgram.methods.removeKeys(userProfileKeyIdx, [new BrowserAnchor.anchor.BN(targetAccount.idx), new BrowserAnchor.anchor.BN(targetAccount.idx+1)]).accountsStrict({
                 funder: userPublicKey,
                 profile: userProfilePublicKey,
                 key: userPublicKey,
@@ -406,6 +445,31 @@
         });
     }
 
+    async function assistProfileToggle(profiles) {
+        return new Promise(async resolve => {
+            let targetElem = document.querySelector('#profileModal');
+            if (targetElem.style.display === 'none' && profiles) {
+                targetElem.style.display = 'block';
+                let contentElem = document.querySelector('#profileDiv');
+                let transportOptStr = '';
+                profiles.forEach( function(profile) {transportOptStr += '<option value="' + profile.profile + '">' + profile.name + '  [' + profile.profile + ']</option>';});
+                let profileSelect = document.createElement('select');
+                profileSelect.size = profiles.length + 1;
+                profileSelect.style.padding = '2px 10px';
+                profileSelect.innerHTML = transportOptStr;
+                contentElem.append(profileSelect);
+                profileSelect.onchange = function() {
+                    let selected = profiles.find(o => o.profile === profileSelect.value);
+                    assistProfileToggle(null);
+                    resolve(selected);
+                }
+            } else {
+                targetElem.style.display = 'none';
+                resolve(null);
+            }
+        });
+    }
+
     // UI panel - profile management
     async function manageProfileToggle(accounts) {
         let targetElem = document.querySelector('#accountModal');
@@ -457,6 +521,16 @@
             walletModalContent.innerHTML = '<div class="assist-modal-header"><span>Connect your "primary" wallet.</span><div class="assist-modal-header-right"></div><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body" style="display: flex; flex-direction: column; align-items: center;"><span class="assist-modal-error"></span><select id="walletSelection" size=3 style="padding: 2px 10px; margin: 10px 0px 10px 0px;"><option value="solflare">Solflare</option><option value="phantom">Phantom</option></select><div><button id="selectWalletBtn" class="assist-btn">Connect Wallet</button></div></div>';
             walletModal.append(walletModalContent);
 
+            let profileModal = document.createElement('div');
+			profileModal.classList.add('assist-modal');
+			profileModal.id = 'profileModal';
+			profileModal.style.display = 'none';
+			profileModal.style.zIndex = 3;
+			let profileModalContent = document.createElement('div');
+			profileModalContent.classList.add('assist-modal-content');
+			profileModalContent.innerHTML = '<div class="assist-modal-header"><span>Profile Selection</span><div class="assist-modal-header-right"><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><div></div><span>Select a profile to connect to FLY.</span><div></div><div id="profileDiv" max-width="100%"></div></div>';
+			profileModal.append(profileModalContent);
+
             let accountModal = document.createElement('div');
             accountModal.classList.add('assist-modal');
             accountModal.id = 'accountModal';
@@ -498,10 +572,13 @@
                 targetElem.prepend(assistCSS);
             }
             targetElem.append(walletModal);
+            targetElem.append(profileModal);
             targetElem.append(accountModal);
 
             let walletClose = document.querySelector('#walletModal .assist-modal-close');
             walletClose.addEventListener('click', async function(e) {await selectWalletToggle();});
+            let profileModalClose = document.querySelector('#profileModal .assist-modal-close');
+			profileModalClose.addEventListener('click', function(e) {assistProfileToggle(null);});
             let addAcctBtn = document.querySelector('#addAcctBtn');
             addAcctBtn.addEventListener('click', async function(e) {
                 let r = await addKeyToProfile(document.querySelector('#addAcctDiv').value);
