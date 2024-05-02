@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6
+// @version      0.6.1
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra
 // @match        https://*.based.staratlas.com/
@@ -52,6 +52,7 @@
     const miningXpCategory = new solanaWeb3.PublicKey('MineMBxARiRdMh7s1wdStSK4Ns3YfnLjBfvF5ZCnzuw');
     const craftingXpCategory = new solanaWeb3.PublicKey('CraftndAV62acibnaW7TiwEYwu8MmJZBdyrfyN54nre7');
     const LPCategory = new solanaWeb3.PublicKey('LPkmmDQG8iBDAfKkWN6QadeoiLSvD1p3fGgq8m8QdMu');
+    const addressLookupTableAddresses = [new solanaWeb3.PublicKey('AyC4m8fYEgR9mYcf6zzajevPjF8QhptY9Nae5LX6xgiu'), new solanaWeb3.PublicKey('F4jZvnU9fdi2mGp13TyewdAj96cKGUcwBBSMTsL1nRoC')];
 
 	//Token addresses
 	const programAddy = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';
@@ -301,6 +302,7 @@
     let cargoItems = [];
     let craftRecipes = [];
     let upgradeRecipes = [];
+    let addressLookupTables = [];
 
 	const cargoTypes = await cargoProgram.account.cargoType.all([
 			{
@@ -313,6 +315,7 @@
 
     await getResourceTokens();
     await getCraftRecipes();
+    await getALTs();
     console.log('craftRecipes: ', craftRecipes);
     console.log('upgradeRecipes: ', upgradeRecipes);
 
@@ -329,6 +332,13 @@
         ],
         sageProgramPK
     );
+
+    async function getALTs() {
+        for (let lookupTableAddress of addressLookupTableAddresses) {
+            let lookupTableAccount = await solanaReadConnection.getAddressLookupTable(lookupTableAddress);
+            addressLookupTables.push(lookupTableAccount.value);
+        }
+    }
 
     async function getStarbaseUpkeepStatus() {
         let starbases = await sageProgram.account.starbase.all();
@@ -916,7 +926,7 @@
                     payerKey: userPublicKey,
                     recentBlockhash: latestBH.blockhash,
                     instructions,
-                }).compileToV0Message();
+                }).compileToV0Message(addressLookupTables);
                 let tx = new solanaWeb3.VersionedTransaction(messageV0);
 				let txSigned = null;
 
@@ -4444,7 +4454,7 @@
 						starbaseCoords,
 						resMax
 					);
-                    cargoSpace -= resp && cargoItems.find(r => r.token == entry.res).size * resp.amount;
+                    cargoSpace -= resp && resp.amount ? cargoItems.find(r => r.token == entry.res).size * resp.amount : 0;
 
 					if (resp && resp.name == 'NotEnoughResource') {
 						const resShort = cargoItems.find(r => r.token == entry.res).name;
@@ -4772,6 +4782,13 @@
             let targetRecipe = getTargetRecipe(starbasePlayerCargoHoldsAndTokens, userCraft, Number(userCraft.amount));
 
             if (!enableAssistant) return;
+
+            cLog(3, FleetTimeStamp(userCraft.label), 'targetRecipe: ', targetRecipe);
+            cLog(3, FleetTimeStamp(userCraft.label), 'starbasePlayerInfo: ', starbasePlayerInfo);
+            cLog(3, FleetTimeStamp(userCraft.label), 'availableCrew: ', availableCrew);
+            cLog(3, FleetTimeStamp(userCraft.label), 'userCraft: ', userCraft);
+            cLog(3, FleetTimeStamp(userCraft.label), 'userCraft.crew: ', userCraft.crew);
+            cLog(3, FleetTimeStamp(userCraft.label), 'userCraft.state: ', userCraft.state);
 
             if (availableCrew >= userCraft.crew && targetRecipe && targetRecipe.amountCraftable > 0 && userCraft.state === 'Idle') {
                 let craftAmount = Math.min(targetRecipe.craftAmount, targetRecipe.amountCraftable);
