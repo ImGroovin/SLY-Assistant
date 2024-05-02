@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.5.5
+// @version      0.6
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra
 // @match        https://*.based.staratlas.com/
@@ -28,7 +28,7 @@
         'https://twilight-autumn-diagram.solana-mainnet.quiknode.pro/4fc53d638efd1cc0f80764bc457944bb325d1ff1', //Quicknode
 		'https://rpc.hellomoon.io/57dbc69d-7e66-4454-b33e-fa6a4b46170f', //Hello Moon
         'https://staratl-mainc06-2415.mainnet.rpcpool.com', //Triton
-        'https://mainnet.helius-rpc.com/?api-key=735486d8-ae86-4d26-829c-e34a2210d119', //Helius
+        //'https://mainnet.helius-rpc.com/?api-key=735486d8-ae86-4d26-829c-e34a2210d119', //Helius
 	];
     let readRPCs = customReadRPCs.concat(saRPCs);
     let writeRPCs = customWriteRPCs.concat(saRPCs);
@@ -51,6 +51,7 @@
     const pilotingXpCategory = new solanaWeb3.PublicKey('PiLotBQoUBUvKxMrrQbuR3qDhqgwLJctWsXj3uR7fGs');
     const miningXpCategory = new solanaWeb3.PublicKey('MineMBxARiRdMh7s1wdStSK4Ns3YfnLjBfvF5ZCnzuw');
     const craftingXpCategory = new solanaWeb3.PublicKey('CraftndAV62acibnaW7TiwEYwu8MmJZBdyrfyN54nre7');
+    const LPCategory = new solanaWeb3.PublicKey('LPkmmDQG8iBDAfKkWN6QadeoiLSvD1p3fGgq8m8QdMu');
 
 	//Token addresses
 	const programAddy = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';
@@ -280,7 +281,9 @@
         userCouncilRankXpAccounts: {},
         userDataRunningXpAccounts: {},
         userPilotingXpAccounts: {},
-        userMiningXpAccounts: {}
+        userMiningXpAccounts: {},
+        userCraftingXpAccounts: {},
+        userLPAccounts: {},
     };
 
 	let sageProgram = new BrowserAnchor.anchor.Program(sageIDL, sageProgramPK, anchorProvider);
@@ -296,6 +299,8 @@
 	let seqArr = seqBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "be", 2);
 	let seq58 = bs58.encode(seqArr);
     let cargoItems = [];
+    let craftRecipes = [];
+    let upgradeRecipes = [];
 
 	const cargoTypes = await cargoProgram.account.cargoType.all([
 			{
@@ -307,6 +312,9 @@
 	]);
 
     await getResourceTokens();
+    await getCraftRecipes();
+    console.log('craftRecipes: ', craftRecipes);
+    console.log('upgradeRecipes: ', upgradeRecipes);
 
     let sduItem = cargoItems.find(item => item.name === 'Survey Data Unit');
 	let fuelItem = cargoItems.find(item => item.token === sageGameAcct.account.mints.fuel.toString());
@@ -376,7 +384,46 @@
         cargoItems.sort(function (a, b) { return a.name.toUpperCase().localeCompare(b.name.toUpperCase()); });
     }
 
-	function createPDA(derived, derivedFrom1, derivedFrom2, fleet) {
+    async function getCraftRecipes() {
+        const allCraftCategories = await craftingProgram.account.recipeCategory.all();
+        let upgradeCategory = allCraftCategories.find(item => (new TextDecoder().decode(new Uint8Array(item.account.namespace)).replace(/\0/g, '')) === 'Upgrade');
+
+        let statusBN = new BrowserAnchor.anchor.BN(2);
+        let statusArr = statusBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "be", 2);
+        let status58 = bs58.encode(statusArr);
+        const allCraftRecipes = await craftingProgram.account.recipe.all([
+            {
+                memcmp: {
+                    offset: 152,
+                    bytes: status58,
+                },
+            },
+        ]);
+
+        for (let craftRecipe of allCraftRecipes) {
+            let recipeAcctInfo = await solanaReadConnection.getAccountInfo(craftRecipe.publicKey);
+            let recipeName = (new TextDecoder().decode(new Uint8Array(craftRecipe.account.namespace)).replace(/\0/g, ''));
+            let recipeInputOutput = [];
+            let recipeData = recipeAcctInfo.data.subarray(223);
+            let recipeIter = 0;
+            while (recipeData.length >= 40) {
+                let currIngredient = recipeData.subarray(0, 40);
+                let ingredientDecoded = craftingProgram.coder.types.decode('RecipeInputsOutputs', currIngredient);
+                recipeInputOutput.push({mint: ingredientDecoded.mint, amount: ingredientDecoded.amount.toNumber(), idx: recipeIter});
+                recipeData = recipeData.subarray(40);
+                recipeIter += 1;
+            }
+            if (craftRecipe.account.category.toString() === upgradeCategory.publicKey.toString()) {
+                upgradeRecipes.push({'name': recipeName, 'publicKey': craftRecipe.publicKey, 'category': craftRecipe.account.category, 'domain': craftRecipe.account.domain, 'feeRecipient': craftRecipe.account.feeRecipient.key, 'duration': craftRecipe.account.duration.toNumber(), 'input': recipeInputOutput, 'output': []});
+            } else {
+                craftRecipes.push({'name': recipeName, 'publicKey': craftRecipe.publicKey, 'category': craftRecipe.account.category, 'domain': craftRecipe.account.domain, 'feeRecipient': craftRecipe.account.feeRecipient.key, 'duration': craftRecipe.account.duration.toNumber(), 'input': recipeInputOutput.slice(0, -1), 'output': recipeInputOutput.slice(-1)[0]});
+            }
+        }
+        upgradeRecipes.sort(function (a, b) { return a.name.toUpperCase().localeCompare(b.name.toUpperCase()); });
+        craftRecipes.sort(function (a, b) { return a.name.toUpperCase().localeCompare(b.name.toUpperCase()); });
+    }
+
+	function createPDA(derived, derivedFrom1, derivedFrom2, fleet, send = true) {
 			return new Promise(async resolve => {
 					const keys = [{
 							pubkey: userPublicKey,
@@ -408,7 +455,8 @@
 							programId: programPK,
 							//data: []
 					})}
-					let txResult = await txSignAndSend(tx, fleet, 'CreatePDA', 100);
+					let txResult = tx
+                    if (send) txResult = await txSignAndSend(tx, fleet, 'CreatePDA', 100);
 					resolve(txResult);
 			});
 	}
@@ -694,8 +742,8 @@
 
 									let fleetAccts = await solanaReadConnection.getProgramAccounts(sageProgramPK, {
 											filters: [
-													{ memcmp: { offset: 415, bytes: x58 } },
-													{ memcmp: { offset: 423, bytes: y58 } },
+													{ memcmp: { offset: 440, bytes: x58 } },
+													{ memcmp: { offset: 448, bytes: y58 } },
 											],
 									});
 
@@ -1614,7 +1662,7 @@
 				}]).instruction()}
 
 				//Send tx
-				txResult = await txSignAndSend(tx, fleet, 'LOAD', 100);
+				txResult = {amount: amount, result: await txSignAndSend(tx, fleet, 'LOAD', 100)};
 			}
 			else txResult = {name: "NotEnoughResource"};
 
@@ -1864,6 +1912,521 @@
         });
     }
 
+    async function execStartCrafting(starbase, starbasePlayer, starbasePlayerCargoHoldsAndTokens, craftingRecipe, craftAmount, userCraft) {
+        return new Promise(async resolve => {
+            let transactions = [];
+            let craftDuration = (craftingRecipe.duration * craftAmount) / userCraft.crew;
+
+            let facility = craftRecipes.some(item => item.name === craftingRecipe.name) ? starbase.account.craftingFacility : starbase.account.upgradeFacility;
+
+            let craftingFacilityAcct = await solanaReadConnection.getAccountInfo(facility);
+            let craftingFacilityData = craftingFacilityAcct.data.subarray(90);
+            let craftIter = 0;
+            let craftingFacilityRecipeCategories = [];
+            while (craftingFacilityData.length >= 32) {
+                let currRecipeCategory = craftingFacilityData.subarray(0, 32);
+                let recipeCategoryDecoded = craftingProgram.coder.types.decode('WrappedRecipeCategory', currRecipeCategory);
+                craftingFacilityRecipeCategories.push({recipeCategory: recipeCategoryDecoded.id, idx: craftIter});
+                craftingFacilityData = craftingFacilityData.subarray(32);
+                craftIter += 1;
+            }
+
+            let recipeCategoryIndex = craftingFacilityRecipeCategories.find(item => item.recipeCategory.toString() === craftingRecipe.category.toString());
+            if (!recipeCategoryIndex) {
+                updateFleetState(userCraft, 'ERROR: Craft Unavailable');
+                resolve({name: "CraftUnavailable"});
+                return;
+            }
+
+            let tempBytes = new Uint8Array(256);
+            let tempRandomBytes = crypto.getRandomValues(tempBytes);
+            let formattedRandomBytes = BrowserBuffer.Buffer.Buffer.from(tempRandomBytes).readUIntLE(0, 6);
+            let bnRandomBytes = new BrowserAnchor.anchor.BN(formattedRandomBytes);
+            let [craftingProcess] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+                [
+                    BrowserBuffer.Buffer.Buffer.from("CraftingProcess"),
+                    facility.toBuffer(),
+                    craftingRecipe.publicKey.toBuffer(),
+                    bnRandomBytes.toArrayLike(BrowserBuffer.Buffer.Buffer, "le", 8)
+                ],
+                craftingProgramPK
+            );
+
+            let [craftingInstance] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+                [
+                    BrowserBuffer.Buffer.Buffer.from("CraftingInstance"),
+                    starbasePlayer.toBuffer(),
+                    craftingProcess.toBuffer(),
+                ],
+                sageProgramPK
+            );
+
+            let createProcessMethod = craftRecipes.some(item => item.name === craftingRecipe.name) ? sageProgram.methods.createCraftingProcess : sageProgram.methods.createStarbaseUpgradeResourceProcess;
+            let facilityLabel = craftRecipes.some(item => item.name === craftingRecipe.name) ? 'craftingFacility' : 'upgradeFacility';
+
+            let tx1 = { instruction: await createProcessMethod({
+                keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx),
+                craftingId: new BrowserAnchor.anchor.BN(formattedRandomBytes),
+                recipeCategoryIndex: new BrowserAnchor.anchor.BN(recipeCategoryIndex.idx),
+                quantity: new BrowserAnchor.anchor.BN(craftAmount),
+                numCrew: new BrowserAnchor.anchor.BN(userCraft.crew)
+            }).accountsStrict({
+                funder: userPublicKey,
+                starbaseAndStarbasePlayer: {
+                    starbase: starbase.publicKey,
+                    starbasePlayer: starbasePlayer
+                },
+                gameAccountsAndProfile: {
+                    gameAndProfileAndFaction: {
+                        gameId: sageGameAcct.publicKey,
+                        key: userPublicKey,
+                        profile: userProfileAcct,
+                        profileFaction: userProfileFactionAcct.publicKey
+                    },
+                    gameState: sageGameAcct.account.gameState
+                },
+                craftingInstance: craftingInstance,
+                craftingProcess: craftingProcess,
+                [facilityLabel]: facility,
+                craftingRecipe: craftingRecipe.publicKey,
+                craftingDomain: craftingRecipe.domain,
+                craftingProgram: craftingProgramPK,
+                systemProgram: solanaWeb3.SystemProgram.programId
+            }).instruction()}
+            transactions.push(tx1);
+
+            for (let ingredient of craftingRecipe.input) {
+                let starbasePlayerCargoHold = getStarbasePlayerCargoMaxItem(starbasePlayerCargoHoldsAndTokens, ingredient.mint.toString());
+                let cargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == ingredient.mint.toString());
+
+                let [starbaseCargoToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+                    [
+                        starbasePlayerCargoHold.starbasePlayerCargoHold.toBuffer(),
+                        tokenProgramPK.toBuffer(),
+                        ingredient.mint.toBuffer()
+                    ],
+                    programPK
+                );
+
+                let [ingredientToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+                    [
+                        craftingProcess.toBuffer(),
+                        tokenProgramPK.toBuffer(),
+                        ingredient.mint.toBuffer(),
+                    ],
+                    programPK
+                );
+                if (!await getAccountInfo(userCraft.label, 'Crafting ingredient token', ingredientToken)) transactions.push(await createPDA(ingredientToken, craftingProcess, ingredient.mint, userCraft, false));
+
+                let tx = { instruction: await sageProgram.methods.depositCraftingIngredient({
+                    amount: new BrowserAnchor.anchor.BN(craftAmount * ingredient.amount),
+                    keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx),
+                    ingredientIndex: ingredient.idx
+                }).accountsStrict({
+                    starbaseAndStarbasePlayer: {
+                        starbase: starbase.publicKey,
+                        starbasePlayer: starbasePlayer
+                    },
+                    gameAccountsAndProfile: {
+                        gameAndProfileAndFaction: {
+                            gameId: sageGameAcct.publicKey,
+                            key: userPublicKey,
+                            profile: userProfileAcct,
+                            profileFaction: userProfileFactionAcct.publicKey
+                        },
+                        gameState: sageGameAcct.account.gameState
+                    },
+                    craftingInstance: craftingInstance,
+                    craftingProcess: craftingProcess,
+                    craftingFacility: facility,
+                    craftingRecipe: craftingRecipe.publicKey,
+                    cargoPodFrom: starbasePlayerCargoHold.starbasePlayerCargoHold,
+                    cargoType: cargoTypeAcct.publicKey,
+                    cargoStatsDefinition: sageGameAcct.account.cargo.statsDefinition,
+                    tokenFrom: starbaseCargoToken,
+                    tokenTo: ingredientToken,
+                    craftingProgram: craftingProgramPK,
+                    cargoProgram: cargoProgramPK,
+                    tokenProgram: tokenProgramPK
+                }).instruction()}
+                transactions.push(tx);
+                }
+
+
+            let [signerFeeMintToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+                [
+                    userPublicKey.toBuffer(),
+                    tokenProgramPK.toBuffer(),
+                    sageGameAcct.account.mints.atlas.toBuffer(),
+                ],
+                programPK
+            );
+
+            let [craftingAtlasToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+                [
+                    craftingProcess.toBuffer(),
+                    tokenProgramPK.toBuffer(),
+                    sageGameAcct.account.mints.atlas.toBuffer(),
+                ],
+                programPK
+            );
+
+            if (!await getAccountInfo(userCraft.label, 'Crafting atlas token', craftingAtlasToken)) transactions.push(await createPDA(craftingAtlasToken, craftingProcess, sageGameAcct.account.mints.atlas, userCraft, false));
+
+            let tx2 = { instruction: await sageProgram.methods.startCraftingProcess({keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx)}).accountsStrict({
+                starbaseAndStarbasePlayer: {
+                    starbase: starbase.publicKey,
+                    starbasePlayer: starbasePlayer
+                },
+                craftingInstance: craftingInstance,
+                craftingProcess: craftingProcess,
+                craftingRecipe: craftingRecipe.publicKey,
+                craftingFacility: facility,
+                gameAccountsAndProfile: {
+                    gameAndProfileAndFaction: {
+                        gameId: sageGameAcct.publicKey,
+                        key: userPublicKey,
+                        profile: userProfileAcct,
+                        profileFaction: userProfileFactionAcct.publicKey
+                    },
+                    gameState: sageGameAcct.account.gameState
+                },
+                craftingProgram: craftingProgramPK
+                }).remainingAccounts([
+                {
+                    pubkey: craftingRecipe.feeRecipient,
+                    isSigner: false,
+                    isWritable: false
+                }, {
+                    pubkey: userPublicKey,
+                    isSigner: true,
+                    isWritable: true
+                }, {
+                    pubkey: signerFeeMintToken,
+                    isSigner: false,
+                    isWritable: true
+                }, {
+                    pubkey: craftingAtlasToken,
+                    isSigner: false,
+                    isWritable: true
+                }, {
+                    pubkey: tokenProgramPK,
+                    isSigner: false,
+                    isWritable: false
+                }
+            ]).instruction()}
+            transactions.push(tx2);
+
+            let txResult = await txSignAndSend(transactions, userCraft, 'START CRAFTING');
+            const calcEndTime = Date.now() + craftDuration * 1000;
+            updateFleetState(userCraft, 'Crafting [' + TimeToStr(new Date(calcEndTime)) + ']');
+            resolve(txResult);
+        });
+    }
+
+    async function execCompleteCrafting(starbase, starbasePlayer, starbasePlayerCargoHoldsAndTokens, craftingProcess, userCraft) {
+        return new Promise(async resolve => {
+            let transactions = [];
+
+            let craftRecipe = craftRecipes.find(item => item.publicKey.toString() === craftingProcess.recipe.toString());
+
+            if (craftingProcess.status == 2) {
+                for (let ingredient of craftRecipe.input) {
+                    let [ingredientToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+                        [
+                            craftingProcess.craftingProcess.toBuffer(),
+                            tokenProgramPK.toBuffer(),
+                            ingredient.mint.toBuffer(),
+                        ],
+                        programPK
+                    );
+
+                    let tx = { instruction: await sageProgram.methods.burnCraftingConsumables({
+                        ingredientIndex: ingredient.idx
+                    }).accountsStrict({
+                        starbaseAndStarbasePlayer: {
+                            starbase: starbase.publicKey,
+                            starbasePlayer: starbasePlayer
+                        },
+                        gameAccounts: {
+                            gameId: sageGameAcct.publicKey,
+                            gameState: sageGameAcct.account.gameState
+                        },
+                        craftingInstance: craftingProcess.craftingInstance,
+                        craftingProcess: craftingProcess.craftingProcess,
+                        craftingFacility: starbase.account.craftingFacility,
+                        craftingRecipe: craftingProcess.recipe,
+                        tokenFrom: ingredientToken,
+                        tokenMint: ingredient.mint,
+                        craftingProgram: craftingProgramPK,
+                        tokenProgram: tokenProgramPK
+                    }).instruction()}
+                    transactions.push(tx);
+                }
+
+                let [outputToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+                    [
+                        craftingProcess.craftingProcess.toBuffer(),
+                        tokenProgramPK.toBuffer(),
+                        craftRecipe.output.mint.toBuffer(),
+                    ],
+                    programPK
+                );
+
+                let starbasePlayerCargoHold = getStarbasePlayerCargoMaxItem(starbasePlayerCargoHoldsAndTokens, craftRecipe.output.mint.toString());
+                starbasePlayerCargoHold = starbasePlayerCargoHold ? starbasePlayerCargoHold.starbasePlayerCargoHold : starbasePlayerCargoHoldsAndTokens.length > 0 ? starbasePlayerCargoHoldsAndTokens[0].starbasePlayerCargoHold : await execCreateCargoPod(userCraft, userCraft.coordinates);
+
+                let cargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == craftRecipe.output.mint.toString());
+
+                let [starbaseCargoToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+                    [
+                        starbasePlayerCargoHold.toBuffer(),
+                        tokenProgramPK.toBuffer(),
+                        craftRecipe.output.mint.toBuffer()
+                    ],
+                    programPK
+                );
+
+                await getAccountInfo(userCraft.label, 'Starbase cargo token', starbaseCargoToken) || await createPDA(starbaseCargoToken, starbasePlayerCargoHold, craftRecipe.output.mint, userCraft);
+
+                const [craftableItem] = await craftingProgram.account.craftableItem.all([
+                    {
+                        memcmp: {
+                            offset: 9,
+                            bytes: craftRecipe.domain.toBase58(),
+                        },
+                    },
+                    {
+                        memcmp: {
+                            offset: 41,
+                            bytes: craftRecipe.output.mint.toBase58(),
+                        },
+                    }
+                ]);
+
+                let [outputFrom] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+                    [
+                        craftableItem.publicKey.toBuffer(),
+                        tokenProgramPK.toBuffer(),
+                        craftRecipe.output.mint.toBuffer()
+                    ],
+                    programPK
+                );
+
+                let tx1 = { instruction: await sageProgram.methods.claimCraftingOutputs({
+                    ingredientIndex: craftRecipe.output.idx
+                }).accountsStrict({
+                    starbaseAndStarbasePlayer: {
+                        starbase: starbase.publicKey,
+                        starbasePlayer: starbasePlayer
+                    },
+                    gameAccounts: {
+                        gameId: sageGameAcct.publicKey,
+                        gameState: sageGameAcct.account.gameState
+                    },
+                    craftingInstance: craftingProcess.craftingInstance,
+                    craftingProcess: craftingProcess.craftingProcess,
+                    craftingFacility: starbase.account.craftingFacility,
+                    craftingRecipe: craftingProcess.recipe,
+                    craftableItem: craftableItem.publicKey,
+                    cargoPodTo: starbasePlayerCargoHold,
+                    cargoType: cargoTypeAcct.publicKey,
+                    cargoStatsDefinition: sageGameAcct.account.cargo.statsDefinition,
+                    tokenFrom: outputFrom,
+                    tokenTo: starbaseCargoToken,
+                    craftingProgram: craftingProgramPK,
+                    cargoProgram: cargoProgramPK,
+                    tokenProgram: tokenProgramPK
+                }).instruction()}
+                transactions.push(tx1);
+
+                cLog(1,`${FleetTimeStamp(userCraft.label)} Completing craft (2 transactions)`);
+                let tx1Result = await txSignAndSend(transactions, userCraft, 'COMPLETING CRAFT TX1');
+            }
+
+            let [craftingAtlasToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+                [
+                    craftingProcess.craftingProcess.toBuffer(),
+                    tokenProgramPK.toBuffer(),
+                    sageGameAcct.account.mints.atlas.toBuffer(),
+                ],
+                programPK
+            );
+
+            let tx2 = { instruction: await sageProgram.methods.closeCraftingProcess({keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx)}).accountsStrict({
+                fundsTo: userPublicKey,
+                starbaseAndStarbasePlayer: {
+                    starbase: starbase.publicKey,
+                    starbasePlayer: starbasePlayer
+                },
+                gameAccountsAndProfile: {
+                    gameAndProfileAndFaction: {
+                        gameId: sageGameAcct.publicKey,
+                        key: userPublicKey,
+                        profile: userProfileAcct,
+                        profileFaction: userProfileFactionAcct.publicKey
+                    },
+                    gameState: sageGameAcct.account.gameState
+                },
+                craftingInstance: craftingProcess.craftingInstance,
+                craftingProcess: craftingProcess.craftingProcess,
+                craftingRecipe: craftingProcess.recipe,
+                craftingFacility: starbase.account.craftingFacility,
+                craftingXpAccounts: userXpAccounts.userCraftingXpAccounts,
+                councilRankXpAccounts: userXpAccounts.userCouncilRankXpAccounts,
+                progressionConfig: progressionConfigAcct,
+                pointsProgram: pointsProgramId,
+                craftingProgram: craftingProgramPK
+                }).remainingAccounts([
+                {
+                    pubkey: craftingAtlasToken,
+                    isSigner: false,
+                    isWritable: true
+                }, {
+                    pubkey: sageGameAcct.account.vaults.atlas,
+                    isSigner: false,
+                    isWritable: true
+                }, {
+                    pubkey: tokenProgramPK,
+                    isSigner: false,
+                    isWritable: false
+                }
+            ]).instruction()}
+
+            let txResult = await txSignAndSend(tx2, userCraft, 'COMPLETING CRAFT TX2');
+            updateFleetState(userCraft, 'Idle');
+            resolve(txResult);
+        });
+    }
+
+    async function execCompleteUpgrade(starbase, starbasePlayer, starbasePlayerCargoHoldsAndTokens, craftingProcess, userCraft) {
+        return new Promise(async resolve => {
+            let transactions = [];
+
+            let craftingRecipe = upgradeRecipes.find(item => item.publicKey.toString() === craftingProcess.recipe.toString());
+            let starbaseUpgradeRecipe = upgradeRecipes.find(item => item.name === 'SB Tier ' + (starbase.account.level+1));
+            let starbaseUpgradeRecipeInput = starbaseUpgradeRecipe.input.find(item => item.mint.toString() === craftingRecipe.input[0].mint.toString());
+            let itemRecipe = craftRecipes.find(item => item.output.mint.toString() === craftingRecipe.input[0].mint.toString());
+
+            let starbasePlayerCargoHold = getStarbasePlayerCargoMaxItem(starbasePlayerCargoHoldsAndTokens, craftingRecipe.input[0].mint.toString());
+            starbasePlayerCargoHold = starbasePlayerCargoHold ? starbasePlayerCargoHold.starbasePlayerCargoHold : starbasePlayerCargoHoldsAndTokens.length > 0 ? starbasePlayerCargoHoldsAndTokens[0].starbasePlayerCargoHold : await execCreateCargoPod(userCraft, userCraft.coordinates);
+
+            let cargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == craftingRecipe.input[0].mint.toString());
+
+            let [starbaseCargoToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+                [
+                    starbasePlayerCargoHold.toBuffer(),
+                    tokenProgramPK.toBuffer(),
+                    craftingRecipe.input[0].mint.toBuffer()
+                ],
+                programPK
+            );
+
+            const [craftableItem] = await craftingProgram.account.craftableItem.all([
+                {
+                    memcmp: {
+                        offset: 9,
+                        bytes: craftingRecipe.domain.toBase58(),
+                    },
+                },
+                {
+                    memcmp: {
+                        offset: 41,
+                        bytes: craftingRecipe.input[0].mint.toBase58(),
+                    },
+                }
+            ]);
+
+            let [outputFrom] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+                [
+                    craftableItem.publicKey.toBuffer(),
+                    tokenProgramPK.toBuffer(),
+                    craftingRecipe.input[0].mint.toBuffer()
+                ],
+                programPK
+            );
+
+            let [ingredientToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+                [
+                    craftingProcess.craftingProcess.toBuffer(),
+                    tokenProgramPK.toBuffer(),
+                    craftingRecipe.input[0].mint.toBuffer(),
+                ],
+                programPK
+            );
+
+            let tx1 = { instruction: await sageProgram.methods.submitStarbaseUpgradeResource({
+                keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx),
+                upgradeProcessRecipeInputIndex: craftingRecipe.input.idx,
+                starbaseUpgradeRecipeInputIndex: starbaseUpgradeRecipeInput.idx,
+                resourceRecipeOutputIndex: itemRecipe.output.idx
+            }).accountsStrict({
+                fundsTo: userPublicKey,
+                starbaseAndStarbasePlayer: {
+                    starbase: starbase.publicKey,
+                    starbasePlayer: starbasePlayer
+                },
+                gameAccountsAndProfile: {
+                    gameAndProfileAndFaction: {
+                        gameId: sageGameAcct.publicKey,
+                        key: userPublicKey,
+                        profile: userProfileAcct,
+                        profileFaction: userProfileFactionAcct.publicKey
+                    },
+                    gameState: sageGameAcct.account.gameState
+                },
+                resourceCraftingInstance: craftingProcess.craftingInstance,
+                resourceCraftingProcess: craftingProcess.craftingProcess,
+                resourceCraftingFacility: starbase.account.upgradeFacility,
+                upgradeProcessRecipe: craftingProcess.recipe,
+                starbaseUpgradeRecipe: starbaseUpgradeRecipe.publicKey,
+                resourceRecipe: itemRecipe.publicKey,
+                cargoPodTo: starbasePlayerCargoHold,
+                cargoType: cargoTypeAcct.publicKey,
+                cargoStatsDefinition: sageGameAcct.account.cargo.statsDefinition,
+                tokenFrom: ingredientToken,
+                tokenTo: starbaseCargoToken,
+                tokenMint: craftingRecipe.input[0].mint,
+                loyaltyPointsAccounts: userXpAccounts.userLPAccounts,
+                progressionConfig: progressionConfigAcct,
+                pointsProgram: pointsProgramId,
+                craftingProgram: craftingProgramPK,
+                cargoProgram: cargoProgramPK,
+                tokenProgram: tokenProgramPK
+            }).instruction()};
+            transactions.push(tx1);
+
+            let tx2 = { instruction: await sageProgram.methods.closeUpgradeProcess({
+                keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx)
+            }).accountsStrict({
+                fundsTo: userPublicKey,
+                starbaseAndStarbasePlayer: {
+                    starbase: starbase.publicKey,
+                    starbasePlayer: starbasePlayer
+                },
+                gameAccountsAndProfile: {
+                    gameAndProfileAndFaction: {
+                        gameId: sageGameAcct.publicKey,
+                        key: userPublicKey,
+                        profile: userProfileAcct,
+                        profileFaction: userProfileFactionAcct.publicKey
+                    },
+                    gameState: sageGameAcct.account.gameState
+                },
+                resourceCraftingInstance: craftingProcess.craftingInstance,
+                resourceCraftingProcess: craftingProcess.craftingProcess,
+                resourceRecipe: craftingRecipe.publicKey,
+                resourceCraftingFacility: starbase.account.upgradeFacility,
+                craftingProgram: craftingProgramPK
+            }).instruction()};
+            transactions.push(tx2);
+
+            let txResult = await txSignAndSend(transactions, userCraft, 'COMPLETING UPGRADE');
+            updateFleetState(userCraft, 'Idle');
+            resolve(txResult);
+        });
+    }
+
 	async function execLoadFleetAmmo(fleet, starbaseCoords, amount) {
 		const ammoMint = sageGameAcct.account.mints.ammo;
 		const parsedTokenAccounts = await solanaReadConnection.getParsedTokenAccountsByOwner(fleet.ammoBank, {programId: tokenProgramPK});
@@ -1964,7 +2527,7 @@
 			fleetRow.appendChild(fleetCargoCapacityTd);
 			fleetRow.appendChild(fleetAmmoCapacityTd);
 			fleetRow.appendChild(fleetFuelCapacityTd);
-			let targetElem = document.querySelector('#assistModal .assist-modal-body table');
+			let targetElem = document.querySelector('#assistModal .assist-modal-body #fleetTable');
 			targetElem.appendChild(fleetRow);
 
 			let scanRow = document.createElement('tr');
@@ -2243,27 +2806,86 @@
 			};
 	}
 
+    async function addCraftingInput(craftIndex) {
+        let craftSavedData = await GM.getValue('craft' + craftIndex, '{}');
+        let craftParsedData = JSON.parse(craftSavedData);
+        let craftRow = document.createElement('tr');
+        craftRow.classList.add('assist-craft-row');
+        craftRow.setAttribute('pk', 'craft' + craftIndex);
+
+        let craftLabel = document.createElement('span');
+        craftLabel.innerHTML = 'craft' + craftIndex;
+        let craftLabelTd = document.createElement('td');
+        craftLabelTd.appendChild(craftLabel);
+
+        let craftStarbaseCoord = document.createElement('input');
+        craftStarbaseCoord.setAttribute('type', 'text');
+        craftStarbaseCoord.placeholder = 'x, y';
+        craftStarbaseCoord.style.width = '50px';
+        craftStarbaseCoord.value = craftParsedData && craftParsedData.coordinates ? craftParsedData.coordinates : '';
+        let craftStarbaseCoordTd = document.createElement('td');
+        craftStarbaseCoordTd.appendChild(craftStarbaseCoord);
+
+        let craftCrew = document.createElement('input');
+        craftCrew.setAttribute('type', 'text');
+        craftCrew.placeholder = '0';
+        craftCrew.style.width = '50px';
+        craftCrew.value = craftParsedData && craftParsedData.crew ? craftParsedData.crew : '';
+        let craftCrewTd = document.createElement('td');
+        craftCrewTd.appendChild(craftCrew);
+
+        let filteredUpgradeRecipes = upgradeRecipes.filter(item => item.name.indexOf('SB Tier') === -1 );
+        let allRecipes = craftRecipes.concat(filteredUpgradeRecipes);
+        const craftItems = [''].concat(allRecipes.map((r) => r.name));
+        let craftOptStr = '';
+        craftItems.forEach( function(item) {craftOptStr += '<option value="' + item + '">' + item + '</option>';});
+        let craftItem = document.createElement('select');
+        craftItem.innerHTML = craftOptStr;
+        let craftResourceToken = craftParsedData && craftParsedData.item && craftParsedData.item !== '' ? allRecipes.find(r => r.name == craftParsedData.item) : '';
+        craftItem.value = craftResourceToken && craftResourceToken.name ? craftResourceToken.name : '';
+        let craftAmount = document.createElement('input');
+        craftAmount.setAttribute('type', 'text');
+        craftAmount.placeholder = '0';
+        craftAmount.style.width = '60px';
+        craftAmount.style.marginRight = '10px';
+        craftAmount.value = craftParsedData && craftParsedData.amount ? craftParsedData.amount : '';
+        let craftItemDiv = document.createElement('div');
+        craftItemDiv.appendChild(craftItem);
+        craftItemDiv.appendChild(craftAmount);
+        let craftItemDivTd = document.createElement('td');
+        craftItemDivTd.appendChild(craftItemDiv);
+
+        craftRow.appendChild(craftLabelTd);
+        craftRow.appendChild(craftStarbaseCoordTd);
+        craftRow.appendChild(craftCrewTd);
+        craftRow.appendChild(craftItemDivTd);
+
+        let targetElem = document.querySelector('#assistModal .assist-modal-body #craftTable');
+        targetElem.appendChild(craftRow);
+    }
+
 	function updateAssistStatus(fleet) {
-		let targetRow = document.querySelectorAll('#assistStatus .assist-fleet-row[pk="' + fleet.publicKey.toString() + '"]');
+        let rowPK = fleet.publicKey ? fleet.publicKey.toString() : fleet.label;
+		let targetRow = document.querySelectorAll('#assistStatus .assist-fleet-row[pk="' + rowPK + '"]');
 
 		if (targetRow.length > 0) {
-			targetRow[0].children[1].firstChild.innerHTML = fleet.foodCnt;
-			targetRow[0].children[2].firstChild.innerHTML = fleet.sduCnt;
+			targetRow[0].children[1].firstChild.innerHTML = fleet.foodCnt || 0;
+			targetRow[0].children[2].firstChild.innerHTML = fleet.sduCnt || 0;
 			targetRow[0].children[3].firstChild.innerHTML = fleet.state;
 		} else {
 			let fleetRow = document.createElement('tr');
 			fleetRow.classList.add('assist-fleet-row');
-			fleetRow.setAttribute('pk', fleet.publicKey.toString());
+			fleetRow.setAttribute('pk', rowPK);
 			let fleetLabel = document.createElement('span');
 			fleetLabel.innerHTML = fleet.label;
 			let fleetLabelTd = document.createElement('td');
 			fleetLabelTd.appendChild(fleetLabel);
 			let fleetTool = document.createElement('span');
-			fleetTool.innerHTML = fleet.foodCnt;
+			fleetTool.innerHTML = fleet.foodCnt || 0;
 			let fleetToolTd = document.createElement('td');
 			fleetToolTd.appendChild(fleetTool);
 			let fleetSdu = document.createElement('span');
-			fleetSdu.innerHTML = fleet.sduCnt;
+			fleetSdu.innerHTML = fleet.sduCnt || 0;
 			let fleetSduTd = document.createElement('td');
 			fleetSduTd.appendChild(fleetSdu);
 			let fleetStatus = document.createElement('span');
@@ -2488,6 +3110,36 @@
 			}
 		}
 
+        let craftRows = document.querySelectorAll('#assistModal .assist-craft-row');
+        for (let [i, row] of craftRows.entries()) {
+            let craftPK = row.getAttribute('pk');
+
+            let craftStarbaseCoord = validateCoordInput(row.children[1].firstChild.value);
+
+            let craftCrew = validateCoordInput(row.children[2].firstChild.value);
+
+            let craftItem = row.children[3].firstChild.children[0].value;
+			//craftItem = craftItem !== '' ? cargoItems.find(r => r.name == craftItem).token : '';
+
+			let craftAmount = parseInt(row.children[3].firstChild.children[1].value) || 0;
+
+            let craftSavedData = await GM.getValue(craftPK, '{}');
+            let craftParsedData = craftSavedData && JSON.parse(craftSavedData);
+            let craftState = craftParsedData && craftParsedData.state || 'Idle';
+
+            let craft = {
+                label: craftPK,
+                coordinates: craftStarbaseCoord,
+                crew: craftCrew,
+                item: craftItem,
+                amount: craftAmount,
+                state: craftState
+            }
+            console.log('craft: ', craft);
+
+            await GM.setValue(craftPK, JSON.stringify(craft));
+        }
+
 		if (errBool === false) {
 			errElem[0].innerHTML = '';
 			assistModalToggle();
@@ -2637,21 +3289,24 @@
 			document.querySelectorAll('#assistModal .assist-mine-row').forEach(e => e.remove());
 			document.querySelectorAll('#assistModal .assist-pad-row').forEach(e => e.remove());
 			document.querySelectorAll('#assistModal .assist-transport-row').forEach(e => e.remove());
+            document.querySelectorAll('#assistModal .assist-craft-row').forEach(e => e.remove());
 			for (let fleet of userFleets) addAssistInput(fleet);
+            for (let i=1; i < 5; i++) addCraftingInput(i);
 			targetElem.style.display = 'block';
 		} else {
 			targetElem.style.display = 'none';
 		}
 	}
 
-	async function assistStatusToggle() {
-			let targetElem = document.querySelector('#assistStatus');
-			if (targetElem.style.display === 'none') {
-					targetElem.style.display = 'block';
-			} else {
-					targetElem.style.display = 'none';
-			}
-	}
+    async function assistStatusToggle() {
+        let targetElem = document.querySelector('#assistStatus');
+        if (targetElem.style.display === 'none') {
+            targetElem.style.display = 'block';
+        } else {
+            targetElem.style.display = 'none';
+        }
+        //await calcMiningFleet();
+    }
 
     async function calcMiningFleet() {
         // EXPERIMENTAL
@@ -3758,8 +4413,7 @@
 
 		for (const entry of transportManifest) {
 			if (entry.res && entry.amt > 0) {
-				//Bail if cargo is full (based on heaviest resource available in game)
-				if(cargoSpace <= cargoItems.find(r => r.token == entry.res).size * entry.res) {
+				if(cargoSpace < 1) {
 					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Cargo full - remaining loading process skipped`);
 					break;
 				}
@@ -3778,7 +4432,7 @@
 
 				//Deduct ammo already loaded into ammobank if applicable
 				const isAmmo = entry.res === sageGameAcct.account.mints.ammo.toString();
-				const resMax = Math.min(cargoSpace, isAmmo ? entry.amt - ammoLoadingIntoAmmoBank : entry.amt);
+				const resMax = Math.floor(Math.min(cargoSpace / cargoItems.find(r => r.token == entry.res).size, isAmmo ? entry.amt - ammoLoadingIntoAmmoBank : entry.amt));
 				if (resMax > 0) {
 					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Attempting to load ${resMax} ${entry.res} from ${starbaseCoords}`);
 					const resp = await execCargoFromStarbaseToFleet(
@@ -3790,7 +4444,7 @@
 						starbaseCoords,
 						resMax
 					);
-                    cargoSpace -= resMax;
+                    cargoSpace -= resp && cargoItems.find(r => r.token == entry.res).size * resp.amount;
 
 					if (resp && resp.name == 'NotEnoughResource') {
 						const resShort = cargoItems.find(r => r.token == entry.res).name;
@@ -3942,6 +4596,197 @@
 		setTimeout(() => { startFleet(i); }, 10000 + extraTime);
 	}
 
+    async function getStarbasePlayerCargoHolds(starbasePlayer) {
+        let starbasePlayerCargoHolds = await cargoProgram.account.cargoPod.all([
+            {
+                memcmp: {
+                    offset: 41,
+                    bytes: starbasePlayer.toBase58(),
+                },
+            },
+        ]);
+
+        let starbasePlayerCargoHoldsAndTokens = [];
+        for (let cargoHold of starbasePlayerCargoHolds) {
+            if (cargoHold.account && cargoHold.account.openTokenAccounts > 0) {
+                let cargoHoldTokensRaw = await solanaReadConnection.getParsedTokenAccountsByOwner(cargoHold.publicKey, {programId: tokenProgramPK});
+                let cargoHoldTokens = cargoHoldTokensRaw.value.map(item => ({cargoHoldToken: item.pubkey, mint: item.account.data.parsed.info.mint, amount: item.account.data.parsed.info.tokenAmount.uiAmount}));
+                starbasePlayerCargoHoldsAndTokens.push({starbasePlayerCargoHold: cargoHold.publicKey, cargoHoldTokens: cargoHoldTokens});
+            }
+        }
+        return starbasePlayerCargoHoldsAndTokens;
+    }
+
+    function getStarbasePlayerCargoMaxItem(starbasePlayerCargoHoldsAndTokens, mint) {
+        let cargoHold = starbasePlayerCargoHoldsAndTokens.reduce((prev, curr) => {
+            let prevCargoHoldToken = prev && prev.cargoHoldTokens.find(item => item.mint === mint);
+            let prevAmount = prevCargoHoldToken ? prevCargoHoldToken.amount : -1;
+            let currCargoHoldToken = curr.cargoHoldTokens.find(item => item.mint === mint);
+            let currAmount = currCargoHoldToken ? currCargoHoldToken.amount : -1;
+            return prevAmount > currAmount ? prev : currAmount > -1 ? curr : null;
+        });
+        return cargoHold;
+    }
+
+    function getTargetRecipe(starbasePlayerCargoHoldsAndTokens, userCraft, targetAmount) {
+        let targetRecipe = null;
+        let allRecipes = craftRecipes.concat(upgradeRecipes);
+        let craftRecipe = userCraft.name ? userCraft : allRecipes.find(item => item.name === userCraft.item);
+
+        let starbasePlayerIngredientCargoHolds = [];
+        for (let input of craftRecipe.input) {
+            let craftAmount = input.amount * targetAmount;
+            let starbasePlayerCargoHold = getStarbasePlayerCargoMaxItem(starbasePlayerCargoHoldsAndTokens, input.mint.toString());
+            if (starbasePlayerCargoHold && starbasePlayerCargoHold.cargoHoldTokens) {
+                let cargoHoldToken = starbasePlayerCargoHold.cargoHoldTokens.find(item => item.mint === input.mint.toString());
+                let amountCraftable = Math.floor(cargoHoldToken.amount / input.amount);
+                starbasePlayerIngredientCargoHolds.push({starbasePlayerCargoHold: starbasePlayerCargoHold.starbasePlayerCargoHold, cargoHoldToken: cargoHoldToken, amountCraftable: amountCraftable, craftAmount: craftAmount});
+            } else {
+                starbasePlayerIngredientCargoHolds.push({starbasePlayerCargoHold: null, cargoHoldToken: {mint: input.mint.toString()}, amountCraftable: 0, craftAmount: craftAmount});
+            }
+        }
+
+        let limitingIngredient = starbasePlayerIngredientCargoHolds.reduce((prev, curr) => prev && prev.amountCraftable < curr.amountCraftable ? prev : curr);
+
+        if (limitingIngredient.amountCraftable < 1) {
+            let filteredCraftRecipes = craftRecipes.filter(item => !['Framework 2','Framework 3','Toolkit 2','Toolkit 3'].includes(item.name));
+            let ingredientRecipes = filteredCraftRecipes.filter(item => item.output.mint.toString() === limitingIngredient.cargoHoldToken.mint);
+            for (let ingredientRecipe of ingredientRecipes) {
+                let checkRecipe = getTargetRecipe(starbasePlayerCargoHoldsAndTokens, ingredientRecipe, limitingIngredient.craftAmount);
+                if (checkRecipe) targetRecipe = checkRecipe;
+            }
+        } else {
+            targetRecipe = {craftRecipe: craftRecipe, amountCraftable: limitingIngredient.amountCraftable, craftAmount: targetAmount};
+        }
+
+        return targetRecipe;
+    }
+
+    async function getStarbaseTime(starbase, activity) {
+        let currTime = Date.now() / 1000;
+        let gameStateAcct = await sageProgram.account.gameState.fetch(sageGameAcct.account.gameState);
+        let sbLevel = gameStateAcct.fleet.upkeep['level' + starbase.account.level];
+        let lastGlobalUpdate, lastLocalUpdate, resAmount, resDepletionRate;
+        if (activity === 'Craft') {
+            lastGlobalUpdate = starbase.account.upkeepFoodGlobalLastUpdate.toNumber();
+            lastLocalUpdate = starbase.account.upkeepFoodLastUpdate.toNumber();
+            resAmount = starbase.account.upkeepFoodBalance.toNumber();
+            resDepletionRate = sbLevel.foodDepletionRate/100;
+        } else {
+            lastGlobalUpdate = starbase.account.upkeepToolkitGlobalLastUpdate.toNumber();
+            lastLocalUpdate = starbase.account.upkeepToolkitLastUpdate.toNumber();
+            resAmount = starbase.account.upkeepToolkitBalance.toNumber();
+            resDepletionRate = sbLevel.toolkitDepletionRate/100;
+        }
+        const timeSinceGlobalUpdate = currTime > lastGlobalUpdate ? currTime - lastGlobalUpdate : 0;
+        const upkeepTimeRemaining = resDepletionRate > 0 ? resAmount / resDepletionRate : 0;
+        const minGlobalTimeDiff = Math.min(timeSinceGlobalUpdate, upkeepTimeRemaining);
+        const minLocalTimeDiff = lastLocalUpdate + minGlobalTimeDiff > currTime ? currTime - lastLocalUpdate : minGlobalTimeDiff;
+        const resForLocalTimeDiff = minLocalTimeDiff * resDepletionRate;
+        const resRemainingLocalTimeDiff = resAmount - resForLocalTimeDiff;
+        const resRemainingLocalTimeDiffMin = resRemainingLocalTimeDiff < 0 ? 0 : resRemainingLocalTimeDiff;
+        return {starbaseTime: lastLocalUpdate + minLocalTimeDiff, resRemaining: resRemainingLocalTimeDiffMin};
+    }
+
+    async function startCraft(userCraft) {
+        if (!enableAssistant) return;
+        try {
+            let targetX = userCraft.coordinates.split(',')[0].trim();
+            let targetY = userCraft.coordinates.split(',')[1].trim();
+            let starbase = await getStarbaseFromCoords(targetX, targetY);
+            cLog(2, FleetTimeStamp(userCraft.label), 'starbase: ', starbase);
+            let craftTime = await getStarbaseTime(starbase, 'Craft');
+            let upgradeTime = await getStarbaseTime(starbase, 'Upgrade');
+
+            let starbasePlayer = await getStarbasePlayer(userProfileAcct, starbase.publicKey);
+            starbasePlayer = starbasePlayer ? starbasePlayer.publicKey : await execRegisterStarbasePlayer('Craft', userCraft.coordinates);
+
+            // Get all crafting instances at designated Starbase
+            let craftingInstances = await sageProgram.account.craftingInstance.all([
+                {
+                    memcmp: {
+                        offset: 11,
+                        bytes: starbasePlayer.toBase58(),
+                    },
+                },
+            ]);
+
+            //let completeBN = new BrowserAnchor.anchor.BN(2);
+            //let completeArr = completeBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "be", 2);
+            //let complete58 = bs58.encode(completeArr);
+
+            // Get all completed crafting processes at the designated Starbase
+            let completedCraftingProcesses = [];
+            let completedUpgradeProcesses = [];
+            for (let craftingInstance of craftingInstances) {
+                let craftingProcesses = await craftingProgram.account.craftingProcess.all([
+                    {
+                        memcmp: {
+                            offset: 17,
+                            bytes: craftingInstance.publicKey.toBase58(),
+                        },
+                    },
+                    /*{
+                        memcmp: {
+                            offset: 152,
+                            bytes: complete58,
+                        },
+                    },*/
+                ]);
+
+                if (craftingProcesses.length < 1) updateFleetState(userCraft, 'Idle') && await GM.setValue(userCraft.label, JSON.stringify(userCraft));
+                for (let craftingProcess of craftingProcesses) {
+                    if (craftRecipes.some(item => item.publicKey.toString() === craftingProcess.account.recipe.toString())) {
+                        if (craftingProcess.account.endTime.toNumber() < craftTime.starbaseTime && [2,3].includes(craftingProcess.account.status)) {
+                            completedCraftingProcesses.push({craftingProcess: craftingProcess.publicKey, craftingInstance: craftingInstance.publicKey, recipe: craftingProcess.account.recipe, status: craftingProcess.account.status});
+                        }
+                    } else {
+                        if (craftingProcess.account.endTime.toNumber() < upgradeTime.starbaseTime && [2,3].includes(craftingProcess.account.status)) {
+                            completedUpgradeProcesses.push({craftingProcess: craftingProcess.publicKey, craftingInstance: craftingInstance.publicKey, recipe: craftingProcess.account.recipe, status: craftingProcess.account.status});
+                        }
+                    }
+                }
+            }
+
+            let starbasePlayerCargoHoldsAndTokens = await getStarbasePlayerCargoHolds(starbasePlayer);
+
+            for (let craftingProcess of completedCraftingProcesses) {
+                let craftRecipe = craftRecipes.find(item => item.publicKey.toString() === craftingProcess.recipe.toString());
+                cLog(1,`${FleetTimeStamp(userCraft.label)} Completing craft at [${targetX}, ${targetY}] for  ${craftRecipe.output.mint.toString()}`);
+                updateFleetState(userCraft, 'Craft Completing');
+                await execCompleteCrafting(starbase, starbasePlayer, starbasePlayerCargoHoldsAndTokens, craftingProcess, userCraft);
+                if (!userCraft.state.includes('ERROR')) await GM.setValue(userCraft.label, JSON.stringify(userCraft));
+            }
+
+            for (let upgradeProcess of completedUpgradeProcesses) {
+                let craftingRecipe = upgradeRecipes.find(item => item.publicKey.toString() === upgradeProcess.recipe.toString());
+                cLog(1,`${FleetTimeStamp(userCraft.label)} Completing upgrade at [${targetX}, ${targetY}] for  ${craftingRecipe.input[0].mint.toString()}`);
+                updateFleetState(userCraft, 'Upgrade Completing');
+                await execCompleteUpgrade(starbase, starbasePlayer, starbasePlayerCargoHoldsAndTokens, upgradeProcess, userCraft);
+                if (!userCraft.state.includes('ERROR')) await GM.setValue(userCraft.label, JSON.stringify(userCraft));
+            }
+
+            let starbasePlayerInfo = await sageProgram.account.starbasePlayer.fetch(starbasePlayer);
+            let availableCrew = starbasePlayerInfo.totalCrew.toNumber() - starbasePlayerInfo.busyCrew.toNumber();
+
+            let targetRecipe = getTargetRecipe(starbasePlayerCargoHoldsAndTokens, userCraft, Number(userCraft.amount));
+
+            if (!enableAssistant) return;
+
+            if (availableCrew >= userCraft.crew && targetRecipe && targetRecipe.amountCraftable > 0 && userCraft.state === 'Idle') {
+                let craftAmount = Math.min(targetRecipe.craftAmount, targetRecipe.amountCraftable);
+                cLog(1,`${FleetTimeStamp(userCraft.label)} Starting craft at [${targetX}, ${targetY}] for ${targetRecipe.craftRecipe.name}`);
+                updateFleetState(userCraft, 'Craft Starting');
+                await execStartCrafting(starbase, starbasePlayer, starbasePlayerCargoHoldsAndTokens, targetRecipe.craftRecipe, craftAmount, userCraft);
+                if (!userCraft.state.includes('ERROR')) await GM.setValue(userCraft.label, JSON.stringify(userCraft));
+            }
+        }
+        catch(error) {
+            cLog(1,`${FleetTimeStamp(userCraft.label)} Uncaught crafting error`, error);
+        }
+        setTimeout(() => { startCraft(userCraft); }, 120000);
+    }
+
 	async function startAssistant() {
 		for (let i=0, n=userFleets.length; i < n; i++) {
 			//Initialize iteration counter
@@ -3955,6 +4800,12 @@
 			//Stagger fleet starts by 500ms to avoid overloading the RPC
 			setTimeout(() => { startFleet(i);	}, 500 * (i + 1));
 		}
+
+        for (let i=1; i < 5; i++) {
+            let craftSavedData = await GM.getValue('craft' + i, '{}');
+            let craftParsedData = JSON.parse(craftSavedData);
+            if (craftParsedData.item && craftParsedData.coordinates) startCraft(craftParsedData);
+        }
 
 		setTimeout(fleetHealthCheck, 5000);
 	}
@@ -4013,7 +4864,7 @@
             while (waitForSequence) {
                 let fleetBusy = false;
                 for (let i=0, n=userFleets.length; i < n; i++) {
-                    if (['Mine Starting','Mining Stop','Unloading','Loading'].includes(userFleets[i].state)) fleetBusy = true;
+                    if (['Mine Starting','Mining Stop','Unloading','Loading','Refueling','Craft Completing','Upgrade Completing'].includes(userFleets[i].state)) fleetBusy = true;
                 }
                 if (!fleetBusy) waitForSequence = false;
                 await wait(5000);
@@ -4131,6 +4982,8 @@
             buildXpAccounts(councilRankXpCategory, userXpAccounts, "userCouncilRankXpAccounts")
             buildXpAccounts(pilotingXpCategory, userXpAccounts, "userPilotingXpAccounts")
             buildXpAccounts(miningXpCategory, userXpAccounts, "userMiningXpAccounts")
+            buildXpAccounts(craftingXpCategory, userXpAccounts, "userCraftingXpAccounts")
+            buildXpAccounts(LPCategory, userXpAccounts, "userLPAccounts")
 
 			userFleetAccts = await sageProgram.account.fleet.all([
 					{
@@ -4247,6 +5100,7 @@
 			}
 
 			userFleets.sort(function (a, b) { return a.label.toUpperCase().localeCompare(b.label.toUpperCase()); });
+
 			initComplete = true;
 			if(globalSettings.autoStartScript) {
 				assistStatusToggle();
@@ -4303,7 +5157,7 @@
 			let assistModalContent = document.createElement('div');
 			assistModalContent.classList.add('assist-modal-content');
 			let iconStr = 'data:image/png;base64,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';
-			assistModalContent.innerHTML = '<div class="assist-modal-header"><img src="' + iconStr + '" /><span style="padding-left: 15px;">SLY Lab Assistant v' + GM_info.script.version + '</span><div class="assist-modal-header-right"><button id="undockAllBtn" class="assist-modal-btn">Undock All</button><button id="configImportExport" class="assist-modal-btn">Import/Export</button><button class=" assist-modal-btn assist-modal-save">Save</button><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><table><tr><td>Fleet</td><td>Assignment</td><td>Target</td><td>Starbase</td><td>Subwarp</td><td>Max Cargo</td><td>Max Ammo</td><td>Max Fuel</td></tr></table></div>';
+			assistModalContent.innerHTML = '<div class="assist-modal-header"><img src="' + iconStr + '" /><span style="padding-left: 15px;">SLY Assistant v' + GM_info.script.version + '</span><div class="assist-modal-header-right"><button id="undockAllBtn" class="assist-modal-btn">Undock All</button><button id="configImportExport" class="assist-modal-btn">Import/Export</button><button class=" assist-modal-btn assist-modal-save">Save</button><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><table id="fleetTable"><tr><td>Fleet</td><td>Assignment</td><td>Target</td><td>Starbase</td><td>Subwarp</td><td>Max Cargo</td><td>Max Ammo</td><td>Max Fuel</td></tr></table><hr><strong>Crafting</strong><table id="craftTable"><tr><td></td><td>Starbase</td><td>Crew</td><td>Item | Max Amount</td></tr></table></div>';
 			assistModal.append(assistModalContent);
 
 			let settingsModal = document.createElement('div');
@@ -4312,7 +5166,7 @@
 			settingsModal.style.display = 'none';
 			let settingsModalContent = document.createElement('div');
 			settingsModalContent.classList.add('assist-modal-content');
-			settingsModalContent.innerHTML = '<div class="assist-modal-header"> <img src="' + iconStr + '" /> <span style="padding-left: 15px;">SLY Lab Assistant v' + GM_info.script.version + '</span> <div class="assist-modal-header-right"> <button class=" assist-modal-btn assist-modal-save">Save</button> <span class="assist-modal-close">x</span> </div></div><div class="assist-modal-body"> <span id="settings-modal-error"></span> <div id="settings-modal-header">Global Settings</div> <div>Priority Fee <input id="priorityFee" type="number" min="0" max="100000000" placeholder="1" ></input> <span>Added to each transaction. Set to 0 (zero) to disable. 1 Lamport = 0.000000001 SOL</span> </div> <div>Low Priority Fee % <input id="lowPriorityFeeMultiplier" type="range" min="0" max="100" value="10" step="10"></input> <span>Percentage above priority fees that should be used for smaller transactions</span> </div> <div>Save profile selection? <input id="saveProfile" type="checkbox"></input> <span>Should the profile selection be saved (uncheck to select a different profile each time)?</span> </div> <div>Tx Poll Delay <input id="confirmationCheckingDelay" type="number" min="200" max="10000" placeholder="200"></input> <span>How many milliseconds to wait before re-reading the chain for confirmation</span> </div> <div>Console Logging <input id="debugLogLevel" type="number" min="0" max="9" placeholder="3"></input> <span>How much console logging you want to see (higher number = more, 0 = none)</span> </div> <div>Use Ammo Banks for Transport? <input id="transportUseAmmoBank" type="checkbox"></input> <span>Should transports also use their ammo banks to help move ammo?</span> </div> <div>Stop Transports On Error <input id="transportStopOnError" type="checkbox"></input> <span>Should transport fleet stop completely if there is an error (example: not enough resource/fuel/etc.)?</span> </div> <div>Moving Scan Pattern <select id="scanBlockPattern"> <option value="square">square</option> <option value="ring">ring</option> <option value="spiral">spiral</option> <option value="up">up</option> <option value="down">down</option> <option value="left">left</option> <option value="right">right</option> <option value="sly">sly</option> </select> <span>Only applies to fleets set to Move While Scanning</span> </div> <div>Scan Block Length <input id="scanBlockLength" type="number" min="2" max="50" placeholder="5"></input> <span>How far fleets should go for the up, down, left and right scanning patterns</span> </div> <div>Scan Block Resets After Resupply? <input id="scanBlockResetAfterResupply" type="checkbox"></input> <span>Start from the beginning of the pattern after resupplying at starbase?</span> </div> <div>Scan Resupply On Low Fuel? <input id="scanResupplyOnLowFuel" type="checkbox"></input> <span>Do scanning fleets set to Move While Scanning return to base to resupply when fuel is too low to move?</span> </div> <div>Scan Sector Regeneration Delay <input id="scanSectorRegenTime" type="number" min="0" placeholder="90"></input> <span>Number of seconds to wait after finding SDU</span> </div> <div>Scan Pause Time <input id="scanPauseTime" type="number" min="240" max="6000" placeholder="600"></input> <span>Number of seconds to wait when sectors probabilities are too low</span> </div> <div>Scan Strike Count <input id="scanStrikeCount" type="number" min="1" max="10" placeholder="3"></input> <span>Number of low % scans before moving on or pausing</span> </div> <div>Status Panel Opacity <input id="statusPanelOpacity" type="range" min="1" max="100" value="75"></input> <span>(requires page refresh)</span> </div> <div>---</div> <div>Advanced Settings</div> <div>Auto Start Script <input id="autoStartScript" type="checkbox"></input> <span>Should Lab Assistant automatically start after initialization is complete?</span> </div> <div>Reload On Stuck Fleets <input id="reloadPageOnFailedFleets" type="number" min="0" max="999" placeholder="0"></input> <span>Automatically refresh the page if this many fleets get stuck (0 = never)</span> </div></div>';
+			settingsModalContent.innerHTML = '<div class="assist-modal-header"> <img src="' + iconStr + '" /> <span style="padding-left: 15px;">SLY Assistant v' + GM_info.script.version + '</span> <div class="assist-modal-header-right"> <button class=" assist-modal-btn assist-modal-save">Save</button> <span class="assist-modal-close">x</span> </div></div><div class="assist-modal-body"> <span id="settings-modal-error"></span> <div id="settings-modal-header">Global Settings</div> <div>Priority Fee <input id="priorityFee" type="number" min="0" max="100000000" placeholder="1" ></input> <span>Added to each transaction. Set to 0 (zero) to disable. 1 Lamport = 0.000000001 SOL</span> </div> <div>Low Priority Fee % <input id="lowPriorityFeeMultiplier" type="range" min="0" max="100" value="10" step="10"></input> <span>Percentage above priority fees that should be used for smaller transactions</span> </div> <div>Save profile selection? <input id="saveProfile" type="checkbox"></input> <span>Should the profile selection be saved (uncheck to select a different profile each time)?</span> </div> <div>Tx Poll Delay <input id="confirmationCheckingDelay" type="number" min="200" max="10000" placeholder="200"></input> <span>How many milliseconds to wait before re-reading the chain for confirmation</span> </div> <div>Console Logging <input id="debugLogLevel" type="number" min="0" max="9" placeholder="3"></input> <span>How much console logging you want to see (higher number = more, 0 = none)</span> </div> <div>Use Ammo Banks for Transport? <input id="transportUseAmmoBank" type="checkbox"></input> <span>Should transports also use their ammo banks to help move ammo?</span> </div> <div>Stop Transports On Error <input id="transportStopOnError" type="checkbox"></input> <span>Should transport fleet stop completely if there is an error (example: not enough resource/fuel/etc.)?</span> </div> <div>Moving Scan Pattern <select id="scanBlockPattern"> <option value="square">square</option> <option value="ring">ring</option> <option value="spiral">spiral</option> <option value="up">up</option> <option value="down">down</option> <option value="left">left</option> <option value="right">right</option> <option value="sly">sly</option> </select> <span>Only applies to fleets set to Move While Scanning</span> </div> <div>Scan Block Length <input id="scanBlockLength" type="number" min="2" max="50" placeholder="5"></input> <span>How far fleets should go for the up, down, left and right scanning patterns</span> </div> <div>Scan Block Resets After Resupply? <input id="scanBlockResetAfterResupply" type="checkbox"></input> <span>Start from the beginning of the pattern after resupplying at starbase?</span> </div> <div>Scan Resupply On Low Fuel? <input id="scanResupplyOnLowFuel" type="checkbox"></input> <span>Do scanning fleets set to Move While Scanning return to base to resupply when fuel is too low to move?</span> </div> <div>Scan Sector Regeneration Delay <input id="scanSectorRegenTime" type="number" min="0" placeholder="90"></input> <span>Number of seconds to wait after finding SDU</span> </div> <div>Scan Pause Time <input id="scanPauseTime" type="number" min="240" max="6000" placeholder="600"></input> <span>Number of seconds to wait when sectors probabilities are too low</span> </div> <div>Scan Strike Count <input id="scanStrikeCount" type="number" min="1" max="10" placeholder="3"></input> <span>Number of low % scans before moving on or pausing</span> </div> <div>Status Panel Opacity <input id="statusPanelOpacity" type="range" min="1" max="100" value="75"></input> <span>(requires page refresh)</span> </div> <div>---</div> <div>Advanced Settings</div> <div>Auto Start Script <input id="autoStartScript" type="checkbox"></input> <span>Should Lab Assistant automatically start after initialization is complete?</span> </div> <div>Reload On Stuck Fleets <input id="reloadPageOnFailedFleets" type="number" min="0" max="999" placeholder="0"></input> <span>Automatically refresh the page if this many fleets get stuck (0 = never)</span> </div></div>';
 			settingsModal.append(settingsModalContent);
 
 			let importModal = document.createElement('div');
