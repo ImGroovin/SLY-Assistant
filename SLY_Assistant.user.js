@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.1
+// @version      0.6.2
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra
 // @match        https://*.based.staratlas.com/
@@ -4725,6 +4725,8 @@
             //let completeArr = completeBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "be", 2);
             //let complete58 = bs58.encode(completeArr);
 
+            if (craftingInstances.length < 1) updateFleetState(userCraft, 'Idle') && await GM.setValue(userCraft.label, JSON.stringify(userCraft));
+
             // Get all completed crafting processes at the designated Starbase
             let completedCraftingProcesses = [];
             let completedUpgradeProcesses = [];
@@ -4744,7 +4746,6 @@
                     },*/
                 ]);
 
-                if (craftingProcesses.length < 1) updateFleetState(userCraft, 'Idle') && await GM.setValue(userCraft.label, JSON.stringify(userCraft));
                 for (let craftingProcess of craftingProcesses) {
                     if (craftRecipes.some(item => item.publicKey.toString() === craftingProcess.account.recipe.toString())) {
                         if (craftingProcess.account.endTime.toNumber() < craftTime.starbaseTime && [2,3].includes(craftingProcess.account.status)) {
