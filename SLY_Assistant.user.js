@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.3
+// @version      0.6.4
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra
 // @match        https://*.based.staratlas.com/
@@ -2063,7 +2063,6 @@
                 transactions.push(tx);
                 }
 
-
             let [signerFeeMintToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
                 [
                     userPublicKey.toBuffer(),
@@ -2073,16 +2072,46 @@
                 programPK
             );
 
-            let [craftingAtlasToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
-                [
-                    craftingProcess.toBuffer(),
-                    tokenProgramPK.toBuffer(),
-                    sageGameAcct.account.mints.atlas.toBuffer(),
-                ],
-                programPK
-            );
+            let startCraftProcRemainingAccts = [
+                {
+                    pubkey: craftingRecipe.feeRecipient,
+                    isSigner: false,
+                    isWritable: false
+                }, {
+                    pubkey: userPublicKey,
+                    isSigner: true,
+                    isWritable: true
+                }, {
+                    pubkey: signerFeeMintToken,
+                    isSigner: false,
+                    isWritable: true
+                }];
 
-            if (!await getAccountInfo(userCraft.label, 'Crafting atlas token', craftingAtlasToken)) transactions.push(await createPDA(craftingAtlasToken, craftingProcess, sageGameAcct.account.mints.atlas, userCraft, false));
+            if (craftRecipes.some(item => item.name === craftingRecipe.name)) {
+                console.log('HERE');
+                let [craftingAtlasToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+                    [
+                        craftingProcess.toBuffer(),
+                        tokenProgramPK.toBuffer(),
+                        sageGameAcct.account.mints.atlas.toBuffer(),
+                    ],
+                    programPK
+                );
+
+                if (!await getAccountInfo(userCraft.label, 'Crafting atlas token', craftingAtlasToken)) transactions.push(await createPDA(craftingAtlasToken, craftingProcess, sageGameAcct.account.mints.atlas, userCraft, false));
+
+                startCraftProcRemainingAccts.push({
+                    pubkey: craftingAtlasToken,
+                    isSigner: false,
+                    isWritable: true
+                });
+            }
+
+            startCraftProcRemainingAccts.push({
+                pubkey: tokenProgramPK,
+                isSigner: false,
+                isWritable: false
+            });
 
             let tx2 = { instruction: await sageProgram.methods.startCraftingProcess({keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx)}).accountsStrict({
                 starbaseAndStarbasePlayer: {
@@ -2103,29 +2132,7 @@
                     gameState: sageGameAcct.account.gameState
                 },
                 craftingProgram: craftingProgramPK
-                }).remainingAccounts([
-                {
-                    pubkey: craftingRecipe.feeRecipient,
-                    isSigner: false,
-                    isWritable: false
-                }, {
-                    pubkey: userPublicKey,
-                    isSigner: true,
-                    isWritable: true
-                }, {
-                    pubkey: signerFeeMintToken,
-                    isSigner: false,
-                    isWritable: true
-                }, {
-                    pubkey: craftingAtlasToken,
-                    isSigner: false,
-                    isWritable: true
-                }, {
-                    pubkey: tokenProgramPK,
-                    isSigner: false,
-                    isWritable: false
-                }
-            ]).instruction()}
+                }).remainingAccounts(startCraftProcRemainingAccts).instruction()}
             transactions.push(tx2);
 
             let txResult = {craftingId: formattedRandomBytes, result: await txSignAndSend(transactions, userCraft, 'START CRAFTING')};
