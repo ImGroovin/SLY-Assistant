@@ -6,9 +6,9 @@
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra
 // @match        https://*.based.staratlas.com/
 // @require      https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js
-// @require      https://raw.githubusercontent.com/Spartaco17/SLY-Assistant/main/anchor-browserified.js
-// @require      https://raw.githubusercontent.com/Spartaco17/SLY-Assistant/main/buffer-browserified.js
-// @require      https://raw.githubusercontent.com/Spartaco17/SLY-Assistant/main/bs58-browserified.js
+// @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/anchor-browserified.js
+// @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/buffer-browserified.js
+// @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/bs58-browserified.js
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=staratlas.com
 // @grant        GM_setValue
 // @grant        GM_getValue
