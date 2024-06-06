@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.4
+// @version      0.6.5
 // @description  try to take over the world!
-// @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra
+// @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen
 // @match        https://*.based.staratlas.com/
 // @require      https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js
 // @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/anchor-browserified.js
@@ -16,24 +16,25 @@
 // ==/UserScript==
 
 (async function() {
-	'use strict';
+    'use strict';
 
-	//Used for reading solana data
-	let customReadRPCs = [];
+    //Used for reading solana data
+    let customReadRPCs = [];
 
-	//Used for pushing transactions to solana chain
-	let customWriteRPCs = [];
+    //Used for pushing transactions to solana chain
+    let customWriteRPCs = [];
 
     let saRPCs = [
-        'https://twilight-autumn-diagram.solana-mainnet.quiknode.pro/4fc53d638efd1cc0f80764bc457944bb325d1ff1', //Quicknode
-		'https://rpc.hellomoon.io/57dbc69d-7e66-4454-b33e-fa6a4b46170f', //Hello Moon
-        'https://staratl-mainc06-2415.mainnet.rpcpool.com', //Triton
+        'https://rpc.ironforge.network/mainnet?apiKey=01HZFVRZ4A5WVX2NDA4PCPHJ7N',
+        //'https://twilight-autumn-diagram.solana-mainnet.quiknode.pro/4fc53d638efd1cc0f80764bc457944bb325d1ff1', //Quicknode
+        //'https://rpc.hellomoon.io/78eaf77d-15f4-424a-afb7-4205bb99a969', //Hello Moon
+        //'https://staratl-mainc06-2415.mainnet.rpcpool.com', //Triton
         //'https://mainnet.helius-rpc.com/?api-key=735486d8-ae86-4d26-829c-e34a2210d119', //Helius
-	];
+    ];
     let readRPCs = customReadRPCs.concat(saRPCs);
     let writeRPCs = customWriteRPCs.concat(saRPCs);
 
-	//Program public keys
+    //Program public keys
     /*
 	const sageProgramPK = new solanaWeb3.PublicKey('SAGEqqFewepDHH6hMDcmWy7yjHPpyKLDnRXKb3Ki8e6');
 	const profileProgramPK = new solanaWeb3.PublicKey('pprofELXjL5Kck7Jn5hCpwAL82DpTkSYBENzahVtbc9');
@@ -41,9 +42,9 @@
 	const profileFactionProgramPK = new solanaWeb3.PublicKey('pFACSRuobDmvfMKq1bAzwj27t6d2GJhSCHb1VcfnRmq');
     */
     const sageProgramPK = new solanaWeb3.PublicKey('SAGE2HAwep459SNq61LHvjxPk4pLPEJLoMETef7f7EE');
-	const profileProgramPK = new solanaWeb3.PublicKey('pprofELXjL5Kck7Jn5hCpwAL82DpTkSYBENzahVtbc9');
-	const cargoProgramPK = new solanaWeb3.PublicKey('Cargo2VNTPPTi9c1vq1Jw5d3BWUNr18MjRtSupAghKEk');
-	const profileFactionProgramPK = new solanaWeb3.PublicKey('pFACSRuobDmvfMKq1bAzwj27t6d2GJhSCHb1VcfnRmq');
+    const profileProgramPK = new solanaWeb3.PublicKey('pprofELXjL5Kck7Jn5hCpwAL82DpTkSYBENzahVtbc9');
+    const cargoProgramPK = new solanaWeb3.PublicKey('Cargo2VNTPPTi9c1vq1Jw5d3BWUNr18MjRtSupAghKEk');
+    const profileFactionProgramPK = new solanaWeb3.PublicKey('pFACSRuobDmvfMKq1bAzwj27t6d2GJhSCHb1VcfnRmq');
     const craftingProgramPK = new solanaWeb3.PublicKey('CRAFT2RPXPJWCEix4WpJST3E7NLf79GTqZUL75wngXo5');
     const pointsProgramId = new solanaWeb3.PublicKey('Point2iBvz7j5TMVef8nEgpmz4pDr7tU7v3RjAfkQbM');
     const dataRunningXpCategory = new solanaWeb3.PublicKey('DataJpxFgHhzwu4zYJeHCnAv21YqWtanEBphNxXBHdEY');
@@ -113,6 +114,12 @@
 
 			//How much console logging you want to see (higher number = more, 0 = none)
 			debugLogLevel: parseIntDefault(globalSettings.debugLogLevel, 3),
+
+            //The number of crafting jobs enabled in config
+            craftingJobs: parseIntDefault(globalSettings.craftingJobs, 4),
+
+            //Subwarp when the distance is 1 diagonal sector or less
+            subwarpShortDist: parseBoolDefault(globalSettings.subwarpShortDist, true),
 
 			//Determines if your transports should use their ammo banks to move ammo (in addition to their cargo holds)
 			transportUseAmmoBank: parseBoolDefault(globalSettings.transportUseAmmoBank, true),
@@ -569,18 +576,37 @@
 		const realWarpRange = warpRange / 100;
 		const warpCount = realWarpRange > 0 ? moveDist / realWarpRange : 1;
 
-		if(warpCount < 1) return endCoords; //In range for single jump?
+		if(warpCount <= 1) return endCoords; // In range for single jump?
 
-		//Calculate raw distance
-		let dx = (endX - startX) / warpCount;
-		let dy = (endY - startY) / warpCount;
+        // Calculate raw distance
+        let slope = Math.abs(endX - startX) > 0 ? Math.abs((endY - startY) / (endX - startX)) : Math.abs((endY - startY));
+        let dx = realWarpRange / Math.sqrt(slope ** 2 + 1);
+        let dy = dx * slope;
 
-		//Refine distance
-		dx = dx > 0 ? Math.floor(dx) : Math.ceil(dx);
-		dy = dy > 0 ? Math.floor(dy) : Math.ceil(dy);
+        // Calculate the middle point destination
+        let intX = startX > endX ? startX - parseInt(dx) : startX + parseInt(dx);
+        let intY = startY > endY ? startY - parseInt(dy) : startY + parseInt(dy);
+        let potentialCoords = [[intX,intY],[intX-1,intY-1],[intX-1,intY],[intX-1,intY+1],[intX,intY-1],[intX,intY+1],[intX+1,intY-1],[intX+1,intY],[intX+1,intY+1]];
+
+        // Determine the optimal route based on total jumps and total distance
+        let bestCoords = potentialCoords.reduce((best, val) => {
+            let remainingDistOld = Math.sqrt((best[0] - endX) ** 2 + (best[1] - endY) ** 2);
+            let remainingDistNew = Math.sqrt((val[0] - endX) ** 2 + (val[1] - endY) ** 2);
+            let travelDistOld = Math.sqrt((startX - best[0]) ** 2 + (startY - best[1]) ** 2);
+            let travelDistNew = Math.sqrt((startX - val[0]) ** 2 + (startY - val[1]) ** 2);
+            if (remainingDistNew < realWarpRange && travelDistNew < realWarpRange && remainingDistNew+travelDistNew < remainingDistOld+travelDistOld) {
+                return val;
+            } else if (remainingDistNew < realWarpRange && travelDistNew < realWarpRange && remainingDistOld > realWarpRange) {
+                return val;
+            } else if (remainingDistNew > realWarpRange && travelDistNew < realWarpRange && remainingDistNew < remainingDistOld) {
+                return val;
+            } else if (travelDistOld < realWarpRange) {
+                return best;
+            }
+        });
 
 		//Calculate and return waypoint coordinates
-		return [startX + dx, startY + dy];
+		return bestCoords;
 	}
 
 	function calcWarpFuelReq(fleet, startCoords, endCoords) {
@@ -601,6 +627,7 @@
 
 		while(!CoordsEqual(curWP, endCoords)) {
 			const nextWP = calcNextWarpPoint(fleet.maxWarpDistance, curWP, endCoords);
+            console.log('nextWP: ', nextWP);
 			const distance = calculateMovementDistance(curWP, nextWP);
 			fuelRequired += Math.ceil(distance * (fleet.warpFuelConsumptionRate / 100));
 			curWP = nextWP;
@@ -971,6 +998,7 @@
 				}
 
 				if(tryCount > 1) cLog(3, `${FleetTimeStamp(fleetName)} Got txResult in ${tryCount} tries`, txResult);
+                cLog(4, `${FleetTimeStamp(fleetName)} txResult`, txResult);
 				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM ✅ ${confirmationTimeStr}`);
 				confirmed = true;
 
@@ -2088,7 +2116,6 @@
                 }];
 
             if (craftRecipes.some(item => item.name === craftingRecipe.name)) {
-                console.log('HERE');
                 let [craftingAtlasToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
                     [
                         craftingProcess.toBuffer(),
@@ -3248,6 +3275,8 @@
             savedProfile: saveProfile ? (userProfileAcct && userProfileKeyIdx) ? [userProfileAcct.toString(), userProfileKeyIdx] : [] : [],
 			confirmationCheckingDelay: parseIntDefault(document.querySelector('#confirmationCheckingDelay').value, 200),
 			debugLogLevel: parseIntDefault(document.querySelector('#debugLogLevel').value, 3),
+            craftingJobs: parseIntDefault(document.querySelector('#craftingJobs').value, 4),
+			subwarpShortDist: document.querySelector('#subwarpShortDist').checked,
 			transportUseAmmoBank: document.querySelector('#transportUseAmmoBank').checked,
 			transportStopOnError: document.querySelector('#transportStopOnError').checked,
 			scanBlockPattern: scanBlockPattern ? scanBlockPattern : 'square',
@@ -3278,6 +3307,8 @@
         document.querySelector('#saveProfile').checked = globalSettings.saveProfile;
 		document.querySelector('#confirmationCheckingDelay').value = globalSettings.confirmationCheckingDelay;
 		document.querySelector('#debugLogLevel').value = globalSettings.debugLogLevel;
+        document.querySelector('#craftingJobs').value = globalSettings.craftingJobs;
+		document.querySelector('#subwarpShortDist').checked = globalSettings.subwarpShortDist;
 		document.querySelector('#transportUseAmmoBank').checked = globalSettings.transportUseAmmoBank;
 		document.querySelector('#transportStopOnError').checked = globalSettings.transportStopOnError;
 		document.querySelector('#scanBlockPattern').value = globalSettings.scanBlockPattern;
@@ -3312,7 +3343,7 @@
 			document.querySelectorAll('#assistModal .assist-transport-row').forEach(e => e.remove());
             document.querySelectorAll('#assistModal .assist-craft-row').forEach(e => e.remove());
 			for (let fleet of userFleets) addAssistInput(fleet);
-            for (let i=1; i < 5; i++) addCraftingInput(i);
+            for (let i=1; i < globalSettings.craftingJobs+1; i++) addCraftingInput(i);
 			targetElem.style.display = 'block';
 		} else {
 			targetElem.style.display = 'none';
@@ -3326,7 +3357,7 @@
         } else {
             targetElem.style.display = 'none';
         }
-        //await calcMiningFleet();
+        await calcMiningFleet();
     }
 
     async function calcMiningFleet() {
@@ -3342,6 +3373,34 @@
                 let destY = userFleet.destCoord.split(',')[1].trim();
                 let starbaseX = userFleet.starbaseCoord.split(',')[0].trim();
                 let starbaseY = userFleet.starbaseCoord.split(',')[1].trim();
+
+                // testing
+                // ---------------------------------
+                let starbase = await getStarbaseFromCoords(destX, destY);
+                console.log('starbase: ', starbase);
+
+                let starbasePlayer = await getStarbasePlayer(userProfileAcct, starbase.publicKey);
+                console.log('starbasePlayer: ', starbasePlayer);
+
+                let ships = [];
+                let starbasePlayerAcctInfo = await solanaReadConnection.getAccountInfo(starbasePlayer.publicKey);
+                let shipData = starbasePlayerAcctInfo.data.subarray(170);
+                let shipIter = 0;
+                while (shipData.length >= 48) {
+                    let currShip = shipData.subarray(0, 48);
+                    let shipDecoded = sageProgram.coder.types.decode('WrappedShipEscrow', currShip);
+                    ships.push({publicKey: shipDecoded.ship, amount: shipDecoded.amount.toNumber(), idx: shipIter});
+                    shipData = shipData.subarray(48);
+                    shipIter += 1;
+                }
+                console.log('ships: ', ships);
+                for (let ship of ships) {
+                    let shipDecoded = await sageProgram.account.ship.fetch(ship.publicKey);
+                    console.log('shipDecoded: ', shipDecoded);
+                    let shipName = (new TextDecoder("utf-8").decode(new Uint8Array(shipDecoded.name))).replace(/\0/g, '');
+                    console.log(shipName);
+                }
+                // ---------------------------------
                 let [mineItem] = await sageProgram.account.mineItem.all([
                     {
                         memcmp: {
@@ -3524,8 +3583,9 @@
 				let currentCargoFuel = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
 				let currentCargoFuelCnt = currentCargoFuel ? currentCargoFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
 
+                let shortSubwarp = moveDist < 1.5 && globalSettings.subwarpShortDist ? true : false;
 				//Should a warp be attempted?
-				if (userFleets[i].moveType == 'warp' && (currentFuelCnt + currentCargoFuelCnt) >= warpCost) {
+				if (userFleets[i].moveType == 'warp' && (currentFuelCnt + currentCargoFuelCnt) >= warpCost && !shortSubwarp) {
 					let fleetAcctData = sageProgram.coder.accounts.decode('fleet', fleetAcctInfo.data);
 					let warpCooldownExpiresAt = fleetAcctData.warpCooldownExpiresAt.toNumber() * 1000;
 
@@ -4202,15 +4262,19 @@
                 //Loading at Starbase
                 if (hasTargetManifest) {
                     const loadedCargo = await handleTransportLoading(i, userFleets[i].starbaseCoord, targetCargoManifest);
+                    cLog(4,`${FleetTimeStamp(userFleets[i].label)} loadedCargo: `, loadedCargo);
                     if(!loadedCargo && globalSettings.transportStopOnError) {
                         //const newFleetState = `ERROR: No more cargo to load`;
                         //cLog(1,`${FleetTimeStamp(userFleets[i].label)} ${newFleetState}`);
                         //userFleets[i].state = newFleetState;
+                        cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Unexpected error on cargo load.`);
                         return;
                     }
                 } else cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loading skipped - No resources specified`);
 
-                await execUndock(userFleets[i], userFleets[i].starbaseCoord);
+                let undockResult = await execUndock(userFleets[i], userFleets[i].starbaseCoord);
+                cLog(4,`${FleetTimeStamp(userFleets[i].label)} userFleets[i]: `, undockResult);
+                let fleetState = await solanaReadConnection.getAccountInfoAndContext(userFleets[i].publicKey, {minContextSlot: undockResult.slot});
                 userFleets[i].moveTarget = userFleets[i].destCoord;
                 userFleets[i].resupplying = false;
             }
@@ -4242,7 +4306,7 @@
                 //Loading at Target
                 if(hasStarbaseManifest) {
                     const loadedCargo = await handleTransportLoading(i, userFleets[i].destCoord, starbaseCargoManifest);
-                    cLog(1,`${FleetTimeStamp(userFleets[i].label)} loadedCargo: `, loadedCargo);
+                    cLog(4,`${FleetTimeStamp(userFleets[i].label)} loadedCargo: `, loadedCargo);
                     if(!loadedCargo && globalSettings.transportStopOnError) {
                         //const newFleetState = `ERROR: No more cargo to load`;
                         //cLog(1,`${FleetTimeStamp(userFleets[i].label)} ${newFleetState}`);
@@ -4252,7 +4316,9 @@
                     }
                 } else cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loading skipped - No resources specified`);
 
-                await execUndock(userFleets[i], userFleets[i].destCoord);
+                let undockResult = await execUndock(userFleets[i], userFleets[i].destCoord);
+                cLog(4,`${FleetTimeStamp(userFleets[i].label)} userFleets[i]: `, undockResult);
+                let fleetState = await solanaReadConnection.getAccountInfoAndContext(userFleets[i].publicKey, {minContextSlot: undockResult.slot});
                 userFleets[i].moveTarget = userFleets[i].starbaseCoord;
                 userFleets[i].resupplying = false;
                 cLog(3,`${FleetTimeStamp(userFleets[i].label)} userFleets[i]: `, userFleets[i]);
@@ -4433,6 +4499,7 @@
         const fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
         const cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount * cargoItems.find(r => r.token == account.data.parsed.info.mint).size, 0);
         let cargoSpace = userFleets[i].cargoCapacity - cargoCnt;
+        let startingCargoSpace = cargoSpace;
         cLog(2,`${FleetTimeStamp(userFleets[i].label)} cargoSpace remaining: ${cargoSpace}`);
 
 		for (const entry of transportManifest) {
@@ -4484,6 +4551,10 @@
 		//const cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
 
 		//cLog(3,`${FleetTimeStamp(userFleets[i].label)} Loading finished with ${cargoCnt} total cargo loaded`);
+        if (startingCargoSpace == cargoSpace) {
+            updateFleetState(userFleets[i], 'ERROR: No cargo loaded');
+            cLog(2,`${FleetTimeStamp(userFleets[i].label)} ERROR: No cargo loaded`);
+        }
 		return !userFleets[i].state.includes('ERROR');
 	}
 
@@ -4866,7 +4937,7 @@
 			setTimeout(() => { startFleet(i);	}, 500 * (i + 1));
 		}
 
-        for (let i=1; i < 5; i++) {
+        for (let i=1; i < globalSettings.craftingJobs+1; i++) {
             let craftSavedData = await GM.getValue('craft' + i, '{}');
             let craftParsedData = JSON.parse(craftSavedData);
             if (craftParsedData.item && craftParsedData.coordinates) startCraft(craftParsedData);
@@ -5231,7 +5302,7 @@
 			settingsModal.style.display = 'none';
 			let settingsModalContent = document.createElement('div');
 			settingsModalContent.classList.add('assist-modal-content');
-			settingsModalContent.innerHTML = '<div class="assist-modal-header"> <img src="' + iconStr + '" /> <span style="padding-left: 15px;">SLY Assistant v' + GM_info.script.version + '</span> <div class="assist-modal-header-right"> <button class=" assist-modal-btn assist-modal-save">Save</button> <span class="assist-modal-close">x</span> </div></div><div class="assist-modal-body"> <span id="settings-modal-error"></span> <div id="settings-modal-header">Global Settings</div> <div>Priority Fee <input id="priorityFee" type="number" min="0" max="100000000" placeholder="1" ></input> <span>Added to each transaction. Set to 0 (zero) to disable. 1 Lamport = 0.000000001 SOL</span> </div> <div>Low Priority Fee % <input id="lowPriorityFeeMultiplier" type="range" min="0" max="100" value="10" step="10"></input> <span>Percentage above priority fees that should be used for smaller transactions</span> </div> <div>Save profile selection? <input id="saveProfile" type="checkbox"></input> <span>Should the profile selection be saved (uncheck to select a different profile each time)?</span> </div> <div>Tx Poll Delay <input id="confirmationCheckingDelay" type="number" min="200" max="10000" placeholder="200"></input> <span>How many milliseconds to wait before re-reading the chain for confirmation</span> </div> <div>Console Logging <input id="debugLogLevel" type="number" min="0" max="9" placeholder="3"></input> <span>How much console logging you want to see (higher number = more, 0 = none)</span> </div> <div>Use Ammo Banks for Transport? <input id="transportUseAmmoBank" type="checkbox"></input> <span>Should transports also use their ammo banks to help move ammo?</span> </div> <div>Stop Transports On Error <input id="transportStopOnError" type="checkbox"></input> <span>Should transport fleet stop completely if there is an error (example: not enough resource/fuel/etc.)?</span> </div> <div>Moving Scan Pattern <select id="scanBlockPattern"> <option value="square">square</option> <option value="ring">ring</option> <option value="spiral">spiral</option> <option value="up">up</option> <option value="down">down</option> <option value="left">left</option> <option value="right">right</option> <option value="sly">sly</option> </select> <span>Only applies to fleets set to Move While Scanning</span> </div> <div>Scan Block Length <input id="scanBlockLength" type="number" min="2" max="50" placeholder="5"></input> <span>How far fleets should go for the up, down, left and right scanning patterns</span> </div> <div>Scan Block Resets After Resupply? <input id="scanBlockResetAfterResupply" type="checkbox"></input> <span>Start from the beginning of the pattern after resupplying at starbase?</span> </div> <div>Scan Resupply On Low Fuel? <input id="scanResupplyOnLowFuel" type="checkbox"></input> <span>Do scanning fleets set to Move While Scanning return to base to resupply when fuel is too low to move?</span> </div> <div>Scan Sector Regeneration Delay <input id="scanSectorRegenTime" type="number" min="0" placeholder="90"></input> <span>Number of seconds to wait after finding SDU</span> </div> <div>Scan Pause Time <input id="scanPauseTime" type="number" min="240" max="6000" placeholder="600"></input> <span>Number of seconds to wait when sectors probabilities are too low</span> </div> <div>Scan Strike Count <input id="scanStrikeCount" type="number" min="1" max="10" placeholder="3"></input> <span>Number of low % scans before moving on or pausing</span> </div> <div>Status Panel Opacity <input id="statusPanelOpacity" type="range" min="1" max="100" value="75"></input> <span>(requires page refresh)</span> </div> <div>---</div> <div>Advanced Settings</div> <div>Auto Start Script <input id="autoStartScript" type="checkbox"></input> <span>Should Lab Assistant automatically start after initialization is complete?</span> </div> <div>Reload On Stuck Fleets <input id="reloadPageOnFailedFleets" type="number" min="0" max="999" placeholder="0"></input> <span>Automatically refresh the page if this many fleets get stuck (0 = never)</span> </div></div>';
+			settingsModalContent.innerHTML = '<div class="assist-modal-header"> <img src="' + iconStr + '" /> <span style="padding-left: 15px;">SLY Assistant v' + GM_info.script.version + '</span> <div class="assist-modal-header-right"> <button class=" assist-modal-btn assist-modal-save">Save</button> <span class="assist-modal-close">x</span> </div></div><div class="assist-modal-body"> <span id="settings-modal-error"></span> <div id="settings-modal-header">Global Settings</div> <div>Priority Fee <input id="priorityFee" type="number" min="0" max="100000000" placeholder="1" ></input> <span>Added to each transaction. Set to 0 (zero) to disable. 1 Lamport = 0.000000001 SOL</span> </div> <div>Low Priority Fee % <input id="lowPriorityFeeMultiplier" type="range" min="0" max="100" value="10" step="10"></input> <span>Percentage above priority fees that should be used for smaller transactions</span> </div> <div>Save profile selection? <input id="saveProfile" type="checkbox"></input> <span>Should the profile selection be saved (uncheck to select a different profile each time)?</span> </div> <div>Tx Poll Delay <input id="confirmationCheckingDelay" type="number" min="200" max="10000" placeholder="200"></input> <span>How many milliseconds to wait before re-reading the chain for confirmation</span> </div> <div>Console Logging <input id="debugLogLevel" type="number" min="0" max="9" placeholder="3"></input> <span>How much console logging you want to see (higher number = more, 0 = none)</span> </div> <div>Crafting Jobs <input id="craftingJobs" type="number" min="0" max="100" placeholder="4"></input> <span>How many crafting jobs should be enabled?</span> </div> <div>Subwarp for short distances? <input id="subwarpShortDist" type="checkbox"></input> <span>Should fleets subwarp when travel distance is 1 diagonal square or less?</span> </div> <div>Use Ammo Banks for Transport? <input id="transportUseAmmoBank" type="checkbox"></input> <span>Should transports also use their ammo banks to help move ammo?</span> </div> <div>Stop Transports On Error <input id="transportStopOnError" type="checkbox"></input> <span>Should transport fleet stop completely if there is an error (example: not enough resource/fuel/etc.)?</span> </div> <div>Moving Scan Pattern <select id="scanBlockPattern"> <option value="square">square</option> <option value="ring">ring</option> <option value="spiral">spiral</option> <option value="up">up</option> <option value="down">down</option> <option value="left">left</option> <option value="right">right</option> <option value="sly">sly</option> </select> <span>Only applies to fleets set to Move While Scanning</span> </div> <div>Scan Block Length <input id="scanBlockLength" type="number" min="2" max="50" placeholder="5"></input> <span>How far fleets should go for the up, down, left and right scanning patterns</span> </div> <div>Scan Block Resets After Resupply? <input id="scanBlockResetAfterResupply" type="checkbox"></input> <span>Start from the beginning of the pattern after resupplying at starbase?</span> </div> <div>Scan Resupply On Low Fuel? <input id="scanResupplyOnLowFuel" type="checkbox"></input> <span>Do scanning fleets set to Move While Scanning return to base to resupply when fuel is too low to move?</span> </div> <div>Scan Sector Regeneration Delay <input id="scanSectorRegenTime" type="number" min="0" placeholder="90"></input> <span>Number of seconds to wait after finding SDU</span> </div> <div>Scan Pause Time <input id="scanPauseTime" type="number" min="240" max="6000" placeholder="600"></input> <span>Number of seconds to wait when sectors probabilities are too low</span> </div> <div>Scan Strike Count <input id="scanStrikeCount" type="number" min="1" max="10" placeholder="3"></input> <span>Number of low % scans before moving on or pausing</span> </div> <div>Status Panel Opacity <input id="statusPanelOpacity" type="range" min="1" max="100" value="75"></input> <span>(requires page refresh)</span> </div> <div>---</div> <div>Advanced Settings</div> <div>Auto Start Script <input id="autoStartScript" type="checkbox"></input> <span>Should Lab Assistant automatically start after initialization is complete?</span> </div> <div>Reload On Stuck Fleets <input id="reloadPageOnFailedFleets" type="number" min="0" max="999" placeholder="0"></input> <span>Automatically refresh the page if this many fleets get stuck (0 = never)</span> </div></div>';
 			settingsModal.append(settingsModalContent);
 
 			let importModal = document.createElement('div');
