@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.6
+// @version      0.6.7
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen
 // @match        https://*.based.staratlas.com/
@@ -4268,14 +4268,14 @@
             if (fleetCoords[0] == starbaseX && fleetCoords[1] == starbaseY) {
                 userFleets[i].resupplying = true;
 
-                let checkCargo = checkCargo(starbaseCargoManifest, targetCargoManifest);
-                starbaseCargoManifest = checkCargo.currentManifest;
-                targetCargoManifest = checkCargo.destinationManifest;
+                let checkCargoResult = checkCargo(starbaseCargoManifest, targetCargoManifest);
+                starbaseCargoManifest = checkCargoResult.currentManifest;
+                targetCargoManifest = checkCargoResult.destinationManifest;
 
-                if (checkCargo.needToLoad || checkCargo.needToUnload) {
+                if (checkCargoResult.needToLoad || checkCargoResult.needToUnload) {
                     await execDock(userFleets[i], userFleets[i].starbaseCoord);
 
-                    if (hasStarbaseManifest || checkCargo.needToUnload) {
+                    if (hasStarbaseManifest || checkCargoResult.needToUnload) {
                         await handleTransportUnloading(userFleets[i], userFleets[i].starbaseCoord, starbaseCargoManifest);
                     } else cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading skipped - No resources specified`);
 
@@ -4318,16 +4318,16 @@
             else if (fleetCoords[0] == destX && fleetCoords[1] == destY) {
                 userFleets[i].resupplying = true;
 
-                let checkCargo = checkCargo(targetCargoManifest, starbaseCargoManifest);
-                targetCargoManifest = checkCargo.currentManifest;
-                starbaseCargoManifest = checkCargo.destinationManifest;
+                let checkCargoResult = checkCargo(targetCargoManifest, starbaseCargoManifest);
+                targetCargoManifest = checkCargoResult.currentManifest;
+                starbaseCargoManifest = checkCargoResult.destinationManifest;
 
-                if (checkCargo.needToLoad || checkCargo.needToUnload) {
+                if (checkCargoResult.needToLoad || checkCargoResult.needToUnload) {
                     await execDock(userFleets[i], userFleets[i].destCoord);
 
                     //Unloading at Target
                     let fuelUnloadDeficit = 0; //How far short of the manifest was the amount of fuel unloaded?
-                    if (hasTargetManifest || checkCargo.needToUnload) {
+                    if (hasTargetManifest || checkCargoResult.needToUnload) {
                         const unloadResult = await handleTransportUnloading(userFleets[i], userFleets[i].destCoord, targetCargoManifest);
                         fuelUnloadDeficit = unloadResult.fuelUnloadDeficit;
                     } else cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading skipped - No resources specified`);
