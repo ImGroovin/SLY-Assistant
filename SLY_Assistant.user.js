@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.5
+// @version      0.6.6
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen
 // @match        https://*.based.staratlas.com/
@@ -26,10 +26,6 @@
 
     let saRPCs = [
         'https://rpc.ironforge.network/mainnet?apiKey=01HZFVRZ4A5WVX2NDA4PCPHJ7N',
-        //'https://twilight-autumn-diagram.solana-mainnet.quiknode.pro/4fc53d638efd1cc0f80764bc457944bb325d1ff1', //Quicknode
-        //'https://rpc.hellomoon.io/78eaf77d-15f4-424a-afb7-4205bb99a969', //Hello Moon
-        //'https://staratl-mainc06-2415.mainnet.rpcpool.com', //Triton
-        //'https://mainnet.helius-rpc.com/?api-key=735486d8-ae86-4d26-829c-e34a2210d119', //Helius
     ];
     let readRPCs = customReadRPCs.concat(saRPCs);
     let writeRPCs = customWriteRPCs.concat(saRPCs);
@@ -895,6 +891,9 @@
 		if (curBlockHeight > lastValidBlockHeight) return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
 		txHash = await solanaWriteConnection.sendRawTransaction(txSerialized, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
         cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> txHash`, txHash);
+
+        // Force a retry if txHash is undefined. Not sure why sendRawTransaction would return nothing, but this happens occasionally.
+        if (!txHash) return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
 
 		while ((curBlockHeight - interimBlockHeight) < 10) {
 				const signatureStatus = await solanaReadConnection.getSignatureStatus(txHash);
@@ -3357,7 +3356,7 @@
         } else {
             targetElem.style.display = 'none';
         }
-        await calcMiningFleet();
+        //await calcMiningFleet();
     }
 
     async function calcMiningFleet() {
@@ -4215,6 +4214,34 @@
 		return false;
 	}
 
+    async function checkCargo(currentManifest, destinationManifest) {
+        const fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
+        const cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount * cargoItems.find(r => r.token == account.data.parsed.info.mint).size, 0);
+        let needToLoad = false;
+        let needToUnload = false;
+        for (const entry of destinationManifest) {
+            if (entry.res && entry.amt > 0) {
+                let currentCargoObj = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === entry.res);
+                let currentCargoResAmt = currentCargoObj.account.data.parsed.info.tokenAmount.uiAmount;
+                if (currentCargoResAmt < entry.amt) needToLoad = true;
+                if (currentCargoResAmt > entry.amt) {
+                    needToUnload = true;
+                    currentManifest.push({res: entry.res, amt: currentCargoResAmt - entry.amt});
+                }
+            }
+        }
+
+        for (const entry of currentManifest) {
+            if (entry.res && entry.amt > 0) {
+                let currentCargoObj = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === entry.res);
+                let currentCargoResAmt = currentCargoObj.account.data.parsed.info.tokenAmount.uiAmount;
+                if (currentCargoResAmt > 0) needToUnload = true;
+            }
+        }
+
+        return {currentManifest, destinationManifest, needToLoad, needToUnload};
+    }
+
     async function handleTransport(i, fleetState, fleetCoords) {
         const [destX, destY] = ConvertCoords(userFleets[i].destCoord);
         const [starbaseX, starbaseY] = ConvertCoords(userFleets[i].starbaseCoord);
@@ -4240,85 +4267,100 @@
             // Fleet at starbase?
             if (fleetCoords[0] == starbaseX && fleetCoords[1] == starbaseY) {
                 userFleets[i].resupplying = true;
-                await execDock(userFleets[i], userFleets[i].starbaseCoord);
 
-                if (hasStarbaseManifest) {
-                    await handleTransportUnloading(userFleets[i], userFleets[i].starbaseCoord, starbaseCargoManifest);
-                } else cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading skipped - No resources specified`);
+                let checkCargo = checkCargo(starbaseCargoManifest, targetCargoManifest);
+                starbaseCargoManifest = checkCargo.currentManifest;
+                targetCargoManifest = checkCargo.destinationManifest;
 
-                //Refeuling at Starbase
-                let refuelResp = await handleTransportRefueling(userFleets[i], userFleets[i].starbaseCoord, [starbaseX, starbaseY], [destX, destY], true, 0, targetCargoManifest);
-                if (refuelResp.status === 0) {
-                    userFleets[i].state = refuelResp.detail;
-                    return;
-                }
-                console.log('refuelResp: ', refuelResp);
+                if (checkCargo.needToLoad || checkCargo.needToUnload) {
+                    await execDock(userFleets[i], userFleets[i].starbaseCoord);
 
-                let fuelIndex = targetCargoManifest.findIndex(e => e.res === sageGameAcct.account.mints.fuel.toString());
-                if (fuelIndex > -1) {
-                    targetCargoManifest[fuelIndex].amt = targetCargoManifest[fuelIndex].amt - refuelResp.amount;
-                }
+                    if (hasStarbaseManifest || checkCargo.needToUnload) {
+                        await handleTransportUnloading(userFleets[i], userFleets[i].starbaseCoord, starbaseCargoManifest);
+                    } else cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading skipped - No resources specified`);
 
-                //Loading at Starbase
-                if (hasTargetManifest) {
-                    const loadedCargo = await handleTransportLoading(i, userFleets[i].starbaseCoord, targetCargoManifest);
-                    cLog(4,`${FleetTimeStamp(userFleets[i].label)} loadedCargo: `, loadedCargo);
-                    if(!loadedCargo && globalSettings.transportStopOnError) {
-                        //const newFleetState = `ERROR: No more cargo to load`;
-                        //cLog(1,`${FleetTimeStamp(userFleets[i].label)} ${newFleetState}`);
-                        //userFleets[i].state = newFleetState;
-                        cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Unexpected error on cargo load.`);
+                    //Refeuling at Starbase
+                    let refuelResp = await handleTransportRefueling(userFleets[i], userFleets[i].starbaseCoord, [starbaseX, starbaseY], [destX, destY], true, 0, targetCargoManifest);
+                    if (refuelResp.status === 0) {
+                        userFleets[i].state = refuelResp.detail;
                         return;
                     }
-                } else cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loading skipped - No resources specified`);
+                    console.log('refuelResp: ', refuelResp);
 
-                let undockResult = await execUndock(userFleets[i], userFleets[i].starbaseCoord);
-                cLog(4,`${FleetTimeStamp(userFleets[i].label)} userFleets[i]: `, undockResult);
-                let fleetState = await solanaReadConnection.getAccountInfoAndContext(userFleets[i].publicKey, {minContextSlot: undockResult.slot});
+                    let fuelIndex = targetCargoManifest.findIndex(e => e.res === sageGameAcct.account.mints.fuel.toString());
+                    if (fuelIndex > -1) {
+                        targetCargoManifest[fuelIndex].amt = targetCargoManifest[fuelIndex].amt - refuelResp.amount;
+                    }
+
+                    //Loading at Starbase
+                    if (hasTargetManifest) {
+                        const loadedCargo = await handleTransportLoading(i, userFleets[i].starbaseCoord, targetCargoManifest);
+                        cLog(4,`${FleetTimeStamp(userFleets[i].label)} loadedCargo: `, loadedCargo);
+                        if(!loadedCargo && globalSettings.transportStopOnError) {
+                            //const newFleetState = `ERROR: No more cargo to load`;
+                            //cLog(1,`${FleetTimeStamp(userFleets[i].label)} ${newFleetState}`);
+                            //userFleets[i].state = newFleetState;
+                            cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Unexpected error on cargo load.`);
+                            return;
+                        }
+                    } else cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loading skipped - No resources specified`);
+
+                    let undockResult = await execUndock(userFleets[i], userFleets[i].starbaseCoord);
+                    cLog(4,`${FleetTimeStamp(userFleets[i].label)} userFleets[i]: `, undockResult);
+                    let fleetState = await solanaReadConnection.getAccountInfoAndContext(userFleets[i].publicKey, {minContextSlot: undockResult.slot});
+                }
                 userFleets[i].moveTarget = userFleets[i].destCoord;
                 userFleets[i].resupplying = false;
+                cLog(3,`${FleetTimeStamp(userFleets[i].label)} userFleets[i]: `, userFleets[i]);
             }
 
             // Fleet at target?
             else if (fleetCoords[0] == destX && fleetCoords[1] == destY) {
                 userFleets[i].resupplying = true;
-                await execDock(userFleets[i], userFleets[i].destCoord);
 
-                //Unloading at Target
-                let fuelUnloadDeficit = 0; //How far short of the manifest was the amount of fuel unloaded?
-                if (hasTargetManifest) {
-                    const unloadResult = await handleTransportUnloading(userFleets[i], userFleets[i].destCoord, targetCargoManifest);
-                    fuelUnloadDeficit = unloadResult.fuelUnloadDeficit;
-                } else cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading skipped - No resources specified`);
+                let checkCargo = checkCargo(targetCargoManifest, starbaseCargoManifest);
+                targetCargoManifest = checkCargo.currentManifest;
+                starbaseCargoManifest = checkCargo.destinationManifest;
 
-                //Refueling at Target
-                let refuelResp = await handleTransportRefueling(userFleets[i], userFleets[i].destCoord, [destX, destY], [starbaseX, starbaseY], false, fuelUnloadDeficit, starbaseCargoManifest);
-                if (refuelResp.status === 0) {
-                    userFleets[i].state = refuelResp.detail;
-                    return;
-                }
+                if (checkCargo.needToLoad || checkCargo.needToUnload) {
+                    await execDock(userFleets[i], userFleets[i].destCoord);
 
-                let fuelIndex = starbaseCargoManifest.findIndex(e => e.res === sageGameAcct.account.mints.fuel.toString());
-                if (fuelIndex > -1) {
-                    starbaseCargoManifest[fuelIndex].amt = starbaseCargoManifest[fuelIndex].amt - refuelResp.amount;
-                }
+                    //Unloading at Target
+                    let fuelUnloadDeficit = 0; //How far short of the manifest was the amount of fuel unloaded?
+                    if (hasTargetManifest || checkCargo.needToUnload) {
+                        const unloadResult = await handleTransportUnloading(userFleets[i], userFleets[i].destCoord, targetCargoManifest);
+                        fuelUnloadDeficit = unloadResult.fuelUnloadDeficit;
+                    } else cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading skipped - No resources specified`);
 
-                //Loading at Target
-                if(hasStarbaseManifest) {
-                    const loadedCargo = await handleTransportLoading(i, userFleets[i].destCoord, starbaseCargoManifest);
-                    cLog(4,`${FleetTimeStamp(userFleets[i].label)} loadedCargo: `, loadedCargo);
-                    if(!loadedCargo && globalSettings.transportStopOnError) {
-                        //const newFleetState = `ERROR: No more cargo to load`;
-                        //cLog(1,`${FleetTimeStamp(userFleets[i].label)} ${newFleetState}`);
-                        //userFleets[i].state = newFleetState;
-                        cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Unexpected error on cargo load.`);
+                    //Refueling at Target
+                    let refuelResp = await handleTransportRefueling(userFleets[i], userFleets[i].destCoord, [destX, destY], [starbaseX, starbaseY], false, fuelUnloadDeficit, starbaseCargoManifest);
+                    if (refuelResp.status === 0) {
+                        userFleets[i].state = refuelResp.detail;
                         return;
                     }
-                } else cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loading skipped - No resources specified`);
 
-                let undockResult = await execUndock(userFleets[i], userFleets[i].destCoord);
-                cLog(4,`${FleetTimeStamp(userFleets[i].label)} userFleets[i]: `, undockResult);
-                let fleetState = await solanaReadConnection.getAccountInfoAndContext(userFleets[i].publicKey, {minContextSlot: undockResult.slot});
+                    let fuelIndex = starbaseCargoManifest.findIndex(e => e.res === sageGameAcct.account.mints.fuel.toString());
+                    if (fuelIndex > -1) {
+                        starbaseCargoManifest[fuelIndex].amt = starbaseCargoManifest[fuelIndex].amt - refuelResp.amount;
+                    }
+
+                    //Loading at Target
+                    if(hasStarbaseManifest) {
+                        const loadedCargo = await handleTransportLoading(i, userFleets[i].destCoord, starbaseCargoManifest);
+                        cLog(4,`${FleetTimeStamp(userFleets[i].label)} loadedCargo: `, loadedCargo);
+                        if(!loadedCargo && globalSettings.transportStopOnError) {
+                            //const newFleetState = `ERROR: No more cargo to load`;
+                            //cLog(1,`${FleetTimeStamp(userFleets[i].label)} ${newFleetState}`);
+                            //userFleets[i].state = newFleetState;
+                            cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Unexpected error on cargo load.`);
+                            return;
+                        }
+                    } else cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loading skipped - No resources specified`);
+
+                    let undockResult = await execUndock(userFleets[i], userFleets[i].destCoord);
+                    cLog(4,`${FleetTimeStamp(userFleets[i].label)} userFleets[i]: `, undockResult);
+                    let fleetState = await solanaReadConnection.getAccountInfoAndContext(userFleets[i].publicKey, {minContextSlot: undockResult.slot});
+                }
                 userFleets[i].moveTarget = userFleets[i].starbaseCoord;
                 userFleets[i].resupplying = false;
                 cLog(3,`${FleetTimeStamp(userFleets[i].label)} userFleets[i]: `, userFleets[i]);
@@ -4499,7 +4541,8 @@
         const fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
         const cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount * cargoItems.find(r => r.token == account.data.parsed.info.mint).size, 0);
         let cargoSpace = userFleets[i].cargoCapacity - cargoCnt;
-        let startingCargoSpace = cargoSpace;
+        const startingCargoSpace = cargoSpace;
+        let expectedCnt = 0;
         cLog(2,`${FleetTimeStamp(userFleets[i].label)} cargoSpace remaining: ${cargoSpace}`);
 
 		for (const entry of transportManifest) {
@@ -4520,10 +4563,12 @@
 				const currentRes = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === entry.res);
 				const fleetResAcct = currentRes ? currentRes.pubkey : fleetResourceToken;
 				const resCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == entry.res);
+                const currentResAmt = currentRes.account.data.parsed.info.tokenAmount.uiAmount;
 
 				//Deduct ammo already loaded into ammobank if applicable
 				const isAmmo = entry.res === sageGameAcct.account.mints.ammo.toString();
-				const resMax = Math.floor(Math.min(cargoSpace / cargoItems.find(r => r.token == entry.res).size, isAmmo ? entry.amt - ammoLoadingIntoAmmoBank : entry.amt));
+				const resMax = Math.floor(Math.min(cargoSpace / cargoItems.find(r => r.token == entry.res).size, isAmmo ? entry.amt - ammoLoadingIntoAmmoBank : entry.amt - currentResAmt));
+                expectedCnt += resMax;
 				if (resMax > 0) {
 					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Attempting to load ${resMax} ${entry.res} from ${starbaseCoords}`);
 					const resp = await execCargoFromStarbaseToFleet(
@@ -4551,7 +4596,8 @@
 		//const cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
 
 		//cLog(3,`${FleetTimeStamp(userFleets[i].label)} Loading finished with ${cargoCnt} total cargo loaded`);
-        if (startingCargoSpace == cargoSpace) {
+
+        if (startingCargoSpace == cargoSpace && expectedCnt > 0) {
             updateFleetState(userFleets[i], 'ERROR: No cargo loaded');
             cLog(2,`${FleetTimeStamp(userFleets[i].label)} ERROR: No cargo loaded`);
         }
