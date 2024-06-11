@@ -4268,7 +4268,7 @@
             if (fleetCoords[0] == starbaseX && fleetCoords[1] == starbaseY) {
                 userFleets[i].resupplying = true;
 
-                let checkCargoResult = checkCargo(starbaseCargoManifest, targetCargoManifest);
+                let checkCargoResult = await checkCargo(starbaseCargoManifest, targetCargoManifest);
                 starbaseCargoManifest = checkCargoResult.currentManifest;
                 targetCargoManifest = checkCargoResult.destinationManifest;
 
@@ -4318,7 +4318,7 @@
             else if (fleetCoords[0] == destX && fleetCoords[1] == destY) {
                 userFleets[i].resupplying = true;
 
-                let checkCargoResult = checkCargo(targetCargoManifest, starbaseCargoManifest);
+                let checkCargoResult = await checkCargo(targetCargoManifest, starbaseCargoManifest);
                 targetCargoManifest = checkCargoResult.currentManifest;
                 starbaseCargoManifest = checkCargoResult.destinationManifest;
 
