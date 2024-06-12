@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.7
+// @version      0.6.8
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen
 // @match        https://*.based.staratlas.com/
@@ -4214,8 +4214,8 @@
 		return false;
 	}
 
-    async function checkCargo(currentManifest, destinationManifest) {
-        const fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
+    async function checkCargo(currentManifest, destinationManifest, fleet) {
+        const fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(fleet.cargoHold, {programId: tokenProgramPK});
         const cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount * cargoItems.find(r => r.token == account.data.parsed.info.mint).size, 0);
         let needToLoad = false;
         let needToUnload = false;
@@ -4268,7 +4268,7 @@
             if (fleetCoords[0] == starbaseX && fleetCoords[1] == starbaseY) {
                 userFleets[i].resupplying = true;
 
-                let checkCargoResult = await checkCargo(starbaseCargoManifest, targetCargoManifest);
+                let checkCargoResult = await checkCargo(starbaseCargoManifest, targetCargoManifest, userFleets[i]);
                 starbaseCargoManifest = checkCargoResult.currentManifest;
                 targetCargoManifest = checkCargoResult.destinationManifest;
 
@@ -4318,7 +4318,8 @@
             else if (fleetCoords[0] == destX && fleetCoords[1] == destY) {
                 userFleets[i].resupplying = true;
 
-                let checkCargoResult = await checkCargo(targetCargoManifest, starbaseCargoManifest);
+                let checkCargoResult = await checkCargo(targetCargoManifest, starbaseCargoManifest, userFleets[i]);
+                console.log('checkCargoResult: ', checkCargoResult);
                 targetCargoManifest = checkCargoResult.currentManifest;
                 starbaseCargoManifest = checkCargoResult.destinationManifest;
 
@@ -4361,6 +4362,7 @@
                     cLog(4,`${FleetTimeStamp(userFleets[i].label)} userFleets[i]: `, undockResult);
                     let fleetState = await solanaReadConnection.getAccountInfoAndContext(userFleets[i].publicKey, {minContextSlot: undockResult.slot});
                 }
+                let tempError = x.y.z;
                 userFleets[i].moveTarget = userFleets[i].starbaseCoord;
                 userFleets[i].resupplying = false;
                 cLog(3,`${FleetTimeStamp(userFleets[i].label)} userFleets[i]: `, userFleets[i]);
