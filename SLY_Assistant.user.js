@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.8
+// @version      0.6.9
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen
 // @match        https://*.based.staratlas.com/
@@ -4222,7 +4222,7 @@
         for (const entry of destinationManifest) {
             if (entry.res && entry.amt > 0) {
                 let currentCargoObj = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === entry.res);
-                let currentCargoResAmt = currentCargoObj.account.data.parsed.info.tokenAmount.uiAmount;
+                let currentCargoResAmt = currentCargoObj && currentCargoObj.account.data.parsed.info.tokenAmount.uiAmount;
                 if (currentCargoResAmt < entry.amt) needToLoad = true;
                 if (currentCargoResAmt > entry.amt) {
                     needToUnload = true;
@@ -4234,7 +4234,7 @@
         for (const entry of currentManifest) {
             if (entry.res && entry.amt > 0) {
                 let currentCargoObj = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === entry.res);
-                let currentCargoResAmt = currentCargoObj.account.data.parsed.info.tokenAmount.uiAmount;
+                let currentCargoResAmt = currentCargoObj && currentCargoObj.account.data.parsed.info.tokenAmount.uiAmount;
                 if (currentCargoResAmt > 0) needToUnload = true;
             }
         }
@@ -4362,7 +4362,6 @@
                     cLog(4,`${FleetTimeStamp(userFleets[i].label)} userFleets[i]: `, undockResult);
                     let fleetState = await solanaReadConnection.getAccountInfoAndContext(userFleets[i].publicKey, {minContextSlot: undockResult.slot});
                 }
-                let tempError = x.y.z;
                 userFleets[i].moveTarget = userFleets[i].starbaseCoord;
                 userFleets[i].resupplying = false;
                 cLog(3,`${FleetTimeStamp(userFleets[i].label)} userFleets[i]: `, userFleets[i]);
