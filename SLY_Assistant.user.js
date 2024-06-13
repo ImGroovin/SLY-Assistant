@@ -914,33 +914,67 @@
 		return token;
 	}
 
-	async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName) {
-		let {blockHeight: curBlockHeight} = await solanaReadConnection.getEpochInfo({ commitment: 'confirmed' });
-		let interimBlockHeight = curBlockHeight;
-		if (curBlockHeight > lastValidBlockHeight) return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
-		txHash = await solanaWriteConnection.sendRawTransaction(txSerialized, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
-        cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> txHash`, txHash);
+  const confirmTx = async (txId) => {
+    await wait(Math.max(500, globalSettings.confirmationCheckingDelay));
+    const res = await solanaReadConnection.getSignatureStatus(txId, {searchTransactionHistory: false})
+    if (res?.value && 'confirmationStatus' in res.value) {
+      if (res.value.confirmationStatus === 'finalized' || res.value.confirmationStatus === 'confirmed' || res.value.confirmationStatus === 'processed') {
+        const log = res.value.err ? console.warn: console.info
+        log(`Signature: ${txId} with status: ${JSON.stringify(res)}`)
+        return res
+      }
+    }
+    throw new Error(`Transaction confirmation failed, ${JSON.stringify(res)}`)
+  }
+
+  const sendAndConfirmTx = async (
+    transaction,
+    latestBlockHash,
+    fleet,
+    opName
+) => {
+    const blockHash = latestBlockHash ?? await solanaReadConnection.getLatestBlockhash({})
+    const blockheight = await solanaReadConnection.getBlockHeight()
+
+    let txId
+
+    console.warn('blockHash', blockHash)
+    console.warn('blockHeight', blockheight)
+    while (blockheight <= blockHash.lastValidBlockHeight) {
+      try {
+        txId = await solanaWriteConnection.sendRawTransaction(transaction.serialize(), { skipPreflight: true })
+        cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> txHash`, txId);
+      }
+      catch (e) {
+        const message = e.message
+
+        const logs = e.logs
+
+        logs.filter(log => log.includes('AnchorError')).forEach((log) => {
+          console.error(log)
+        })
+
+        if (message.includes('has already been processed') && txId) {
 
         // Force a retry if txHash is undefined. Not sure why sendRawTransaction would return nothing, but this happens occasionally.
         if (!txHash) return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
 
-		while ((curBlockHeight - interimBlockHeight) < 10) {
-				const signatureStatus = await solanaReadConnection.getSignatureStatus(txHash);
-				if (signatureStatus.value && ['confirmed','finalized'].includes(signatureStatus.value.confirmationStatus)) {
-						return {txHash, confirmation: signatureStatus};
-				} else if (signatureStatus.err) {
-						cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> Err`,signatureStatus.err);
-						return {txHash, confirmation: signatureStatus}
-				}
+          return {txHash: txId, confirmation: await confirmTx(txId)}
+        }
+        throw e
+      }
 
-				await wait(Math.max(200, globalSettings.confirmationCheckingDelay));
-				let epochInfo = await solanaReadConnection.getEpochInfo({ commitment: 'confirmed' });
-				curBlockHeight = epochInfo.blockHeight;
-		}
+      try {
+        return {txHash: txId, confirmation: await confirmTx(txId)}
+      }
+      catch (e) {
+        cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> Err`, e);
+        await wait(Math.max(500, globalSettings.confirmationCheckingDelay));
+      }
+    }
 
-		cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> TRYING 🌐`);
-		return await sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName);
-	}
+    throw new Error(`Transaction ${txId} failed to confirm`)
+  }
 
 	function txSignAndSend(ix, fleet, opName, priorityFeeMultiplier) {
 		return new Promise(async resolve => {
@@ -951,24 +985,9 @@
 
 			let confirmed = false;
 			while (!confirmed) {
-				//let tx = new solanaWeb3.Transaction();
 				const priorityFee = globalSettings.priorityFee ? Math.max(1, Math.ceil(priorityFeeMultiplier * globalSettings.priorityFee * 5)) : 0; //Convert Lamports to microLamports ?
 				cLog(4,`${FleetTimeStamp(fleetName)} <${opName}> 💳 Fee ${Math.ceil(priorityFee / 5)} lamp`);
-                /*
-				if (priorityFee > 0) tx.add(solanaWeb3.ComputeBudgetProgram.setComputeUnitPrice({microLamports: priorityFee}));
 
-				if (ix.constructor === Array) {
-					ix.forEach(item => tx.add(item.instruction))
-				} else {
-					tx.add(ix.instruction);
-				}
-
-				let latestBH = await solanaReadConnection.getLatestBlockhash('confirmed');
-				tx.recentBlockhash = latestBH.blockhash;
-				tx.lastValidBlockHeight = latestBH.lastValidBlockHeight-150;
-				tx.feePayer = userPublicKey;
-				tx.signer = userPublicKey;
-                */
                 let instructions = [];
                 if (priorityFee > 0) instructions.push(solanaWeb3.ComputeBudgetProgram.setComputeUnitPrice({microLamports: priorityFee}));
                 if (ix.constructor === Array) {
@@ -992,21 +1011,20 @@
 					txSigned = await solflare.signAllTransactions([tx]);
 				}
 
-				let txSerialized = await txSigned[0].serialize();
-                cLog(4,`${FleetTimeStamp(fleetName)} <${opName}> txSerialized: `, txSerialized);
+        cLog(4,`${FleetTimeStamp(fleetName)} <${opName}> txSerialized: `, txSigned[0].serialize());
 
 				let microOpStart = Date.now();
 				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> SEND ➡️`);
-				let response = await sendAndConfirmTx(txSerialized, latestBH.lastValidBlockHeight, null, fleet, opName);
+				let response = await sendAndConfirmTx(txSigned[0], latestBH, fleet, opName);
 				let txHash = response.txHash;
 				let confirmation = response.confirmation;
 				let txResult = txHash ? await solanaReadConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1}) : undefined;
-                if ((confirmation.value && confirmation.value.err && confirmation.value.err.InstructionError) || (txResult && txResult.meta && txResult.meta.err && txResult.meta.err.InstructionError)) {
-                    updateFleetState(fleet, 'ERROR: Ix Error');
-                    cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> ERROR ❌ The instruction resulted in an error.`);
-                    let ixError = txResult && txResult.meta && txResult.meta.logMessages ? txResult.meta.logMessages : 'Unknown';
-                    console.log('txResult.logMessages: ', ixError);
-                }
+        if ((confirmation.value && confirmation.value.err && confirmation.value.err.InstructionError) || (txResult && txResult.meta && txResult.meta.err && txResult.meta.err.InstructionError)) {
+            updateFleetState(fleet, 'ERROR: Ix Error');
+            cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> ERROR ❌ The instruction resulted in an error.`);
+            let ixError = txResult && txResult.meta && txResult.meta.logMessages ? txResult.meta.logMessages : 'Unknown';
+            console.log('txResult.logMessages: ', ixError);
+        }
 
 				const confirmationTimeStr = `${Date.now() - microOpStart}ms`;
 
@@ -3301,7 +3319,7 @@
 			lowPriorityFeeMultiplier: parseIntDefault(document.querySelector('#lowPriorityFeeMultiplier').value, 10),
             saveProfile: saveProfile,
             savedProfile: saveProfile ? (userProfileAcct && userProfileKeyIdx) ? [userProfileAcct.toString(), userProfileKeyIdx] : [] : [],
-			confirmationCheckingDelay: parseIntDefault(document.querySelector('#confirmationCheckingDelay').value, 200),
+			confirmationCheckingDelay: parseIntDefault(document.querySelector('#confirmationCheckingDelay').value, 5000),
 			debugLogLevel: parseIntDefault(document.querySelector('#debugLogLevel').value, 3),
             craftingJobs: parseIntDefault(document.querySelector('#craftingJobs').value, 4),
 			subwarpShortDist: document.querySelector('#subwarpShortDist').checked,
