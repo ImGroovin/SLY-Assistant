@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.10
+// @version      0.6.11
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen
 // @match        https://*.based.staratlas.com/
@@ -106,7 +106,7 @@
             savedProfile: globalSettings.savedProfile && globalSettings.savedProfile.length > 0 ? globalSettings.savedProfile : [],
 
 			//How many milliseconds to wait before re-reading the chain for confirmation
-			confirmationCheckingDelay: parseIntDefault(globalSettings.confirmationCheckingDelay, 200),
+			confirmationCheckingDelay: parseIntDefault(globalSettings.confirmationCheckingDelay, 2000),
 
 			//How much console logging you want to see (higher number = more, 0 = none)
 			debugLogLevel: parseIntDefault(globalSettings.debugLogLevel, 3),
@@ -228,6 +228,7 @@
 	const solanaWriteConnection = new Proxy(rawSolanaWriteConnection, writeConnectionProxy);
 	let solanaReadCount = 0;
 	let solanaWriteCount = 0;
+    let globalErrorTracker = {'firstErrorTime': 0, 'errorCount': 0};
     cLog(1, `Read RPC: ${readRPCs[readIdx]}`);
     cLog(1, `Write RPC: ${writeRPCs[writeIdx]}`);
 
@@ -933,7 +934,7 @@
 						return {txHash, confirmation: signatureStatus}
 				}
 
-				await wait(Math.max(200, globalSettings.confirmationCheckingDelay));
+				await wait(Math.max(2000, globalSettings.confirmationCheckingDelay));
 				let epochInfo = await solanaReadConnection.getEpochInfo({ commitment: 'confirmed' });
 				curBlockHeight = epochInfo.blockHeight;
 		}
@@ -1002,10 +1003,17 @@
 				let confirmation = response.confirmation;
 				let txResult = txHash ? await solanaReadConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1}) : undefined;
                 if ((confirmation.value && confirmation.value.err && confirmation.value.err.InstructionError) || (txResult && txResult.meta && txResult.meta.err && txResult.meta.err.InstructionError)) {
+                    if (globalErrorTracker.firstErrorTime === 0) globalErrorTracker.firstErrorTime = Date.now();
+                    if (Date.now() < globalErrorTracker.firstErrorTime + 600000) {
+                        globalErrorTracker.errorCount++
+                    } else {
+                        globalErrorTracker.firstErrorTime = Date.now();
+                        globalErrorTracker.errorCount = 1;
+                    }
                     updateFleetState(fleet, 'ERROR: Ix Error');
                     cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> ERROR ❌ The instruction resulted in an error.`);
                     let ixError = txResult && txResult.meta && txResult.meta.logMessages ? txResult.meta.logMessages : 'Unknown';
-                    console.log('txResult.logMessages: ', ixError);
+                    console.log(FleetTimeStamp(fleetName), ' txResult.logMessages: ', ixError);
                 }
 
 				const confirmationTimeStr = `${Date.now() - microOpStart}ms`;
@@ -1983,6 +1991,7 @@
     async function execStartCrafting(starbase, starbasePlayer, starbasePlayerCargoHoldsAndTokens, craftingRecipe, craftAmount, userCraft) {
         return new Promise(async resolve => {
             let transactions = [];
+            let numCrew = craftAmount > 1 ? userCraft.crew : 1;
 
             let facility = craftRecipes.some(item => item.name === craftingRecipe.name) ? starbase.account.craftingFacility : starbase.account.upgradeFacility;
 
@@ -2036,7 +2045,7 @@
                 craftingId: new BrowserAnchor.anchor.BN(formattedRandomBytes),
                 recipeCategoryIndex: new BrowserAnchor.anchor.BN(recipeCategoryIndex.idx),
                 quantity: new BrowserAnchor.anchor.BN(craftAmount),
-                numCrew: new BrowserAnchor.anchor.BN(userCraft.crew)
+                numCrew: new BrowserAnchor.anchor.BN(numCrew)
             }).accountsStrict({
                 funder: userPublicKey,
                 starbaseAndStarbasePlayer: {
@@ -3010,8 +3019,10 @@
 	}
 
 	function updateFleetState(fleet, newState) {
-		fleet.state = newState;
-		updateAssistStatus(fleet);
+        if (!fleet.state.includes('ERROR')) {
+            fleet.state = newState;
+            updateAssistStatus(fleet);
+        }
 	}
 
 	function buildScanBlock(destX, destY) {
@@ -3467,8 +3478,9 @@
                 } else {
                     let resShort = cargoItems.find(r => r.token == userFleet.mineResource).name;
                     console.log(`[${userFleet.label}] ERROR: ${resShort} not found at mining location`);
-                    userFleet.state = `ERROR: ${resShort} not found at mining location`;
-                    updateAssistStatus(userFleet);
+                    //userFleet.state = `ERROR: ${resShort} not found at mining location`;
+                    //updateAssistStatus(userFleet);
+                    updateFleetState(userFleet, `ERROR: ${resShort} not found at mining location`);
                 }
 
                 let miningDuration = calculateMiningDuration(userFleet.cargoCapacity, userFleet.miningRate, resourceHardness, systemRichness);
@@ -3811,9 +3823,11 @@
 				(struckOut && !userFleets[i].scanMove) ||
 				(userFleets[i].scanMove && userFleets[i].scanSkipCnt >= userFleets[i].scanBlock.length - 1)
 
+            let newState;
 			if (needPause) {
 				userFleets[i].scanEnd = Date.now() + (globalSettings.scanPauseTime * 1000);
-				userFleets[i].state = `Scanning Paused [${TimeToStr(new Date(userFleets[i].scanEnd))}]`;
+				//userFleets[i].state = `Scanning Paused [${TimeToStr(new Date(userFleets[i].scanEnd))}]`;
+                newState = `Scanning Paused [${TimeToStr(new Date(userFleets[i].scanEnd))}]`;
 				cLog(1,`${FleetTimeStamp(userFleets[i].label)} Scanning Paused due to low probability [${TimeToStr(new Date(userFleets[i].scanEnd))}]`);
 				userFleets[i].scanSkipCnt = 0;
 				userFleets[i].scanStrikes = 0;
@@ -3821,10 +3835,12 @@
 				let scanDelayMs = userFleets[i].scanCooldown * 1000 + 2000;
 				if(sduFound) scanDelayMs = Math.max(scanDelayMs, globalSettings.scanSectorRegenTime * 1000);
 				userFleets[i].scanEnd = Date.now() + scanDelayMs;
-				userFleets[i].state = `Scanned [${Math.round(scanCondition)}%]${sduFound ? ` +${sduFound}` : ''}`;
+				//userFleets[i].state = `Scanned [${Math.round(scanCondition)}%]${sduFound ? ` +${sduFound}` : ''}`;
+                newState = `Scanned [${Math.round(scanCondition)}%]${sduFound ? ` +${sduFound}` : ''}`;
 			}
 
-			updateAssistStatus(userFleets[i]);
+			//updateAssistStatus(userFleets[i]);
+            updateFleetState(userFleets[i], newState);
 
 			//Start resupply immediately rather than waiting for scan cooldown
 			if(currentFoodCnt - userFleets[i].scanCost < userFleets[i].scanCost) userFleets[i].scanEnd = Date.now();
@@ -4008,6 +4024,7 @@
 			let resShort = cargoItems.find(r => r.token == userFleets[i].mineResource).name;
 			cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: ${resShort} not found at mining location`);
 			updateFleetState(userFleets[i], `ERROR: ${resShort} not found at mining location`);
+            return;
 		}
 
 		// fleet PDA
@@ -4224,8 +4241,6 @@
 
 		//Already mining?
 		if (userFleets[i].state.slice(0, 4) === 'Mine' && fleetMining) {
-            cLog(1, `${FleetTimeStamp(userFleets[i].label)} Debug fleetMining: ${fleetMining}`);
-            console.log('fleetMining: ', fleetMining);
 			let mineEnd = (fleetMining.start.toNumber() + miningDuration) * 1000;
 			userFleets[i].mineEnd = mineEnd;
 			updateFleetState(userFleets[i], 'Mine [' + TimeToStr(new Date(mineEnd)) + ']')
@@ -4298,11 +4313,12 @@
                 userFleets[i].resupplying = true;
 
                 let checkCargoResult = await checkCargo(starbaseCargoManifest, targetCargoManifest, userFleets[i]);
-                console.log('checkCargoResult: ', checkCargoResult);
                 starbaseCargoManifest = checkCargoResult.currentManifest;
                 targetCargoManifest = checkCargoResult.destinationManifest;
 
-                if (checkCargoResult.needToLoad || checkCargoResult.needToUnload) {
+                const fuelData = await getFleetFuelData(userFleets[i], [starbaseX, starbaseY], [destX, destY]);
+
+                if (checkCargoResult.needToLoad || checkCargoResult.needToUnload || fuelData.fuelNeeded > 0) {
                     await execDock(userFleets[i], userFleets[i].starbaseCoord);
 
                     if (hasStarbaseManifest || checkCargoResult.needToUnload) {
@@ -4348,11 +4364,12 @@
                 userFleets[i].resupplying = true;
 
                 let checkCargoResult = await checkCargo(targetCargoManifest, starbaseCargoManifest, userFleets[i]);
-                console.log('checkCargoResult: ', checkCargoResult);
                 targetCargoManifest = checkCargoResult.currentManifest;
                 starbaseCargoManifest = checkCargoResult.destinationManifest;
 
-                if (checkCargoResult.needToLoad || checkCargoResult.needToUnload) {
+                const fuelData = await getFleetFuelData(userFleets[i], [destX, destY], [starbaseX, starbaseY]);
+
+                if (checkCargoResult.needToLoad || checkCargoResult.needToUnload || fuelData.fuelNeeded > 0) {
                     await execDock(userFleets[i], userFleets[i].destCoord);
 
                     //Unloading at Target
@@ -4408,12 +4425,24 @@
         }
     }
 
-	async function getFleetFuelData(fleet, currentPos, targetPos) {
+	async function getFleetFuelData(fleet, currentPos, targetPos, roundTrip = true) {
 		const moveDist = calculateMovementDistance(currentPos, targetPos);
 		const fleetCurrentFuelTank = await solanaReadConnection.getParsedTokenAccountsByOwner(fleet.fuelTank, {programId: tokenProgramPK});
 		const token = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
 		const account = token ? token.pubkey : await getFleetFuelToken(fleet);
 		const amount = token ? token.account.data.parsed.info.tokenAmount.uiAmount : 0;
+        const warpCost = calcWarpFuelReq(fleet, currentPos, targetPos);
+        const subwarpCost = Math.ceil(calculateSubwarpFuelBurn(fleet, moveDist));
+
+        //Calculate fuel needed
+        const costMultiplier = roundTrip ? 2 : 1;
+        let fuelNeeded = 0;
+        if (fleet.moveType == 'warp') {
+            fuelNeeded = warpCost * costMultiplier;
+            if (fuelNeeded > fleet.fuelCapacity) fuelNeeded = roundTrip ? warpCost + subwarpCost : subwarpCost;
+        } else {
+            fuelNeeded = subwarpCost * costMultiplier;
+        }
 
 		//cLog(4, `${FleetTimeStamp(fleet.label)} getFleetFuelData -> calcWarpFuelReq:`, currentPos, targetPos);
 		return {
@@ -4421,8 +4450,9 @@
 			token,
 			amount,
 			capacity: fleet.fuelCapacity,
-			warpCost: calcWarpFuelReq(fleet, currentPos, targetPos),
-			subwarpCost: Math.ceil(calculateSubwarpFuelBurn(fleet, moveDist)),
+			warpCost: warpCost,
+			subwarpCost: subwarpCost,
+            fuelNeeded: fuelNeeded
 		}
 	}
 
@@ -4449,6 +4479,7 @@
 
 		const fuelData = await getFleetFuelData(fleet, currentPos, targetPos);
 
+        /*
 		//Calculate fuel needed
 		const costMultiplier = roundTrip ? 2 : 1;
 		let fuelNeeded = 0;
@@ -4458,8 +4489,9 @@
 				if(roundTrip) fuelNeeded = fuelData.warpCost + fuelData.subwarpCost;
 				else fuelNeeded = fuelData.subwarpCost;
 		} else fuelNeeded = fuelData.subwarpCost * costMultiplier;
+        */
 
-		if(fuelNeeded > fuelData.capacity) {
+		if(fuelData.fuelNeeded > fuelData.capacity) {
 			cLog(1,`${FleetTimeStamp(fleet.label)} ERROR: Fuel tank too small for round trip`);
             fuelResp.detail = 'ERROR: Fuel tank too small for round trip';
 			return fuelResp;
@@ -4468,7 +4500,7 @@
         const fuelEntry = transportManifest.find(e => e.res === sageGameAcct.account.mints.fuel.toString()) || {amt: 0};
 
 		//Log fuel readouts
-		const extraFuel = Math.floor(fuelData.amount - fuelNeeded);
+		const extraFuel = Math.floor(fuelData.amount - fuelData.fuelNeeded);
 		cLog(2, `${FleetTimeStamp(fleet.label)} Current Fuel: ${fuelData.amount}`);
 		cLog(2, `${FleetTimeStamp(fleet.label)} Warp Cost: ${fuelData.warpCost}`);
 		cLog(2, `${FleetTimeStamp(fleet.label)} Subwarp Cost: ${fuelData.subwarpCost}`);
@@ -4485,13 +4517,13 @@
 		}
 
 		//Calculate amount of fuel to add to the tank
-        const totalFuel = fuelNeeded + fuelEntry.amt;
+        const totalFuel = fuelData.fuelNeeded + fuelEntry.amt;
 		const fuelToAdd = Math.min(fuelData.capacity, totalFuel) - fuelData.amount;
 
 		//Bail if already has enough
 		if (fuelToAdd <= 0) {
             fuelResp.status = 1;
-            fuelResp.amount = fuelData.amount + fuelToAdd - fuelNeeded;
+            fuelResp.amount = fuelData.amount + fuelToAdd - fuelData.fuelNeeded;
             return fuelResp;
         }
 
@@ -4503,7 +4535,7 @@
             fuelResp.detail = 'ERROR: Not enough fuel';
 		} else {
             fuelResp.status = 1;
-            fuelResp.amount = fuelData.amount + fuelToAdd - fuelNeeded;
+            fuelResp.amount = fuelData.amount + fuelToAdd - fuelData.fuelNeeded;
         }
 
 		return fuelResp
@@ -4657,6 +4689,8 @@
 	}
 
 	async function operateFleet(i) {
+        if (globalErrorTracker.errorCount > 9) toggleAssistant('ERROR');
+
 		//Don't run fleets in an error state
 		if (userFleets[i].state.includes('ERROR')) return;
 
@@ -4854,14 +4888,14 @@
         }
         const timeSinceGlobalUpdate = currTime > lastGlobalUpdate ? currTime - lastGlobalUpdate : 0;
         const upkeepTimeRemaining = resDepletionRate > 0 ? resAmount / resDepletionRate : 0;
-        const minGlobalTimeDiff = Math.min(timeSinceGlobalUpdate, upkeepTimeRemaining);
-        const minLocalTimeDiff = lastLocalUpdate + minGlobalTimeDiff > currTime ? currTime - lastLocalUpdate : minGlobalTimeDiff;
-        const resForLocalTimeDiff = minLocalTimeDiff * resDepletionRate;
+        const globalUpkeepTimeRemaining = Math.min(timeSinceGlobalUpdate, upkeepTimeRemaining);
+        const localUpkeepTimeRemaining = lastLocalUpdate + globalUpkeepTimeRemaining > currTime ? currTime - lastLocalUpdate : globalUpkeepTimeRemaining;
+        const resForLocalTimeDiff = localUpkeepTimeRemaining * resDepletionRate;
         const resRemainingLocalTimeDiff = resAmount - resForLocalTimeDiff;
         const resRemainingLocalTimeDiffMin = resRemainingLocalTimeDiff < 0 ? 0 : resRemainingLocalTimeDiff;
-        const minUpkeepTimeRemaining = Math.min(minLocalTimeDiff, upkeepTimeRemaining);
+        const minUpkeepTimeRemaining = Math.min(localUpkeepTimeRemaining, upkeepTimeRemaining);
         const emptyAdjustment = minUpkeepTimeRemaining == upkeepTimeRemaining ? (timeSinceGlobalUpdate - minUpkeepTimeRemaining) * EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level] : 0;
-        let starbaseTime = activity === 'Craft' ? lastLocalUpdate + minLocalTimeDiff + emptyAdjustment : lastLocalUpdate + minLocalTimeDiff;
+        let starbaseTime = activity === 'Craft' ? lastLocalUpdate + localUpkeepTimeRemaining + emptyAdjustment : lastLocalUpdate + localUpkeepTimeRemaining;
         return {starbaseTime: starbaseTime, resRemaining: resRemainingLocalTimeDiffMin};
     }
 
@@ -4883,10 +4917,12 @@
             updateFleetState(userCraft, userCraft.state);
             let targetX = userCraft.coordinates.split(',')[0].trim();
             let targetY = userCraft.coordinates.split(',')[1].trim();
-            let starbase = await getStarbaseFromCoords(targetX, targetY);
+            let starbase = await getStarbaseFromCoords(targetX, targetY, true);
             cLog(2, FleetTimeStamp(userCraft.label), 'starbase: ', starbase);
             let craftTime = await getStarbaseTime(starbase, 'Craft');
             let upgradeTime = await getStarbaseTime(starbase, 'Upgrade');
+            cLog(2, FleetTimeStamp(userCraft.label), 'craftTime: ', craftTime);
+            cLog(2, FleetTimeStamp(userCraft.label), 'upgradeTime: ', upgradeTime);
 
             let starbasePlayer = await getStarbasePlayer(userProfileAcct, starbase.publicKey);
             starbasePlayer = starbasePlayer ? starbasePlayer.publicKey : await execRegisterStarbasePlayer('Craft', userCraft.coordinates);
@@ -4937,13 +4973,19 @@
                     if (craftRecipes.some(item => item.publicKey.toString() === craftingProcess.account.recipe.toString())) {
                         if (craftingProcess.account.endTime.toNumber() < craftTime.starbaseTime && [2,3].includes(craftingProcess.account.status)) {
                             completedCraftingProcesses.push({craftingProcess: craftingProcess.publicKey, craftingInstance: craftingInstance.publicKey, recipe: craftingProcess.account.recipe, status: craftingProcess.account.status, craftingId: craftingProcess.account.craftingId.toNumber()});
+                        } else {
+                            let calcEndTime = Math.max(craftingProcess.account.endTime.toNumber() - craftTime.starbaseTime, 0);
+                            let adjustedEndTime = craftTime.resRemaining > 0 ? calcEndTime : (calcEndTime) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level];
+                            let craftTimeStr = 'Crafting [' + TimeToStr(new Date(Date.now() + adjustedEndTime * 1000)) + ']';
+                            updateFleetState(userCraft, craftTimeStr);
+                            await updateCraft(userCraft);
                         }
                     } else {
                         if (craftingProcess.account.endTime.toNumber() < upgradeTime.starbaseTime && [2,3].includes(craftingProcess.account.status)) {
                             completedUpgradeProcesses.push({craftingProcess: craftingProcess.publicKey, craftingInstance: craftingInstance.publicKey, recipe: craftingProcess.account.recipe, status: craftingProcess.account.status, craftingId: craftingProcess.account.craftingId.toNumber()});
                         } else {
                             let upgradeTimeDiff = Math.max(craftingProcess.account.endTime.toNumber() - upgradeTime.starbaseTime, 0);
-                            let upgradeTimeStr = upgradeTime.resRemaining > 0 ? TimeToStr(new Date(Date.now() + upgradeTimeDiff * 1000)) : 'Paused [' + parseInt(upgradeTimeDiff/60) + 'm remaining]';
+                            let upgradeTimeStr = upgradeTime.resRemaining > 0 ? 'Upgrading [' + TimeToStr(new Date(Date.now() + upgradeTimeDiff * 1000)) + ']' : 'Paused [' + parseInt(upgradeTimeDiff/60) + 'm remaining]';
                             updateFleetState(userCraft, upgradeTimeStr);
                         }
                     }
@@ -5030,7 +5072,7 @@
         catch(error) {
             cLog(1,`${FleetTimeStamp(userCraft.label)} Uncaught crafting error`, error);
         }
-        setTimeout(() => { startCraft(userCraft); }, 120000);
+        setTimeout(() => { startCraft(userCraft); }, 15000);
     }
 
 	async function startAssistant() {
@@ -5102,7 +5144,7 @@
 		if(enableAssistant)	setTimeout(fleetHealthCheck, 10000);
 	}
 
-    async function toggleAssistant() {
+    async function toggleAssistant(newState=null) {
         let autoSpanRef = document.querySelector('#autoScanBtn > span');
         if (enableAssistant === true) {
             let waitForSequence = true;
@@ -5116,7 +5158,7 @@
                 await wait(5000);
             }
             enableAssistant = false;
-            autoSpanRef.innerHTML = 'Start';
+            autoSpanRef.innerHTML = newState ? newState : 'Start';
         } else {
             enableAssistant = true;
             await startAssistant();
