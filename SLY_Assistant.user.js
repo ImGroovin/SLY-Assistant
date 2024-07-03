@@ -178,7 +178,7 @@
             cLog(2, `${proxyType} current RPC: ${target._rpcWsEndpoint}`);
 			if (isConnectivityError(error1)) {
 				let success = false;
-				let rpcIdx = 1;
+				let rpcIdx = 0;
 				while (!success && rpcIdx < rpcs.length) {
 					cLog(2, `${proxyType} trying ${rpcs[rpcIdx]}`);
 					const newConnection = new solanaWeb3.Connection(rpcs[rpcIdx], 'confirmed');
