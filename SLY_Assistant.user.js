@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.13
+// @version      0.6.14
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen
 // @match        https://*.based.staratlas.com/
@@ -793,7 +793,7 @@
             },
         ]);
 
-        return userRedemption.publicKey;
+        return userRedemption ? userRedemption.publicKey : false;
     }
 
 	async function getFleetCntAtCoords() {
@@ -972,7 +972,7 @@
 		return await sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName);
 	}
 
-	function txSignAndSend(ix, fleet, opName, priorityFeeMultiplier) {
+	function txSignAndSend(ix, fleet, opName, priorityFeeMultiplier, extraSigner=false) {
 		return new Promise(async resolve => {
 			const fleetName = fleet ? fleet.label : 'unknown';
 			let macroOpStart = Date.now();
@@ -1013,6 +1013,7 @@
                     instructions,
                 }).compileToV0Message(addressLookupTables);
                 let tx = new solanaWeb3.VersionedTransaction(messageV0);
+                if (extraSigner) tx.sign([extraSigner]);
 				let txSigned = null;
                 cLog(4,`${FleetTimeStamp(fleetName)} <${opName}> tx: `, tx);
 
@@ -1022,6 +1023,7 @@
 					txSigned = await solflare.signAllTransactions([tx]);
 				}
 
+                cLog(4,`${FleetTimeStamp(fleetName)} <${opName}> txSigned: `, txSigned);
 				let txSerialized = await txSigned[0].serialize();
                 cLog(4,`${FleetTimeStamp(fleetName)} <${opName}> txSerialized: `, txSerialized);
 
@@ -1854,7 +1856,7 @@
             let fleetCurrentAmmoBank = await solanaReadConnection.getParsedTokenAccountsByOwner(fleet.ammoBank, {programId: tokenProgramPK});
             let currentAmmo = fleetCurrentAmmoBank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.ammo.toString());
             let fleetAmmoAcct = currentAmmo ? currentAmmo.pubkey : fleetAmmoToken;
-            await solanaReadConnection.getAccountInfo(fleetAmmoAcct) || await createPDA(fleetAmmoAcct, fleet.ammoBank, sageGameAcct.account.mints.ammo);
+            await solanaReadConnection.getAccountInfo(fleetAmmoAcct) || await createPDA(fleetAmmoAcct, fleet.ammoBank, sageGameAcct.account.mints.ammo, fleet);
 
             const accInfo = await getAccountInfo(fleet.label, 'fleet resource token', fleetResourceToken);
             cLog(2, `${FleetTimeStamp(fleet.label)} Mining getAccountInfo result`,accInfo);
@@ -2467,16 +2469,18 @@
                 programPK
             );
 
-            let userRedemptionAcct = await getUserRedemptionAccount();
+            let userRedemptionPubkey = await getUserRedemptionAccount();
             let newRedemption = false;
-            if (!userRedemptionAcct) {
-                userRedemptionAcct = (new solanaWeb3.Keypair()).publicKey;
+            let userRedemptionAcct;
+            if (!userRedemptionPubkey) {
+                userRedemptionAcct = new solanaWeb3.Keypair();
+                userRedemptionPubkey = userRedemptionAcct.publicKey;
                 newRedemption = true;
             }
 
             let remainingAccounts = [
                 {
-                    pubkey: userRedemptionAcct,
+                    pubkey: userRedemptionPubkey,
                     isSigner: newRedemption,
                     isWritable: true
                 },
@@ -2492,12 +2496,20 @@
                 }
             ];
 
+            let ixSigners = [userPublicKey];
+
             if (newRedemption) {
                 remainingAccounts.push({
                     pubkey: solanaWeb3.SystemProgram.programId,
                     isSigner: false,
                     isWritable: false
-                })
+                });
+                remainingAccounts.push({
+                    pubkey: userPublicKey,
+                    isSigner: true,
+                    isWritable: true
+                });
+                ixSigners.push(userRedemptionAcct);
             }
 
             let currDayIndex = Math.floor(Date.now() / 86400000);
@@ -2554,7 +2566,8 @@
                 craftingProgram: craftingProgramPK,
                 cargoProgram: cargoProgramPK,
                 tokenProgram: tokenProgramPK
-            }).remainingAccounts(remainingAccounts).instruction()};
+            }).remainingAccounts(remainingAccounts).instruction(),
+                      signers: ixSigners};
             transactions.push(tx1);
 
             let tx2 = { instruction: await sageProgram.methods.closeUpgradeProcess({
@@ -2582,7 +2595,7 @@
             }).instruction()};
             transactions.push(tx2);
 
-            let txResult = await txSignAndSend(transactions, userCraft, 'COMPLETING UPGRADE');
+            let txResult = await txSignAndSend(transactions, userCraft, 'COMPLETING UPGRADE', false, userRedemptionAcct);
 
             resolve(txResult);
         });
@@ -4359,12 +4372,13 @@
 
 		//Already mining?
 		if (userFleets[i].state.slice(0, 4) === 'Mine' && fleetMining) {
+            let maxMiningDuration = calculateMiningDuration(userFleets[i].cargoCapacity, userFleets[i].miningRate, resourceHardness, systemRichness);
             let mineTimePassed = (Date.now() / 1000) - fleetMining.start.toNumber();
             let foodConsumed = Math.ceil(mineTimePassed * (userFleets[i].foodConsumptionRate / 10000));
             let ammoConsumed = Math.ceil(mineTimePassed * (userFleets[i].ammoConsumptionRate / 10000));
             let resourceMined = Math.ceil(mineTimePassed * ((userFleets[i].miningRate/10000) * (systemRichness/100)) / (resourceHardness/100));
             let timeFoodRemaining = Math.ceil((currentFoodCnt - foodConsumed) / (userFleets[i].foodConsumptionRate / 10000));
-            let timeAmmoRemaining = Math.ceil((currentAmmoCnt - ammoConsumed) / (userFleets[i].ammoConsumptionRate / 10000));
+            let timeAmmoRemaining = userFleets[i].ammoConsumptionRate > 0 ? Math.ceil((currentAmmoCnt - ammoConsumed) / (userFleets[i].ammoConsumptionRate / 10000)) : maxMiningDuration;
             let simCurrentCargo = userFleets[i].cargoCapacity - cargoCnt - resourceMined + currentFoodCnt - foodConsumed;
             let timeCargoRemaining = calculateMiningDuration(simCurrentCargo, userFleets[i].miningRate, resourceHardness, systemRichness);
             let timeLimit = Math.min(timeFoodRemaining, timeAmmoRemaining, timeCargoRemaining);
@@ -4373,8 +4387,9 @@
 			updateFleetState(userFleets[i], 'Mine [' + TimeToStr(new Date(mineEnd)) + ']')
 			let sageResourceAcctInfo = await sageProgram.account.resource.fetch(fleetMining.resource);
 			let mineItem = await sageProgram.account.mineItem.fetch(sageResourceAcctInfo.mineItem);
-			if (Date.now() > (mineEnd))
+			if (Date.now() > (mineEnd)) {
 				await execStopMining(userFleets[i], fleetMining.resource, sageResourceAcctInfo, sageResourceAcctInfo.mineItem, mineItem.mint);
+            }
 		}
 	}
 
@@ -5116,10 +5131,11 @@
                     } else {
                         if (craftingProcess.account.endTime.toNumber() < upgradeTime.starbaseTime && [2,3].includes(craftingProcess.account.status)) {
                             completedUpgradeProcesses.push({craftingProcess: craftingProcess.publicKey, craftingInstance: craftingInstance.publicKey, recipe: craftingProcess.account.recipe, status: craftingProcess.account.status, craftingId: craftingProcess.account.craftingId.toNumber()});
-                        } else {
+                        } else if (userCraft.craftingId && craftingProcess.account.craftingId.toNumber() == userCraft.craftingId) {
                             let upgradeTimeDiff = Math.max(craftingProcess.account.endTime.toNumber() - upgradeTime.starbaseTime, 0);
                             let upgradeTimeStr = upgradeTime.resRemaining > 0 ? 'Upgrading [' + TimeToStr(new Date(Date.now() + upgradeTimeDiff * 1000)) + ']' : 'Paused [' + parseInt(upgradeTimeDiff/60) + 'm remaining]';
                             updateFleetState(userCraft, upgradeTimeStr);
+                            await updateCraft(userCraft);
                         }
                     }
                 }
@@ -5199,7 +5215,7 @@
                     await updateCraft(userCraft);
                     //await GM.setValue(userCraft.label, JSON.stringify(userCraft));
                 }
-            } else {
+            } else if (userCraft.state === 'Idle') {
                 updateFleetState(userCraft, 'Waiting for crew/material');
                 await updateCraft(userCraft);
             }
