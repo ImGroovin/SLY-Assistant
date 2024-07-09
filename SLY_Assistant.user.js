@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.15
+// @version      0.6.15 (+ stats)
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen
 // @match        https://*.based.staratlas.com/
@@ -157,6 +157,33 @@
 
 		cLog(2, 'SYSTEM: Global Settings loaded', globalSettings);
 	}
+
+	//statsadd start
+    	await GM.setValue('statistics', '{"start":'+(Math.floor(Date.now() / 1000))+', "groups":{}}'); // session only
+
+	async function alterStats(group,name,val,unit) { 
+	        let stats = JSON.parse(await GM.getValue('statistics', '{}'));
+		if (!stats.groups[group]) stats.groups[group]={"TOTAL":{"count":0,"value":0,"unit":unit}};
+		if (!stats.groups[group][name]) stats.groups[group][name]={"count":0,"value":0,"unit":unit};
+	        stats.groups[group]['TOTAL'].count += 1;
+		stats.groups[group]['TOTAL'].value += val;
+		stats.groups[group][name].count += 1;
+		stats.groups[group][name].value += val;
+	        await GM.setValue('statistics', JSON.stringify(stats));
+	        // update ui
+	        var content ='<table><tr><td colspan="3">Started: '+new Date(stats.start*1000).toLocaleTimeString()+'</td></tr>'
+	        let groups = stats.groups;
+	        for (var group in groups) {
+	            content += '<tr><td>'+group+'</td><td>Count</td><td>Avg. '+groups[group]['TOTAL'].unit+'</td></tr>';
+	            for (var item in groups[group]) {
+	                let avg = groups[group][item].value/groups[group][item].count;
+	                content += '<tr><td>'+item+'</td><td>'+groups[group][item].count+'</td><td>'+avg.toFixed(1)+'</td></tr>'
+	            }
+	        }
+	        content +='</table>';
+	        document.querySelector('#assistStatsContent').innerHTML = content;
+	}
+	//statsadd end
 
 	async function doProxyStuff(target, origMethod, args, rpcs, proxyType)
 	{
@@ -1072,6 +1099,7 @@
 				const fullMsTaken = Date.now() - macroOpStart;
 				const secondsTaken = Math.round(fullMsTaken / 1000);
 				cLog(1,`${FleetTimeStamp(fleetName)} <${opName}> Completed 🏁 ${secondsTaken}s`);
+				alterStats('Tx Confirmations',opName,fullMsTaken/1000,'Seconds'); //statsadd
 				resolve(txResult);
 			}
 		});
@@ -3377,6 +3405,16 @@
 		}
 	}
 
+    
+	async function assistToggle(el) { //statsadd
+		let targetElem = document.querySelector(el);
+		if (targetElem.style.display === 'none') {
+		    targetElem.style.display = 'block';
+		} else {
+		    targetElem.style.display = 'none';
+		}
+	}
+
 	async function saveConfigImport() {
 		let importText = document.querySelector('#importText');
 
@@ -5613,7 +5651,7 @@
 			observer && observer.disconnect();
 			let assistCSS = document.createElement('style');
 			const statusPanelOpacity = globalSettings.statusPanelOpacity / 100;
-			assistCSS.innerHTML = `.assist-modal {display: none; position: fixed; z-index: 2; padding-top: 100px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);} .assist-modal-content {position: relative; display: flex; flex-direction: column; background-color: rgb(41, 41, 48); margin: auto; padding: 0; border: 1px solid #888; width: 785px; min-width: 450px; max-width: 75%; height: auto; min-height: 50px; max-height: 85%; overflow-y: auto; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19); -webkit-animation-name: animatetop; -webkit-animation-duration: 0.4s; animation-name: animatetop; animation-duration: 0.4s;} #assist-modal-error {color: red; margin-left: 5px; margin-right: 5px; font-size: 16px;} .assist-modal-header-right {color: rgb(255, 190, 77); margin-left: auto !important; font-size: 20px;} .assist-btn {background-color: rgb(41, 41, 48); color: rgb(255, 190, 77); margin-left: 2px; margin-right: 2px;} .assist-btn:hover {background-color: rgba(255, 190, 77, 0.2);} .assist-modal-close:hover, .assist-modal-close:focus {font-weight: bold; text-decoration: none; cursor: pointer;} .assist-modal-btn {color: rgb(255, 190, 77); padding: 5px 5px; margin-right: 5px; text-decoration: none; background-color: rgb(41, 41, 48); border: none; cursor: pointer;} .assist-modal-save:hover { background-color: rgba(255, 190, 77, 0.2); } .assist-modal-header {display: flex; align-items: center; padding: 2px 16px; background-color: rgba(255, 190, 77, 0.2); border-bottom: 2px solid rgb(255, 190, 77); color: rgb(255, 190, 77);} .assist-modal-body {padding: 2px 16px; font-size: 12px;} .assist-modal-body > table {width: 100%;} .assist-modal-body th, .assist-modal-body td {padding-right: 5px, padding-left: 5px;} #assistStatus {background-color: rgba(0,0,0,${statusPanelOpacity}); opacity: ${statusPanelOpacity}; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1;} #assistStarbaseStatus {background-color: rgba(0,0,0,${statusPanelOpacity}); opacity: ${statusPanelOpacity}; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1;} #assistCheck {background-color: rgba(0,0,0,0.75); backdrop-filter: blur(10px); position: absolute; margin: auto; left: 0; right: 0; top: 100px; width: 650px; min-width: 450px; max-width: 75%; z-index: 1;} .dropdown { position: absolute; display: none; margin-top: 25px; margin-left: 152px; background-color: rgb(41, 41, 48); min-width: 120px; box-shadow: 0 8px 16px 0 rgba(0, 0, 0, 0.2); z-index: 2; } .dropdown.show { display: block; } .assist-btn-alt { color: rgb(255, 190, 77); padding: 12px 16px; text-decoration: none; display: block; background-color: rgb(41, 41, 48); border: none; cursor: pointer; } .assist-btn-alt:hover { background-color: rgba(255, 190, 77, 0.2); } #checkresults { padding: 5px; margin-top: 20px; border: 1px solid grey; border-radius: 8px;} .dropdown button {width: 100%; text-align: left;} #assistModal table {border-collapse: collapse;} .assist-scan-row, .assist-mine-row, .assist-transport-row {background-color: rgba(255, 190, 77, 0.1); border-left: 1px solid white; border-right: 1px solid white; border-bottom: 1px solid white} .show-top-border {background-color: rgba(255, 190, 77, 0.1); border-left: 1px solid white; border-right: 1px solid white; border-top: 1px solid white;}`;
+			assistCSS.innerHTML = `.assist-modal {display: none; position: fixed; z-index: 2; padding-top: 100px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);} .assist-modal-content {position: relative; display: flex; flex-direction: column; background-color: rgb(41, 41, 48); margin: auto; padding: 0; border: 1px solid #888; width: 785px; min-width: 450px; max-width: 75%; height: auto; min-height: 50px; max-height: 85%; overflow-y: auto; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19); -webkit-animation-name: animatetop; -webkit-animation-duration: 0.4s; animation-name: animatetop; animation-duration: 0.4s;} #assist-modal-error {color: red; margin-left: 5px; margin-right: 5px; font-size: 16px;} .assist-modal-header-right {color: rgb(255, 190, 77); margin-left: auto !important; font-size: 20px;} .assist-btn {background-color: rgb(41, 41, 48); color: rgb(255, 190, 77); margin-left: 2px; margin-right: 2px;} .assist-btn:hover {background-color: rgba(255, 190, 77, 0.2);} .assist-modal-close:hover, .assist-modal-close:focus {font-weight: bold; text-decoration: none; cursor: pointer;} .assist-modal-btn {color: rgb(255, 190, 77); padding: 5px 5px; margin-right: 5px; text-decoration: none; background-color: rgb(41, 41, 48); border: none; cursor: pointer;} .assist-modal-save:hover { background-color: rgba(255, 190, 77, 0.2); } .assist-modal-header {display: flex; align-items: center; padding: 2px 16px; background-color: rgba(255, 190, 77, 0.2); border-bottom: 2px solid rgb(255, 190, 77); color: rgb(255, 190, 77);} .assist-modal-body {padding: 2px 16px; font-size: 12px;} .assist-modal-body > table {width: 100%;} .assist-modal-body th, .assist-modal-body td {padding-right: 5px, padding-left: 5px;} #assistStatus {background-color: rgba(0,0,0,${statusPanelOpacity}); opacity: ${statusPanelOpacity}; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1;} #assistStarbaseStatus {background-color: rgba(0,0,0,${statusPanelOpacity}); opacity: ${statusPanelOpacity}; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1;} #assistCheck {background-color: rgba(0,0,0,0.75); backdrop-filter: blur(10px); position: absolute; margin: auto; left: 0; right: 0; top: 100px; width: 650px; min-width: 450px; max-width: 75%; z-index: 1;} .dropdown { position: absolute; display: none; margin-top: 25px; margin-left: 152px; background-color: rgb(41, 41, 48); min-width: 120px; box-shadow: 0 8px 16px 0 rgba(0, 0, 0, 0.2); z-index: 2; } .dropdown.show { display: block; } .assist-btn-alt { color: rgb(255, 190, 77); padding: 12px 16px; text-decoration: none; display: block; background-color: rgb(41, 41, 48); border: none; cursor: pointer; } .assist-btn-alt:hover { background-color: rgba(255, 190, 77, 0.2); } #checkresults { padding: 5px; margin-top: 20px; border: 1px solid grey; border-radius: 8px;} .dropdown button {width: 100%; text-align: left;} #assistModal table {border-collapse: collapse;} .assist-scan-row, .assist-mine-row, .assist-transport-row {background-color: rgba(255, 190, 77, 0.1); border-left: 1px solid white; border-right: 1px solid white; border-bottom: 1px solid white} .show-top-border {background-color: rgba(255, 190, 77, 0.1); border-left: 1px solid white; border-right: 1px solid white; border-top: 1px solid white;} #assistStats {background-color: rgba(0,0,0,${statusPanelOpacity}); opacity: ${statusPanelOpacity}; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1;}`; //statsadd (#assistStats added at css end)
 
 			let assistModal = document.createElement('div');
 			assistModal.classList.add('assist-modal');
@@ -5662,7 +5700,17 @@
 			assistStatusContent.innerHTML = '<div class="assist-modal-header" style="cursor: move;">Status<div class="assist-modal-header-right"><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><table><tr><td>Fleet</td><td>Food</td><td>SDUs</td><td>State</td></tr></table></div>'
 			assistStatus.append(assistStatusContent);
 
-            let assistStarbaseStatus = document.createElement('div');
+			//statsadd start
+	            	let assistStats = document.createElement('div'); 
+	           	assistStats.id = 'assistStats';
+	           	assistStats.style.display = 'none';
+	            	let assistStatsContent = document.createElement('div');
+	            	assistStatsContent.classList.add('assist-status-content');
+	            	assistStatsContent.innerHTML = '<div class="assist-modal-header" style="cursor: move;">Statistics<div class="assist-modal-header-right"><span class="assist-modal-close">x</span></div></div><div id="assistStatsContent" class="assist-modal-body"></div>'
+	            	assistStats.append(assistStatsContent);
+	            	//statsadd end
+			
+            		let assistStarbaseStatus = document.createElement('div');
 			assistStarbaseStatus.id = 'assistStarbaseStatus';
 			assistStarbaseStatus.style.display = 'none';
 			let assistStarbaseStatusContent = document.createElement('div');
@@ -5744,7 +5792,18 @@
 			assistStatusSpan.style.fontSize = '14px';
 			assistStatusButton.appendChild(assistStatusSpan);
 
-            let assistStarbaseStatusButton = document.createElement('button');
+			//statsadd
+            		let assistStatsButton = document.createElement('button');
+			assistStatsButton.id = 'assistStatsBtn';
+			assistStatsButton.classList.add('assist-btn','assist-btn-alt');
+			assistStatsButton.addEventListener('click', function(e) {assistToggle('#assistStats');});
+			let assistStatsSpan = document.createElement('span');
+			assistStatsSpan.innerText = 'Statistics';
+			assistStatsSpan.style.fontSize = '14px';
+			assistStatsButton.appendChild(assistStatsSpan);
+            		//statsadd
+
+            		let assistStarbaseStatusButton = document.createElement('button');
 			assistStarbaseStatusButton.id = 'assistStarbaseStatusBtn';
 			assistStarbaseStatusButton.classList.add('assist-btn','assist-btn-alt');
 			assistStarbaseStatusButton.addEventListener('click', function(e) {assistStarbaseStatusToggle();});
@@ -5759,8 +5818,9 @@
 			autoContainer.appendChild(dropdown);
 
 			dropdown.appendChild(assistStatusButton);
-            dropdown.appendChild(assistStarbaseStatusButton);
+            		dropdown.appendChild(assistStarbaseStatusButton);
 			dropdown.appendChild(assistCheckButton);
+			dropdown.appendChild(assistStatsButton); //statsadd
 			dropdown.appendChild(assistConfigButton);
 			dropdown.appendChild(assistSettingsButton);
 
@@ -5798,8 +5858,9 @@
 			autoContainer.append(assistModal);
 			autoContainer.append(settingsModal);
 			autoContainer.append(assistStatus);
-            autoContainer.append(assistStarbaseStatus);
+            		autoContainer.append(assistStarbaseStatus);
 			autoContainer.append(assistCheck);
+			autoContainer.append(assistStats); //statsadd
 			autoContainer.append(importModal);
 			autoContainer.append(profileModal);
 			//autoContainer.append(addAcctModal);
@@ -5813,12 +5874,14 @@
 			settingsModalClose.addEventListener('click', function(e) {settingsModalToggle();});
 			let assistStatusClose = document.querySelector('#assistStatus .assist-modal-close');
 			assistStatusClose.addEventListener('click', function(e) {assistStatusToggle();});
-            let assistStarbaseStatusClose = document.querySelector('#assistStarbaseStatus .assist-modal-close');
+            		let assistStarbaseStatusClose = document.querySelector('#assistStarbaseStatus .assist-modal-close');
 			assistStarbaseStatusClose.addEventListener('click', function(e) {assistStarbaseStatusToggle();});
 			let assistCheckClose = document.querySelector('#assistCheck .assist-modal-close');
 			assistCheckClose.addEventListener('click', function(e) {assistCheckToggle();});
 			let assistCheckFleetBtn = document.querySelector('#checkFleetBtn');
 			assistCheckFleetBtn.addEventListener('click', function(e) {getFleetCntAtCoords();});
+			let assistStatsClose = document.querySelector('#assistStats .assist-modal-close'); //statsadd
+			assistStatsClose.addEventListener('click', function(e) {assistToggle('#assistStats');}); //statsadd
 			let configImportExport = document.querySelector('#configImportExport');
 			configImportExport.addEventListener('click', function(e) {assistImportToggle();});
 			let configImport = document.querySelector('#importConfigBtn');
@@ -5840,7 +5903,8 @@
 
 			makeDraggable(assistCheck);
 			makeDraggable(assistStatus);
-            makeDraggable(assistStarbaseStatus);
+            		makeDraggable(assistStarbaseStatus);
+			makeDraggable(assistStats); //statsadd
 		}
 	}
 	observer.observe(document, {childList: true, subtree: true});
