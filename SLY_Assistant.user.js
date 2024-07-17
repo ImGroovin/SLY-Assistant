@@ -1084,6 +1084,7 @@
 				if (confirmation && confirmation.name == 'TransactionExpiredBlockheightExceededError' && !txResult) {
 					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM ❌ ${confirmationTimeStr}`);
 					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> RESEND 🔂`);
+					await alterStats('Txs Resent',opName,(Date.now() - macroOpStart)/1000,'Seconds',1); //statsadd
 					continue; //retart loop to try again
 				}
 
