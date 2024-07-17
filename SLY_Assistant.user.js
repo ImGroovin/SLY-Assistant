@@ -159,29 +159,34 @@
 	}
 
 	//statsadd start
-    	await GM.setValue('statistics', '{"start":'+(Math.floor(Date.now() / 1000))+', "groups":{}}'); // session only
+	await GM.setValue('statistics', '{"start":'+(Math.round(Date.now() / 1000))+', "groups":{}}'); // session only
 
-	async function alterStats(group,name,val,unit) { 
-	        let stats = JSON.parse(await GM.getValue('statistics', '{}'));
-		if (!stats.groups[group]) stats.groups[group]={"TOTAL":{"count":0,"value":0,"unit":unit}};
-		if (!stats.groups[group][name]) stats.groups[group][name]={"count":0,"value":0,"unit":unit};
-	        stats.groups[group]['TOTAL'].count += 1;
+	async function alterStats(group,name,val,unit,precision) { 
+		let stats = JSON.parse(await GM.getValue('statistics', '{}'));
+		let started = new Date(stats.start*1000);
+		if (!stats.groups[group]) stats.groups[group]={"TOTAL":{"count":0,"value":0,"unit":unit,"precision":precision}};
+		if (name && !stats.groups[group][name]) stats.groups[group][name]={"count":0,"value":0};
+		if (name) {
+			stats.groups[group][name].count += 1;
+			stats.groups[group][name].value += val;
+		}
+		stats.groups[group]['TOTAL'].count += 1;
 		stats.groups[group]['TOTAL'].value += val;
-		stats.groups[group][name].count += 1;
-		stats.groups[group][name].value += val;
-	        await GM.setValue('statistics', JSON.stringify(stats));
-	        // update ui
-	        var content ='<table><tr><td colspan="3">Started: '+new Date(stats.start*1000).toLocaleTimeString()+'</td></tr>'
-	        let groups = stats.groups;
-	        for (var group in groups) {
-	            content += '<tr><td>'+group+'</td><td>Count</td><td>Avg. '+groups[group]['TOTAL'].unit+'</td></tr>';
-	            for (var item in groups[group]) {
-	                let avg = groups[group][item].value/groups[group][item].count;
-	                content += '<tr><td>'+item+'</td><td>'+groups[group][item].count+'</td><td>'+avg.toFixed(1)+'</td></tr>'
-	            }
-	        }
-	        content +='</table>';
-	        document.querySelector('#assistStatsContent').innerHTML = content;
+
+		await GM.setValue('statistics', JSON.stringify(stats));
+		// update ui
+		let groups = stats.groups;
+		let content = '<table><tr><td colspan="4">Started: '+started.toLocaleDateString()+' '+started.toLocaleTimeString()+' / Hours passed: '+((Date.now()-stats.start*1000)/1000/60/60).toFixed(2)+'</td></tr>';
+		for (let group in groups) {
+			content += '<tr style="opacity:0.6"><td>'+group+'</td><td>Count</td><td>Total '+groups[group]['TOTAL'].unit+'</td><td>Average '+groups[group]['TOTAL'].unit+'</td></tr>';
+			let precision = +groups[group]['TOTAL'].precision;
+			for (let item in groups[group]) {
+				let avg = groups[group][item].value/groups[group][item].count;
+				content += '<tr><td>'+item+'</td><td>'+groups[group][item].count+'</td><td>'+groups[group][item].value.toFixed(precision)+'</td><td>'+avg.toFixed(precision)+'</td></tr>'
+			}
+		}
+		content += '</table>';
+		document.querySelector('#assistStatsContent').innerHTML = content;
 	}
 	//statsadd end
 
@@ -1099,8 +1104,12 @@
 				const fullMsTaken = Date.now() - macroOpStart;
 				const secondsTaken = Math.round(fullMsTaken / 1000);
 				cLog(1,`${FleetTimeStamp(fleetName)} <${opName}> Completed 🏁 ${secondsTaken}s`);
-				alterStats('Tx Confirmations',opName,fullMsTaken/1000,'Seconds'); //statsadd
 				resolve(txResult);
+				
+				await alterStats('SOL Fees',undefined,txResult.meta.fee*0.000000001,'SOL',6); // undefined name => only totals tracked //statsadd
+				let statGroup = txResult.err==null ? 'Txs Confirmed' : 'Tx Errors'; //statsadd
+				await alterStats(statGroup,opName,fullMsTaken/1000,'Seconds',1); //statsadd
+
 			}
 		});
 	}
