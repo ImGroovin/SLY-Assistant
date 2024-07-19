@@ -1108,7 +1108,7 @@
 				resolve(txResult);
 				
 				await alterStats('SOL Fees',undefined,txResult.meta.fee*0.000000001,'SOL',6); // undefined name => only totals tracked //statsadd
-				let statGroup = txResult.err==null ? 'Txs Confirmed' : 'Tx Errors'; //statsadd
+				let statGroup = ((confirmation && confirmation.value && confirmation.value.err && confirmation.value.err.InstructionError) || (txResult && txResult.meta && txResult.meta.err && txResult.meta.err.InstructionError)) ? 'Txs IxErrors' : 'Txs Confirmed'; //statsadd
 				await alterStats(statGroup,opName,fullMsTaken/1000,'Seconds',1); //statsadd
 
 			}
