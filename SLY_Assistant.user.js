@@ -1151,7 +1151,7 @@
 
             updateFleetState(fleet, `Scanning [${TimeToStr(new Date(Date.now()))}]`);
 
-            let txResult = await txSignAndSend(tx, fleet, 'SCAN', 25);
+            let txResult = await txSignAndSend(tx, fleet, 'SCAN', 30);
 
             resolve(txResult);
         });
