@@ -2156,7 +2156,7 @@
                     tokenProgram: tokenProgramPK
                 }).instruction()}
                 transactions.push(tx);
-                }
+            }
 
             let [signerFeeMintToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
                 [
@@ -3760,7 +3760,8 @@
                         }
 
                         await wait(Math.max(1000, warpCooldownExpiresAt - Date.now()));
-                    }    await wait(2000); //Extra wait to ensure accuracy
+                    }
+                    await wait(2000); //Extra wait to ensure accuracy
 
                     //Calculate next warp point if more than 1 is needed to arrive at final destination
                     if (moveDist > userFleets[i].maxWarpDistance / 100) {
