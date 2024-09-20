@@ -4887,7 +4887,7 @@
                 await handleScan(i, fleetCoords, userFleets[i].scanBlock[curentSBI]);
 
                 //Move instantly if a move is needed as the result of the previous scan
-                if (curentSBI !== userFleets[i].scanBlockIdx)    await handleScan(i, fleetCoords, userFleets[i].scanBlock[userFleets[i].scanBlockIdx]);
+                if (curentSBI !== userFleets[i].scanBlockIdx) await handleScan(i, fleetCoords, userFleets[i].scanBlock[userFleets[i].scanBlockIdx]);
             }
             else if (fleetParsedData.assignment == 'Mine') {
                 if (fleetState == 'MineAsteroid' && !userFleets[i].state.includes('Mine')) {
@@ -5292,7 +5292,7 @@
             return;
         }
 
-        if (enableAssistant)    setTimeout(fleetHealthCheck, 10000);
+        if (enableAssistant) setTimeout(fleetHealthCheck, 10000);
     }
 
     async function toggleAssistant(newState=null) {
