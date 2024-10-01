@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         SLY Assistant
-// @namespace    http://tampermonkey.net/
-// @version      0.6.15
+// @name         SLY Assistant-SmartWrap
+// @namespace    https://github.com/ImGroovin/SLY-Assistant
+// @version      0.6.15.4
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen
 // @match        https://*.based.staratlas.com/
@@ -899,7 +899,6 @@
             loadingMessage.style.display = 'none';
             fleetGrid.style.display = 'block';
             //resultDiv.appendChild(fleetGrid);
-
         } catch (error) {
             console.error('Error fetching fleet information:', error);
             loadingMessage.innerText = 'Error fetching fleet information';
@@ -3725,7 +3724,7 @@
         }
     }
 
-    async function handleMovement(i, moveDist, moveX, moveY) {
+    async function handleMovement(i, moveDist, moveX, moveY, transportDistance) {
         let moveTime = 1;
         let warpCooldownFinished = 0;
         let fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
@@ -3751,38 +3750,58 @@
                     let fleetAcctData = sageProgram.coder.accounts.decode('fleet', fleetAcctInfo.data);
                     let warpCooldownExpiresAt = fleetAcctData.warpCooldownExpiresAt.toNumber() * 1000;
 
-                    //Wait for cooldown
-                    while (Date.now() < warpCooldownExpiresAt) {
-                        if (!userFleets[i].state.includes('Warp C/D')) {
-                            const warpCDExpireTimeStr = `[${TimeToStr(new Date(warpCooldownExpiresAt))}]`;
-                            cLog(1,`${FleetTimeStamp(userFleets[i].label)} Awaiting Warp C/D ${warpCDExpireTimeStr}`);
-                            updateFleetState(userFleets[i], `Warp C/D ${warpCDExpireTimeStr}`);
+                    const maxWarpDistance = userFleets[i].maxWarpDistance / 100
+                    // console.log('moveDist ----', moveDist, transportDistance, transportDistance - maxWarpDistance, transportDistance - Math.floor(maxWarpDistance))
+                    const nowTime = Date.now()
+                    if (nowTime < warpCooldownExpiresAt
+                        && warpCooldownExpiresAt - nowTime > userFleets[i].warpCooldown * 1000 * 0.5 // at long cooldown
+                        && transportDistance > maxWarpDistance // if samll then maxWarpDistance, just wait for warp
+                        && (moveDist === transportDistance || moveDist <= transportDistance - Math.floor(maxWarpDistance)))
+                    {
+                        console.log('handleMovement - smart go2')
+                        let moveDistNew = moveDist
+                        if (moveDist === transportDistance) {
+                            moveDistNew = moveDist - userFleets[i].maxWarpDistance;
+                            [moveX, moveY] = calcNextWarpPoint(moveDistNew, extra, [moveX, moveY]);
+                        }
+                        moveTime = calculateSubwarpTime(userFleets[i], moveDistNew);
+                        await execSubwarp(userFleets[i], moveX, moveY, moveTime);
+                    } else {
+                        console.log('handleMovement - Wait for cooldown')
+                        // Wait for cooldown
+                        while (Date.now() < warpCooldownExpiresAt) {
+                            if (!userFleets[i].state.includes('Warp C/D')) {
+                                const warpCDExpireTimeStr = `[${TimeToStr(new Date(warpCooldownExpiresAt))}]`;
+                                cLog(1,`${FleetTimeStamp(userFleets[i].label)} Awaiting Warp C/D ${warpCDExpireTimeStr}`);
+                                updateFleetState(userFleets[i], `Warp C/D ${warpCDExpireTimeStr}`);
+                            }
+
+                            await wait(Math.max(1000, warpCooldownExpiresAt - Date.now()));
+                        }
+                        await wait(2000); //Extra wait to ensure accuracy
+
+                        //Calculate next warp point if more than 1 is needed to arrive at final destination
+                        if (moveDist > maxWarpDistance) {
+                            [moveX, moveY] = calcNextWarpPoint(userFleets[i].maxWarpDistance, extra, [moveX, moveY]);
+
+                            //Saves temporary waypoints for transports in case the page is refreshed mid-journey while using warp
+                            const fleetPK = userFleets[i].publicKey.toString();
+                            const fleetSavedData = await GM.getValue(fleetPK, '{}');
+                            const fleetParsedData = JSON.parse(fleetSavedData);
+                            //cLog(3, `${FleetTimeStamp(userFleets[i].label)} moveTargets`, fleetParsedData.moveTarget, userFleets[i].moveTarget);
+                            fleetParsedData.moveTarget = userFleets[i].moveTarget;
+                            await GM.setValue(fleetPK, JSON.stringify(fleetParsedData));
+
+                            //Update distance based on new warp target
+                            moveDist = calculateMovementDistance(extra, [moveX,moveY]);
                         }
 
-                        await wait(Math.max(1000, warpCooldownExpiresAt - Date.now()));
+                        moveTime = calculateWarpTime(userFleets[i], moveDist);
+                        const warpResult = await execWarp(userFleets[i], moveX, moveY, moveTime);
+                        warpCooldownFinished = warpResult.warpCooldownFinished;
                     }
-                    await wait(2000); //Extra wait to ensure accuracy
-
-                    //Calculate next warp point if more than 1 is needed to arrive at final destination
-                    if (moveDist > userFleets[i].maxWarpDistance / 100) {
-                        [moveX, moveY] = calcNextWarpPoint(userFleets[i].maxWarpDistance, extra, [moveX, moveY]);
-
-                        //Saves temporary waypoints for transports in case the page is refreshed mid-journey while using warp
-                        const fleetPK = userFleets[i].publicKey.toString();
-                        const fleetSavedData = await GM.getValue(fleetPK, '{}');
-                        const fleetParsedData = JSON.parse(fleetSavedData);
-                        //cLog(3, `${FleetTimeStamp(userFleets[i].label)} moveTargets`, fleetParsedData.moveTarget, userFleets[i].moveTarget);
-                        fleetParsedData.moveTarget = userFleets[i].moveTarget;
-                        await GM.setValue(fleetPK, JSON.stringify(fleetParsedData));
-
-                        //Update distance based on new warp target
-                        moveDist = calculateMovementDistance(extra, [moveX,moveY]);
-                    }
-
-                    moveTime = calculateWarpTime(userFleets[i], moveDist);
-                    const warpResult = await execWarp(userFleets[i], moveX, moveY, moveTime);
-                    warpCooldownFinished = warpResult.warpCooldownFinished;
-                } else if (currentFuelCnt + currentCargoFuelCnt >= subwarpCost) {
+                }
+                else if (currentFuelCnt + currentCargoFuelCnt >= subwarpCost) {
                     moveTime = calculateSubwarpTime(userFleets[i], moveDist);
                     await execSubwarp(userFleets[i], moveX, moveY, moveTime);
                 } else {
@@ -4558,10 +4577,16 @@
             }
 
             if (userFleets[i].moveTarget !== '') {
-                const targetX = userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[0].trim() : '';
-                const targetY = userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[1].trim() : '';
+                const moveStartCoord = userFleets[i].starbaseCoord.split(',');
+                const moveEndCoord = userFleets[i].destCoord.split(',');
+                const transportDistance = calculateMovementDistance(moveStartCoord, moveEndCoord);
+
+                const moveTargetCoord = userFleets[i].moveTarget.split(',');
+                const targetX = moveTargetCoord.length > 1 ? moveTargetCoord[0].trim() : '';
+                const targetY = moveTargetCoord.length > 1 ? moveTargetCoord[1].trim() : '';
                 const moveDist = calculateMovementDistance(fleetCoords, [targetX,targetY]);
-                await handleMovement(i, moveDist, targetX, targetY);
+
+                await handleMovement(i, moveDist, targetX, targetY, transportDistance);
             } else {
                 cLog(1,`${FleetTimeStamp(userFleets[i].label)} Transporting - ERROR: Fleet must start at Target or Starbase`);
                 updateFleetState(userFleets[i], 'ERROR: Fleet must start at Target or Starbase');
@@ -4831,6 +4856,7 @@
         }
     }
 
+    // start
     async function operateFleet(i) {
         if (globalErrorTracker.errorCount > 9) toggleAssistant('ERROR');
 
@@ -4901,7 +4927,7 @@
                 await handleTransport(i, userFleets[i].state, fleetCoords);
             }
         } catch (err) {
-                cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR`, err);
+            cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR`, err);
         }
     }
 
@@ -5238,7 +5264,7 @@
             if (fleetParsedData.assignment) updateFleetState(userFleets[i], 'Starting');
 
             //Stagger fleet starts by 500ms to avoid overloading the RPC
-            setTimeout(() => { startFleet(i);    }, 500 * (i + 1));
+            setTimeout(() => { startFleet(i); }, 500 * (i + 1));
         }
 
         for (let i=1; i < globalSettings.craftingJobs+1; i++) {
