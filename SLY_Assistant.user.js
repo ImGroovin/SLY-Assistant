@@ -2270,6 +2270,16 @@
 
             let txResult = {craftingId: formattedRandomBytes, result: await txSignAndSend(transactions, userCraft, 'START CRAFTING')};
 
+	    // statsadd start
+	    let postTokenBalances = txResult.result.meta.postTokenBalances;
+	    let feeAccount = txResult.result.transaction.message.staticAccountKeys.map((key) => key.toBase58())[3];
+            for (var b in postTokenBalances) {
+            if (postTokenBalances[b].mint=='ATLASXmbPQxBUYbxPsV97usA3fPQYEqzQBUHgiFCUsXx' && postTokenBalances[b].owner==feeAccount) {
+		await alterStats('ATLAS Fees','Crafting',postTokenBalances[b].uiTokenAmount.uiAmount,'ATLAS',4);
+		}
+            }
+	    // statsadd end
+		
             resolve(txResult);
         });
     }
