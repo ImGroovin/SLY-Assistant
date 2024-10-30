@@ -4356,7 +4356,7 @@
 				if (userFleets[i].state.slice(0, 5) !== 'ERROR') updateFleetState(userFleets[i], 'Mine [' + TimeToStr(new Date(Date.now()+(miningDuration * 1000))) + ']')
 
 				//Wait for data to propagate through the RPCs
-				await wait(5000);
+				await wait(20000);
 
 				//Fetch update mining state from chain
 				const fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
@@ -4893,6 +4893,20 @@
 				}
 				else if (fleetParsedData.assignment == 'Mine') {
 					if(fleetState == 'MineAsteroid' && !userFleets[i].state.includes('Mine')) {
+						cLog(1,`${FleetTimeStamp(userFleets[i].label)} Fleet State Mismatch - retrying`);
+						/* When there is a RPC sync problem, it can take up to 40 seconds to get the correct fleet state */
+						for(let retryCount=1; retryCount<=4; retryCount++) {
+							await wait(10000);
+							fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
+							[fleetState, extra] = getFleetState(fleetAcctInfo);
+							cLog(1, `${FleetTimeStamp(userFleets[i].label)} chain fleet state (after retry ${retryCount}/4): ${fleetState}`);
+							fleetCoords = fleetState == 'Idle' ? extra : [];
+							fleetMining = fleetState == 'MineAsteroid' ? extra : null;
+							userFleets[i].startingCoords = fleetCoords;
+							if(fleetState != 'MineAsteroid') {
+								break;
+							}
+						}						
 						cLog(1,`${FleetTimeStamp(userFleets[i].label)} Fleet State Mismatch - Updating to Mining again`);
 						updateFleetState(userFleets[i], 'Mine [' + TimeToStr(new Date(Date.now())) + ']');
 					}
