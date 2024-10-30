@@ -599,7 +599,11 @@
             let remainingDistNew = Math.sqrt((val[0] - endX) ** 2 + (val[1] - endY) ** 2);
             let travelDistOld = Math.sqrt((startX - best[0]) ** 2 + (startY - best[1]) ** 2);
             let travelDistNew = Math.sqrt((startX - val[0]) ** 2 + (startY - val[1]) ** 2);
-            if (remainingDistNew < realWarpRange && travelDistNew < realWarpRange && remainingDistNew+travelDistNew < remainingDistOld+travelDistOld) {
+            if (globalSettings.subwarpShortDist && remainingDistOld > 0 && remainingDistNew < remainingDistOld && remainingDistNew < 1.5 && travelDistNew < realWarpRange) {
+                return val;
+            } else if (globalSettings.subwarpShortDist && remainingDistOld < 1.5 && remainingDistNew >= 1.5) {
+                return best;
+            } else if (remainingDistNew < realWarpRange && travelDistNew < realWarpRange && remainingDistNew+travelDistNew < remainingDistOld+travelDistOld) {
                 return val;
             } else if (remainingDistNew < realWarpRange && travelDistNew < realWarpRange && remainingDistOld > realWarpRange) {
                 return val;
@@ -1017,11 +1021,22 @@
 				let txSigned = null;
                 cLog(4,`${FleetTimeStamp(fleetName)} <${opName}> tx: `, tx);
 
+		try {
 				if (typeof solflare === 'undefined') {
 					txSigned = phantom && phantom.solana ? await phantom.solana.signAllTransactions([tx]) : solana.signAllTransactions([tx]);
 				} else {
 					txSigned = await solflare.signAllTransactions([tx]);
 				}
+		} catch (error1) {
+			/* Catch the very rare "Could not establish connection. Receiving end does not exist" error from Solflare and just try it again: */
+			cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> Wallet extension error`, error1);
+			await wait(1000);
+			if (typeof solflare === 'undefined') {
+				txSigned = phantom && phantom.solana ? await phantom.solana.signAllTransactions([tx]) : solana.signAllTransactions([tx]);
+			} else {
+				txSigned = await solflare.signAllTransactions([tx]);
+			}
+		}		
 
                 cLog(4,`${FleetTimeStamp(fleetName)} <${opName}> txSigned: `, txSigned);
 				let txSerialized = await txSigned[0].serialize();
