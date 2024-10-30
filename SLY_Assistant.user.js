@@ -958,7 +958,7 @@
         // Force a retry if txHash is undefined. Not sure why sendRawTransaction would return nothing, but this happens occasionally.
         if (!txHash) return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
 
-		while ((curBlockHeight - interimBlockHeight) < 10) {
+		while ((curBlockHeight - interimBlockHeight) < 30) {
 				const signatureStatus = await solanaReadConnection.getSignatureStatus(txHash);
 				if (signatureStatus.value && ['confirmed','finalized'].includes(signatureStatus.value.confirmationStatus)) {
 						return {txHash, confirmation: signatureStatus};
