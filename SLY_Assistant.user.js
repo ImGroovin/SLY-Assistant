@@ -3126,7 +3126,7 @@
 	}
 
     async function updateAssistStarbaseStatus(starbases) {
-        document.querySelectorAll('#assistStarbaseStatus .assist-modal-body table assist-starbase-row').forEach(e => e.remove());
+        document.querySelectorAll('#assistStarbaseStatus .assist-modal-body table .assist-starbase-row').forEach(e => e.remove());
 
 		for (let starbase of starbases) {
 			let starbaseRow = document.createElement('tr');
