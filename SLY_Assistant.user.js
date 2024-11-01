@@ -2426,6 +2426,9 @@
             //let txResult = await txSignAndSend(tx2, userCraft, 'COMPLETING CRAFT TX2');
             let txResult = await txSignAndSend(transactions, userCraft, 'COMPLETING CRAFT');
 
+            // Allow RPC to catch up (to be sure the crew is available before starting the next job)
+            await wait(2000);
+
             resolve(txResult);
         });
     }
