@@ -229,6 +229,7 @@
 	const solanaWriteConnection = new Proxy(rawSolanaWriteConnection, writeConnectionProxy);
 	let solanaReadCount = 0;
 	let solanaWriteCount = 0;
+	let tokenCheckCounter = 0;
     let globalErrorTracker = {'firstErrorTime': 0, 'errorCount': 0};
     cLog(1, `Read RPC: ${readRPCs[readIdx]}`);
     cLog(1, `Write RPC: ${writeRPCs[writeIdx]}`);
@@ -5281,8 +5282,23 @@
         }
 
 		setTimeout(fleetHealthCheck, 5000);
+		setTimeout(tokenCheck, 1000);
 	}
 
+	async function tokenCheck() {
+		if(!enableAssistant) return;
+
+		if((tokenCheckCounter%10)==0) { // check token balance every 100 seconds
+			cLog(1, 'Checking SOL and Atlas balance');
+			const solBalance = await solanaReadConnection.getBalance(userPublicKey);
+			const atlasBalance = await solanaReadConnection.getParsedTokenAccountsByOwner(userPublicKey,{ mint: new solanaWeb3.PublicKey('ATLASXmbPQxBUYbxPsV97usA3fPQYEqzQBUHgiFCUsXx')} );
+			document.getElementById('assist-modal-balance').innerHTML='SOL:'+((solBalance/1000000000).toFixed(3))+' Atlas:'+parseInt(atlasBalance.value[0].account.data.parsed.info.tokenAmount.uiAmount);
+		}
+		tokenCheckCounter++;
+
+		if(enableAssistant) setTimeout(tokenCheck, 10000);
+	}
+	
 	async function fleetHealthCheck() {
 		if (!enableAssistant) return;
 
@@ -5691,7 +5707,7 @@
 			assistStatus.style.display = 'none';
 			let assistStatusContent = document.createElement('div');
 			assistStatusContent.classList.add('assist-status-content');
-			assistStatusContent.innerHTML = '<div class="assist-modal-header" style="cursor: move;">Status<div class="assist-modal-header-right"><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><table><tr><td>Fleet</td><td>Food</td><td>SDUs</td><td>State</td></tr></table></div>'
+			assistStatusContent.innerHTML = '<div class="assist-modal-header" style="cursor: move;">Status<div>&nbsp;&nbsp;<small id="assist-modal-balance"></small>&nbsp;</div><div class="assist-modal-header-right"><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><table><tr><td>Fleet</td><td>Food</td><td>SDUs</td><td>State</td></tr></table></div>'
 			assistStatus.append(assistStatusContent);
 
             let assistStarbaseStatus = document.createElement('div');
