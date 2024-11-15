@@ -184,7 +184,7 @@
 
 		// update ui
 		let groups = transactionStats.groups;
-		let content = '<table><tr><td colspan="4" class=>Started: '+started.toLocaleDateString()+' '+started.toLocaleTimeString()+' / Hours passed: '+((Date.now()-started)/1000/60/60).toFixed(2)+'</td></tr>';
+		let content = '<table><tr><td colspan="4">Started: '+started.toLocaleDateString()+' '+started.toLocaleTimeString()+' / Hours passed: '+((Date.now()-started)/1000/60/60).toFixed(2)+'</td></tr>';
 		for (let group in groups) {
 			content += '<tr style="opacity:0.66"><td>'+group+'</td><td align="right">Count</td><td align="right">Total '+groups[group].TOTAL.unit+'</td><td align="right">Average '+groups[group].TOTAL.unit+'</td><td align="right">Last '+groups[group].TOTAL.unit+'</td></tr>';
 			let precision = +groups[group].TOTAL.precision;
@@ -5792,7 +5792,7 @@
 			assistStats.style.display = 'none';
 			let assistStatsContent = document.createElement('div');
 			assistStatsContent.classList.add('assist-status-content');
-			assistStatsContent.innerHTML = '<div class="assist-modal-header" style="cursor: move;">Statistics<div class="assist-modal-header-right"><span class="assist-modal-close">x</span></div></div><div id="assistStatsContent" class="assist-modal-body"></div>'
+			assistStatsContent.innerHTML = '<div class="assist-modal-header" style="cursor: move;">Statistics &nbsp;<a href="javascript:;" id="assist-stats-reset" style="color:inherit;font-size:70%;">Reset</a>&nbsp;&nbsp;<div class="assist-modal-header-right"><span class="assist-modal-close">x</span></div></div><div id="assistStatsContent" class="assist-modal-body"></div>'
 			assistStats.append(assistStatsContent);
 			//statsadd end
 
@@ -5968,6 +5968,8 @@
 			assistCheckFleetBtn.addEventListener('click', function(e) {getFleetCntAtCoords();});
 			let assistStatsClose = document.querySelector('#assistStats .assist-modal-close'); //statsadd
 			assistStatsClose.addEventListener('click', function(e) {assistToggle('#assistStats');}); //statsadd
+			let assistStatsReset = document.querySelector('#assistStats #assist-stats-reset'); //statsadd
+			assistStatsReset.addEventListener('click', function(e) { transactionStats={ "start": (Math.round(Date.now() / 1000)), "groups":{} }; document.querySelector('#assistStatsContent').innerHTML=''; }); //statsadd
 			let configImportExport = document.querySelector('#configImportExport');
 			configImportExport.addEventListener('click', function(e) {assistImportToggle();});
 			let configImport = document.querySelector('#importConfigBtn');
