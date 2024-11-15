@@ -3,7 +3,7 @@
 // @namespace    http://tampermonkey.net/
 // @version      0.6.15
 // @description  try to take over the world!
-// @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen
+// @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
 // @require      https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js
 // @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/anchor-browserified.js
@@ -164,6 +164,39 @@
 
 		cLog(2, 'SYSTEM: Global Settings loaded', globalSettings);
 	}
+
+	//statsadd start
+	//Transaction statistics by Risingson/EveEye, small improvements by Swift42
+	let transactionStats={ "start": (Math.round(Date.now() / 1000)), "groups":{} };
+	async function alterStats(group,name,val,unit,precision) {
+		//let stats = JSON.parse(await GM.getValue('statistics', '{}'));
+		let started = new Date(transactionStats.start*1000);
+		if (!transactionStats.groups[group]) transactionStats.groups[group]={"TOTAL":{"count":0,"value":0,"last":0,"unit":unit,"precision":precision}};
+		if (name && !transactionStats.groups[group][name]) transactionStats.groups[group][name]={"count":0,"value":0,"last":0};
+		if (name) {
+			transactionStats.groups[group][name].count += 1;
+			transactionStats.groups[group][name].value += val;
+			transactionStats.groups[group][name].last = val;
+		}
+		transactionStats.groups[group].TOTAL.count += 1;
+		transactionStats.groups[group].TOTAL.value += val;
+		transactionStats.groups[group].TOTAL.last = val;
+
+		// update ui
+		let groups = transactionStats.groups;
+		let content = '<table><tr><td colspan="4" class=>Started: '+started.toLocaleDateString()+' '+started.toLocaleTimeString()+' / Hours passed: '+((Date.now()-started)/1000/60/60).toFixed(2)+'</td></tr>';
+		for (let group in groups) {
+			content += '<tr style="opacity:0.66"><td>'+group+'</td><td align="right">Count</td><td align="right">Total '+groups[group].TOTAL.unit+'</td><td align="right">Average '+groups[group].TOTAL.unit+'</td><td align="right">Last '+groups[group].TOTAL.unit+'</td></tr>';
+			let precision = +groups[group].TOTAL.precision;
+			for (let item in groups[group]) {
+				let avg = groups[group][item].value/groups[group][item].count;
+				content += '<tr><td>'+item+'</td><td align="right">'+groups[group][item].count+'</td><td align="right">'+groups[group][item].value.toFixed(precision)+'</td><td align="right">'+avg.toFixed(precision)+'</td><td align="right">'+groups[group][item].last.toFixed(precision)+'</td></tr>';
+			}
+		}
+		content += '</table>';
+		document.querySelector('#assistStatsContent').innerHTML = content;
+	}
+	//statsadd end
 
 	async function doProxyStuff(target, origMethod, args, rpcs, proxyType)
 	{
@@ -1075,6 +1108,7 @@
 				if (confirmation && confirmation.name == 'TransactionExpiredBlockheightExceededError' && !txResult) {
 					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM ❌ ${confirmationTimeStr}`);
 					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> RESEND 🔂`);
+					await alterStats('Txs Resent',opName,(Date.now() - macroOpStart)/1000,'Seconds',1); //statsadd
 					continue; //retart loop to try again
 				}
 
@@ -1088,13 +1122,18 @@
 				}
 
 				if(tryCount > 1) cLog(3, `${FleetTimeStamp(fleetName)} Got txResult in ${tryCount} tries`, txResult);
-                cLog(4, `${FleetTimeStamp(fleetName)} txResult`, txResult);
+				cLog(4, `${FleetTimeStamp(fleetName)} txResult`, txResult);
 				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM ✅ ${confirmationTimeStr}`);
 				confirmed = true;
 
 				const fullMsTaken = Date.now() - macroOpStart;
 				const secondsTaken = Math.round(fullMsTaken / 1000);
 				cLog(1,`${FleetTimeStamp(fleetName)} <${opName}> Completed 🏁 ${secondsTaken}s`);
+
+				await alterStats('SOL Fees',undefined,txResult.meta.fee*0.000000001,'SOL',7); // undefined name => only totals tracked //statsadd
+				let statGroup = ((confirmation && confirmation.value && confirmation.value.err && confirmation.value.err.InstructionError) || (txResult && txResult.meta && txResult.meta.err && txResult.meta.err.InstructionError)) ? 'Txs IxErrors' : 'Txs Confirmed'; //statsadd
+				await alterStats(statGroup,opName,fullMsTaken/1000,'Seconds',1); //statsadd
+				
 				resolve(txResult);
 			}
 		});
@@ -2255,6 +2294,16 @@
 
             let txResult = {craftingId: formattedRandomBytes, result: await txSignAndSend(transactions, userCraft, 'START CRAFTING')};
 
+            // statsadd start
+            let postTokenBalances = txResult.result.meta.postTokenBalances;
+            let feeAccount = txResult.result.transaction.message.staticAccountKeys.map((key) => key.toBase58())[3];
+            for (var b in postTokenBalances) {
+            	if (postTokenBalances[b].mint=='ATLASXmbPQxBUYbxPsV97usA3fPQYEqzQBUHgiFCUsXx' && postTokenBalances[b].owner==feeAccount) {
+            		await alterStats('ATLAS Fees','Crafting',postTokenBalances[b].uiTokenAmount.uiAmount,'ATLAS',4);
+            	}
+            }
+	    // statsadd end
+
             resolve(txResult);
         });
     }
@@ -3400,6 +3449,15 @@
 			assistModalToggle();
 		} else {
 			targetElem.style.display = 'none';
+		}
+	}
+
+	async function assistToggle(el) { //statsadd
+		let targetElem = document.querySelector(el);
+		if (targetElem.style.display === 'none') {
+		    targetElem.style.display = 'block';
+		} else {
+		    targetElem.style.display = 'none';
 		}
 	}
 
@@ -5679,6 +5737,7 @@
 			let assistCSS = document.createElement('style');
 			const statusPanelOpacity = globalSettings.statusPanelOpacity / 100;
 			assistCSS.innerHTML = `.assist-modal {display: none; position: fixed; z-index: 2; padding-top: 100px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);} .assist-modal-content {position: relative; display: flex; flex-direction: column; background-color: rgb(41, 41, 48); margin: auto; padding: 0; border: 1px solid #888; width: 785px; min-width: 450px; max-width: 75%; height: auto; min-height: 50px; max-height: 85%; overflow-y: auto; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19); -webkit-animation-name: animatetop; -webkit-animation-duration: 0.4s; animation-name: animatetop; animation-duration: 0.4s;} #assist-modal-error {color: red; margin-left: 5px; margin-right: 5px; font-size: 16px;} .assist-modal-header-right {color: rgb(255, 190, 77); margin-left: auto !important; font-size: 20px;} .assist-btn {background-color: rgb(41, 41, 48); color: rgb(255, 190, 77); margin-left: 2px; margin-right: 2px;} .assist-btn:hover {background-color: rgba(255, 190, 77, 0.2);} .assist-modal-close:hover, .assist-modal-close:focus {font-weight: bold; text-decoration: none; cursor: pointer;} .assist-modal-btn {color: rgb(255, 190, 77); padding: 5px 5px; margin-right: 5px; text-decoration: none; background-color: rgb(41, 41, 48); border: none; cursor: pointer;} .assist-modal-save:hover { background-color: rgba(255, 190, 77, 0.2); } .assist-modal-header {display: flex; align-items: center; padding: 2px 16px; background-color: rgba(255, 190, 77, 0.2); border-bottom: 2px solid rgb(255, 190, 77); color: rgb(255, 190, 77);} .assist-modal-body {padding: 2px 16px; font-size: 12px;} .assist-modal-body > table {width: 100%;} .assist-modal-body th, .assist-modal-body td {padding-right: 5px, padding-left: 5px;} #assistStatus {background-color: rgba(0,0,0,${statusPanelOpacity}); opacity: ${statusPanelOpacity}; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1;} #assistStarbaseStatus {background-color: rgba(0,0,0,${statusPanelOpacity}); opacity: ${statusPanelOpacity}; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1;} #assistCheck {background-color: rgba(0,0,0,0.75); backdrop-filter: blur(10px); position: absolute; margin: auto; left: 0; right: 0; top: 100px; width: 650px; min-width: 450px; max-width: 75%; z-index: 1;} .dropdown { position: absolute; display: none; margin-top: 25px; margin-left: 152px; background-color: rgb(41, 41, 48); min-width: 120px; box-shadow: 0 8px 16px 0 rgba(0, 0, 0, 0.2); z-index: 2; } .dropdown.show { display: block; } .assist-btn-alt { color: rgb(255, 190, 77); padding: 12px 16px; text-decoration: none; display: block; background-color: rgb(41, 41, 48); border: none; cursor: pointer; } .assist-btn-alt:hover { background-color: rgba(255, 190, 77, 0.2); } #checkresults { padding: 5px; margin-top: 20px; border: 1px solid grey; border-radius: 8px;} .dropdown button {width: 100%; text-align: left;} #assistModal table {border-collapse: collapse;} .assist-scan-row, .assist-mine-row, .assist-transport-row {background-color: rgba(255, 190, 77, 0.1); border-left: 1px solid white; border-right: 1px solid white; border-bottom: 1px solid white} .show-top-border {background-color: rgba(255, 190, 77, 0.1); border-left: 1px solid white; border-right: 1px solid white; border-top: 1px solid white;}`;
+			assistCSS.innerHTML += ` #assistStats {background-color: rgba(0,0,0,${statusPanelOpacity}); opacity: ${statusPanelOpacity}; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1; } #assistStats table { border-collapse: collapse; border-spacing:1px; } #assistStats td, #assistStats th { padding:0 7px 0 0; }`; // statsadd
 
 			let assistModal = document.createElement('div');
 			assistModal.classList.add('assist-modal');
@@ -5727,7 +5786,17 @@
 			assistStatusContent.innerHTML = '<div class="assist-modal-header" style="cursor: move;">Status<div>&nbsp;&nbsp;<small id="assist-modal-balance"></small>&nbsp;</div><div class="assist-modal-header-right"><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><table><tr><td>Fleet</td><td>Food</td><td>SDUs</td><td>State</td></tr></table></div>'
 			assistStatus.append(assistStatusContent);
 
-            let assistStarbaseStatus = document.createElement('div');
+			//statsadd start
+			let assistStats = document.createElement('div');
+			assistStats.id = 'assistStats';
+			assistStats.style.display = 'none';
+			let assistStatsContent = document.createElement('div');
+			assistStatsContent.classList.add('assist-status-content');
+			assistStatsContent.innerHTML = '<div class="assist-modal-header" style="cursor: move;">Statistics<div class="assist-modal-header-right"><span class="assist-modal-close">x</span></div></div><div id="assistStatsContent" class="assist-modal-body"></div>'
+			assistStats.append(assistStatsContent);
+			//statsadd end
+
+			let assistStarbaseStatus = document.createElement('div');
 			assistStarbaseStatus.id = 'assistStarbaseStatus';
 			assistStarbaseStatus.style.display = 'none';
 			let assistStarbaseStatusContent = document.createElement('div');
@@ -5809,7 +5878,18 @@
 			assistStatusSpan.style.fontSize = '14px';
 			assistStatusButton.appendChild(assistStatusSpan);
 
-            let assistStarbaseStatusButton = document.createElement('button');
+			//statsadd
+			let assistStatsButton = document.createElement('button');
+			assistStatsButton.id = 'assistStatsBtn';
+			assistStatsButton.classList.add('assist-btn','assist-btn-alt');
+			assistStatsButton.addEventListener('click', function(e) {assistToggle('#assistStats');});
+			let assistStatsSpan = document.createElement('span');
+			assistStatsSpan.innerText = 'Statistics';
+			assistStatsSpan.style.fontSize = '14px';
+			assistStatsButton.appendChild(assistStatsSpan);
+			//statsadd
+
+			let assistStarbaseStatusButton = document.createElement('button');
 			assistStarbaseStatusButton.id = 'assistStarbaseStatusBtn';
 			assistStarbaseStatusButton.classList.add('assist-btn','assist-btn-alt');
 			assistStarbaseStatusButton.addEventListener('click', function(e) {assistStarbaseStatusToggle();});
@@ -5824,8 +5904,9 @@
 			autoContainer.appendChild(dropdown);
 
 			dropdown.appendChild(assistStatusButton);
-            dropdown.appendChild(assistStarbaseStatusButton);
+			dropdown.appendChild(assistStarbaseStatusButton);
 			dropdown.appendChild(assistCheckButton);
+			dropdown.appendChild(assistStatsButton); //statsadd
 			dropdown.appendChild(assistConfigButton);
 			dropdown.appendChild(assistSettingsButton);
 
@@ -5863,8 +5944,9 @@
 			autoContainer.append(assistModal);
 			autoContainer.append(settingsModal);
 			autoContainer.append(assistStatus);
-            autoContainer.append(assistStarbaseStatus);
+			autoContainer.append(assistStarbaseStatus);
 			autoContainer.append(assistCheck);
+			autoContainer.append(assistStats); //statsadd
 			autoContainer.append(importModal);
 			autoContainer.append(profileModal);
 			//autoContainer.append(addAcctModal);
@@ -5878,12 +5960,14 @@
 			settingsModalClose.addEventListener('click', function(e) {settingsModalToggle();});
 			let assistStatusClose = document.querySelector('#assistStatus .assist-modal-close');
 			assistStatusClose.addEventListener('click', function(e) {assistStatusToggle();});
-            let assistStarbaseStatusClose = document.querySelector('#assistStarbaseStatus .assist-modal-close');
+			let assistStarbaseStatusClose = document.querySelector('#assistStarbaseStatus .assist-modal-close');
 			assistStarbaseStatusClose.addEventListener('click', function(e) {assistStarbaseStatusToggle();});
 			let assistCheckClose = document.querySelector('#assistCheck .assist-modal-close');
 			assistCheckClose.addEventListener('click', function(e) {assistCheckToggle();});
 			let assistCheckFleetBtn = document.querySelector('#checkFleetBtn');
 			assistCheckFleetBtn.addEventListener('click', function(e) {getFleetCntAtCoords();});
+			let assistStatsClose = document.querySelector('#assistStats .assist-modal-close'); //statsadd
+			assistStatsClose.addEventListener('click', function(e) {assistToggle('#assistStats');}); //statsadd
 			let configImportExport = document.querySelector('#configImportExport');
 			configImportExport.addEventListener('click', function(e) {assistImportToggle();});
 			let configImport = document.querySelector('#importConfigBtn');
@@ -5905,7 +5989,8 @@
 
 			makeDraggable(assistCheck);
 			makeDraggable(assistStatus);
-            makeDraggable(assistStarbaseStatus);
+			makeDraggable(assistStarbaseStatus);
+			makeDraggable(assistStats); //statsadd
 		}
 	}
 	observer.observe(document, {childList: true, subtree: true});
