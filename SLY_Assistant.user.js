@@ -104,7 +104,7 @@
 			priorityFee: parseIntDefault(globalSettings.priorityFee, 1),
 
 			//Percentage of the priority fees above should be used for all actions except scanning
-			lowPriorityFeeMultiplier: parseIntDefault(globalSettings.lowPriorityFeeMultiplier, 10),
+			//lowPriorityFeeMultiplier: parseIntDefault(globalSettings.lowPriorityFeeMultiplier, 10),
 
             //Save profile selection to speed up future initialization
             saveProfile: parseBoolDefault(globalSettings.saveProfile, true),
@@ -1021,7 +1021,7 @@
 		return new Promise(async resolve => {
 			const fleetName = fleet ? fleet.label : 'unknown';
 			let macroOpStart = Date.now();
-			if(!priorityFeeMultiplier) priorityFeeMultiplier = globalSettings.lowPriorityFeeMultiplier;
+			if(!priorityFeeMultiplier) priorityFeeMultiplier = 10; // globalSettings.lowPriorityFeeMultiplier;
 			priorityFeeMultiplier = priorityFeeMultiplier / 100;
 
 			let confirmed = false;
@@ -1213,7 +1213,7 @@
 
             updateFleetState(fleet, `Scanning [${TimeToStr(new Date(Date.now()))}]`);
 
-            let txResult = await txSignAndSend(tx, fleet, 'SCAN', 30);
+            let txResult = await txSignAndSend(tx, fleet, 'SCAN', 100);
 
             resolve(txResult);
         });
@@ -1241,7 +1241,7 @@
 			cLog(1,`${FleetTimeStamp(fleet.label)} Subwarping to ${coordStr}`);
 			updateFleetState(fleet, 'Subwarping');
 
-			let txResult = await txSignAndSend(tx, fleet, 'SUBWARP');
+			let txResult = await txSignAndSend(tx, fleet, 'SUBWARP', 5);
 
 			const travelEndTime = TimeToStr(new Date(Date.now()+(moveTime * 1000)));
 			const newFleetState = `Subwarp ${coordStr} ${travelEndTime}`;
@@ -1347,7 +1347,7 @@
 			cLog(1,`${FleetTimeStamp(fleet.label)} Exiting Subwarp`);
 			updateFleetState(fleet, 'Exiting Subwarp');
 
-			let txResult = await txSignAndSend(tx, fleet, 'EXIT SUBWARP');
+			let txResult = await txSignAndSend(tx, fleet, 'EXIT SUBWARP', 60);
 
 			cLog(1,`${FleetTimeStamp(fleet.label)} Idle 💤`);
 			updateFleetState(fleet, 'Idle');
@@ -1385,7 +1385,7 @@
             cLog(1,`${FleetTimeStamp(fleet.label)} Warping to ${coordStr}`);
             updateFleetState(fleet, 'Warping');
 
-            let txResult = await txSignAndSend(tx, fleet, 'WARP');
+            let txResult = await txSignAndSend(tx, fleet, 'WARP', 75);
 
             const travelEndTime = TimeToStr(new Date(Date.now()+(moveTime * 1000 + 10000)));
             const newFleetState = `Warp ${coordStr} ${travelEndTime}`;
@@ -1457,7 +1457,7 @@
             cLog(1,`${FleetTimeStamp(fleet.label)} Exiting Warp`);
             updateFleetState(fleet, 'Exiting Warp');
 
-            let txResult = await txSignAndSend(tx, fleet, 'EXIT WARP');
+            let txResult = await txSignAndSend(tx, fleet, 'EXIT WARP', 5);
 
             cLog(1,`${FleetTimeStamp(fleet.label)} Idle 💤`);
             updateFleetState(fleet, 'Idle');
@@ -1539,7 +1539,7 @@
             cLog(1,`${FleetTimeStamp(fleet.label)} Docking`);
             updateFleetState(fleet, 'Docking');
 
-            let txResult = await txSignAndSend(tx, fleet, 'DOCK');
+            let txResult = await txSignAndSend(tx, fleet, 'DOCK', 5);
 
             cLog(1,`${FleetTimeStamp(fleet.label)} Docked`);
             updateFleetState(fleet, 'Docked');
@@ -1580,7 +1580,7 @@
 					cLog(1,`${FleetTimeStamp(fleet.label)} Undocking`);
 					updateFleetState(fleet, 'Undocking');
 
-					let txResult = await txSignAndSend(tx, fleet, 'UNDOCK');
+					let txResult = await txSignAndSend(tx, fleet, 'UNDOCK', 5);
 
 					//await wait(2000);
 					updateFleetState(fleet, 'Idle');
@@ -1731,7 +1731,7 @@
 							isSigner: false,
 							isWritable: false
 					}]).instruction()}
-					let txResult = await txSignAndSend(tx, fleet, 'UNLOAD', 100);
+					let txResult = await txSignAndSend(tx, fleet, 'UNLOAD', 85);
 					resolve(txResult);
 			});
 	}
@@ -1831,7 +1831,7 @@
 				}]).instruction()}
 
 				//Send tx
-				txResult = {amount: amount, result: await txSignAndSend(tx, fleet, 'LOAD', 100)};
+				txResult = {amount: amount, result: await txSignAndSend(tx, fleet, 'LOAD', 90)};
 			}
 			else txResult = {name: "NotEnoughResource"};
 
@@ -1873,7 +1873,7 @@
             cLog(1,`${FleetTimeStamp(fleet.label)} Mining Start ...`);
             updateFleetState(fleet, 'Mine Starting')
 
-            let txResult = await txSignAndSend(tx, fleet, 'START MINING');
+            let txResult = await txSignAndSend(tx, fleet, 'START MINING', 10);
             resolve(txResult);
         });
     }
@@ -2035,7 +2035,7 @@
                 },
             ]).instruction()}
             updateFleetState(fleet, `Mining Stop`);
-            let tx1Result = await txSignAndSend(tx1, fleet, 'STOP MINING (fleetStateHandler)');
+            let tx1Result = await txSignAndSend(tx1, fleet, 'STOP MINING (fleetStateHandler)', 75);
 
             let fuelCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.fuel);
             let tx2 = { instruction: await sageProgram.methods.stopMiningAsteroid({keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx)}).accountsStrict({
@@ -2071,7 +2071,7 @@
             cLog(1,`${FleetTimeStamp(fleet.label)} Mining Stop`);
             updateFleetState(fleet, 'Mining Stop')
 
-            let txResult = await txSignAndSend(tx2, fleet, 'STOP MINING');
+            let txResult = await txSignAndSend(tx2, fleet, 'STOP MINING', 75);
 
             //await wait(2000);
             cLog(1,`${FleetTimeStamp(fleet.label)} Idle 💤`);
@@ -2292,7 +2292,7 @@
                 }).remainingAccounts(startCraftProcRemainingAccts).instruction()}
             transactions.push(tx2);
 
-            let txResult = {craftingId: formattedRandomBytes, result: await txSignAndSend(transactions, userCraft, 'START CRAFTING')};
+            let txResult = {craftingId: formattedRandomBytes, result: await txSignAndSend(transactions, userCraft, 'START CRAFTING', 100)};
 
             // statsadd start
             let postTokenBalances = txResult.result.meta.postTokenBalances;
@@ -2481,7 +2481,7 @@
             transactions.push(tx2);
 
             //let txResult = await txSignAndSend(tx2, userCraft, 'COMPLETING CRAFT TX2');
-            let txResult = await txSignAndSend(transactions, userCraft, 'COMPLETING CRAFT');
+            let txResult = await txSignAndSend(transactions, userCraft, 'COMPLETING CRAFT', 100);
 
             // Allow RPC to catch up (to be sure the crew is available before starting the next job)
             await wait(2000);
@@ -2672,7 +2672,7 @@
             }).instruction()};
             transactions.push(tx2);
 
-            let txResult = await txSignAndSend(transactions, userCraft, 'COMPLETING UPGRADE', false, userRedemptionAcct);
+            let txResult = await txSignAndSend(transactions, userCraft, 'COMPLETING UPGRADE', 80, userRedemptionAcct);
 
             resolve(txResult);
         });
@@ -3516,7 +3516,7 @@
 
 		globalSettings = {
 			priorityFee: parseIntDefault(document.querySelector('#priorityFee').value, 1),
-			lowPriorityFeeMultiplier: parseIntDefault(document.querySelector('#lowPriorityFeeMultiplier').value, 10),
+			//lowPriorityFeeMultiplier: parseIntDefault(document.querySelector('#lowPriorityFeeMultiplier').value, 10),
             saveProfile: saveProfile,
             savedProfile: saveProfile ? (userProfileAcct && userProfileKeyIdx) ? [userProfileAcct.toString(), userProfileKeyIdx, pointsProfileKeyIdx] : [] : [],
 			confirmationCheckingDelay: parseIntDefault(document.querySelector('#confirmationCheckingDelay').value, 200),
@@ -3550,7 +3550,7 @@
 
 	async function addSettingsInput() {
 		document.querySelector('#priorityFee').value = globalSettings.priorityFee;
-		document.querySelector('#lowPriorityFeeMultiplier').value = globalSettings.lowPriorityFeeMultiplier;
+		//document.querySelector('#lowPriorityFeeMultiplier').value = globalSettings.lowPriorityFeeMultiplier;
         document.querySelector('#saveProfile').checked = globalSettings.saveProfile;
 		document.querySelector('#confirmationCheckingDelay').value = globalSettings.confirmationCheckingDelay;
 		document.querySelector('#debugLogLevel').value = globalSettings.debugLogLevel;
@@ -5755,7 +5755,7 @@
 			settingsModal.style.display = 'none';
 			let settingsModalContent = document.createElement('div');
 			settingsModalContent.classList.add('assist-modal-content');
-			settingsModalContent.innerHTML = '<div class="assist-modal-header"> <img src="' + iconStr + '" /> <span style="padding-left: 15px;">SLY Assistant v' + GM_info.script.version + '</span> <div class="assist-modal-header-right"> <button class=" assist-modal-btn assist-modal-save">Save</button> <span class="assist-modal-close">x</span> </div></div><div class="assist-modal-body"> <span id="settings-modal-error"></span> <div id="settings-modal-header">Global Settings</div> <div>Priority Fee <input id="priorityFee" type="number" min="0" max="100000000" placeholder="1" ></input> <span>Added to each transaction. Set to 0 (zero) to disable. 1 Lamport = 0.000000001 SOL</span> </div> <div>Low Priority Fee % <input id="lowPriorityFeeMultiplier" type="range" min="0" max="100" value="10" step="10"></input> <span>Percentage above priority fees that should be used for smaller transactions</span> </div> <div>Save profile selection? <input id="saveProfile" type="checkbox"></input> <span>Should the profile selection be saved (uncheck to select a different profile each time)?</span> </div> <div>Tx Poll Delay <input id="confirmationCheckingDelay" type="number" min="200" max="10000" placeholder="200"></input> <span>How many milliseconds to wait before re-reading the chain for confirmation</span> </div> <div>Console Logging <input id="debugLogLevel" type="number" min="0" max="9" placeholder="3"></input> <span>How much console logging you want to see (higher number = more, 0 = none)</span> </div> <div>Crafting Jobs <input id="craftingJobs" type="number" min="0" max="100" placeholder="4"></input> <span>How many crafting jobs should be enabled?</span> </div> <div>Subwarp for short distances? <input id="subwarpShortDist" type="checkbox"></input> <span>Should fleets subwarp when travel distance is 1 diagonal square or less?</span> </div> <div>Use Ammo Banks for Transport? <input id="transportUseAmmoBank" type="checkbox"></input> <span>Should transports also use their ammo banks to help move ammo?</span> </div> <div>Stop Transports On Error <input id="transportStopOnError" type="checkbox"></input> <span>Should transport fleet stop completely if there is an error (example: not enough resource/fuel/etc.)?</span> </div> <div>Moving Scan Pattern <select id="scanBlockPattern"> <option value="square">square</option> <option value="ring">ring</option> <option value="spiral">spiral</option> <option value="up">up</option> <option value="down">down</option> <option value="left">left</option> <option value="right">right</option> <option value="sly">sly</option> </select> <span>Only applies to fleets set to Move While Scanning</span> </div> <div>Scan Block Length <input id="scanBlockLength" type="number" min="2" max="50" placeholder="5"></input> <span>How far fleets should go for the up, down, left and right scanning patterns</span> </div> <div>Scan Block Resets After Resupply? <input id="scanBlockResetAfterResupply" type="checkbox"></input> <span>Start from the beginning of the pattern after resupplying at starbase?</span> </div> <div>Scan Resupply On Low Fuel? <input id="scanResupplyOnLowFuel" type="checkbox"></input> <span>Do scanning fleets set to Move While Scanning return to base to resupply when fuel is too low to move?</span> </div> <div>Scan Sector Regeneration Delay <input id="scanSectorRegenTime" type="number" min="0" placeholder="90"></input> <span>Number of seconds to wait after finding SDU</span> </div> <div>Scan Pause Time <input id="scanPauseTime" type="number" min="240" max="6000" placeholder="600"></input> <span>Number of seconds to wait when sectors probabilities are too low</span> </div> <div>Scan Strike Count <input id="scanStrikeCount" type="number" min="1" max="10" placeholder="3"></input> <span>Number of low % scans before moving on or pausing</span> </div> <div>Status Panel Opacity <input id="statusPanelOpacity" type="range" min="1" max="100" value="75"></input> <span>(requires page refresh)</span> </div> <div>---</div> <div>Advanced Settings</div> <div>Auto Start Script <input id="autoStartScript" type="checkbox"></input> <span>Should Lab Assistant automatically start after initialization is complete?</span> </div> <div>Reload On Stuck Fleets <input id="reloadPageOnFailedFleets" type="number" min="0" max="999" placeholder="0"></input> <span>Automatically refresh the page if this many fleets get stuck (0 = never)</span> </div><div>Exclude fleets:<br><textarea id="excludeFleets" cols="40" rows="6"></textarea><br><span>(one fleet name per line, case sensivity, reload required)</span> </div></div>';
+			settingsModalContent.innerHTML = '<div class="assist-modal-header"> <img src="' + iconStr + '" /> <span style="padding-left: 15px;">SLY Assistant v' + GM_info.script.version + '</span> <div class="assist-modal-header-right"> <button class=" assist-modal-btn assist-modal-save">Save</button> <span class="assist-modal-close">x</span> </div></div><div class="assist-modal-body"> <span id="settings-modal-error"></span> <div id="settings-modal-header">Global Settings</div> <div>Priority Fee <input id="priorityFee" type="number" min="0" max="100000000" placeholder="1" ></input> <span>Added to each transaction. Set to 0 (zero) to disable. 1 Lamport = 0.000000001 SOL</span> </div> <div>Save profile selection? <input id="saveProfile" type="checkbox"></input> <span>Should the profile selection be saved (uncheck to select a different profile each time)?</span> </div> <div>Tx Poll Delay <input id="confirmationCheckingDelay" type="number" min="200" max="10000" placeholder="200"></input> <span>How many milliseconds to wait before re-reading the chain for confirmation</span> </div> <div>Console Logging <input id="debugLogLevel" type="number" min="0" max="9" placeholder="3"></input> <span>How much console logging you want to see (higher number = more, 0 = none)</span> </div> <div>Crafting Jobs <input id="craftingJobs" type="number" min="0" max="100" placeholder="4"></input> <span>How many crafting jobs should be enabled?</span> </div> <div>Subwarp for short distances? <input id="subwarpShortDist" type="checkbox"></input> <span>Should fleets subwarp when travel distance is 1 diagonal square or less?</span> </div> <div>Use Ammo Banks for Transport? <input id="transportUseAmmoBank" type="checkbox"></input> <span>Should transports also use their ammo banks to help move ammo?</span> </div> <div>Stop Transports On Error <input id="transportStopOnError" type="checkbox"></input> <span>Should transport fleet stop completely if there is an error (example: not enough resource/fuel/etc.)?</span> </div> <div>Moving Scan Pattern <select id="scanBlockPattern"> <option value="square">square</option> <option value="ring">ring</option> <option value="spiral">spiral</option> <option value="up">up</option> <option value="down">down</option> <option value="left">left</option> <option value="right">right</option> <option value="sly">sly</option> </select> <span>Only applies to fleets set to Move While Scanning</span> </div> <div>Scan Block Length <input id="scanBlockLength" type="number" min="2" max="50" placeholder="5"></input> <span>How far fleets should go for the up, down, left and right scanning patterns</span> </div> <div>Scan Block Resets After Resupply? <input id="scanBlockResetAfterResupply" type="checkbox"></input> <span>Start from the beginning of the pattern after resupplying at starbase?</span> </div> <div>Scan Resupply On Low Fuel? <input id="scanResupplyOnLowFuel" type="checkbox"></input> <span>Do scanning fleets set to Move While Scanning return to base to resupply when fuel is too low to move?</span> </div> <div>Scan Sector Regeneration Delay <input id="scanSectorRegenTime" type="number" min="0" placeholder="90"></input> <span>Number of seconds to wait after finding SDU</span> </div> <div>Scan Pause Time <input id="scanPauseTime" type="number" min="240" max="6000" placeholder="600"></input> <span>Number of seconds to wait when sectors probabilities are too low</span> </div> <div>Scan Strike Count <input id="scanStrikeCount" type="number" min="1" max="10" placeholder="3"></input> <span>Number of low % scans before moving on or pausing</span> </div> <div>Status Panel Opacity <input id="statusPanelOpacity" type="range" min="1" max="100" value="75"></input> <span>(requires page refresh)</span> </div> <div>---</div> <div>Advanced Settings</div> <div>Auto Start Script <input id="autoStartScript" type="checkbox"></input> <span>Should Lab Assistant automatically start after initialization is complete?</span> </div> <div>Reload On Stuck Fleets <input id="reloadPageOnFailedFleets" type="number" min="0" max="999" placeholder="0"></input> <span>Automatically refresh the page if this many fleets get stuck (0 = never)</span> </div><div>Exclude fleets:<br><textarea id="excludeFleets" cols="40" rows="6"></textarea><br><span>(one fleet name per line, case sensivity, reload required)</span> </div></div>';
 			settingsModal.append(settingsModalContent);
 
 			let importModal = document.createElement('div');
