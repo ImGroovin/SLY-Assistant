@@ -1385,7 +1385,7 @@
             cLog(1,`${FleetTimeStamp(fleet.label)} Warping to ${coordStr}`);
             updateFleetState(fleet, 'Warping');
 
-            let txResult = await txSignAndSend(tx, fleet, 'WARP', 75);
+            let txResult = await txSignAndSend(tx, fleet, 'WARP', 80);
 
             const travelEndTime = TimeToStr(new Date(Date.now()+(moveTime * 1000 + 10000)));
             const newFleetState = `Warp ${coordStr} ${travelEndTime}`;
