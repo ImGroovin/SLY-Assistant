@@ -3153,9 +3153,13 @@
 		let targetRow = document.querySelectorAll('#assistStatus .assist-fleet-row[pk="' + rowPK + '"]');
 
 		if (targetRow.length > 0) {
-			targetRow[0].children[1].firstChild.innerHTML = fleet.foodCnt || 0;
-			targetRow[0].children[2].firstChild.innerHTML = fleet.sduCnt || 0;
-			targetRow[0].children[3].firstChild.innerHTML = fleet.state;
+			if(fleet.publicKey) {
+				targetRow[0].children[1].firstChild.innerHTML = fleet.foodCnt || 0;
+				targetRow[0].children[2].firstChild.innerHTML = fleet.sduCnt || 0;
+				targetRow[0].children[3].firstChild.innerHTML = fleet.state;
+			} else {
+				targetRow[0].children[1].firstChild.innerHTML = fleet.state;
+			}
 		} else {
 			let fleetRow = document.createElement('tr');
 			fleetRow.classList.add('assist-fleet-row');
@@ -3164,22 +3168,29 @@
 			fleetLabel.innerHTML = fleet.label;
 			let fleetLabelTd = document.createElement('td');
 			fleetLabelTd.appendChild(fleetLabel);
-			let fleetTool = document.createElement('span');
-			fleetTool.innerHTML = fleet.foodCnt || 0;
-			let fleetToolTd = document.createElement('td');
-			fleetToolTd.appendChild(fleetTool);
-			let fleetSdu = document.createElement('span');
-			fleetSdu.innerHTML = fleet.sduCnt || 0;
-			let fleetSduTd = document.createElement('td');
-			fleetSduTd.appendChild(fleetSdu);
 			let fleetStatus = document.createElement('span');
 			fleetStatus.innerHTML = fleet.state;
 			let fleetStatusTd = document.createElement('td');
-			fleetStatusTd.appendChild(fleetStatus);
-			fleetRow.appendChild(fleetLabelTd);
-			fleetRow.appendChild(fleetToolTd);
-			fleetRow.appendChild(fleetSduTd);
-			fleetRow.appendChild(fleetStatusTd);
+			if(fleet.publicKey) {
+				let fleetTool = document.createElement('span');
+				fleetTool.innerHTML = fleet.foodCnt || 0;
+				let fleetToolTd = document.createElement('td');
+				fleetToolTd.appendChild(fleetTool);
+				let fleetSdu = document.createElement('span');
+				fleetSdu.innerHTML = fleet.sduCnt || 0;
+				let fleetSduTd = document.createElement('td');
+				fleetSduTd.appendChild(fleetSdu);
+				fleetStatusTd.appendChild(fleetStatus);
+				fleetRow.appendChild(fleetLabelTd);
+				fleetRow.appendChild(fleetToolTd);
+				fleetRow.appendChild(fleetSduTd);
+				fleetRow.appendChild(fleetStatusTd);
+			} else {
+				fleetStatusTd.setAttribute('colspan', 3);
+				fleetStatusTd.appendChild(fleetStatus);
+				fleetRow.appendChild(fleetLabelTd);
+				fleetRow.appendChild(fleetStatusTd);
+			}
 			let targetElem = document.querySelector('#assistStatus .assist-modal-body table');
 			targetElem.appendChild(fleetRow);
 		}
@@ -5233,9 +5244,11 @@
                         if (craftingProcess.account.endTime.toNumber() < craftTime.starbaseTime && [2,3].includes(craftingProcess.account.status)) {
                             completedCraftingProcesses.push({craftingProcess: craftingProcess.publicKey, craftingInstance: craftingInstance.publicKey, recipe: craftingProcess.account.recipe, status: craftingProcess.account.status, craftingId: craftingProcess.account.craftingId.toNumber()});
                         } else if (userCraft.craftingId && craftingProcess.account.craftingId.toNumber() == userCraft.craftingId) {
+                            let craftRecipe = craftRecipes.find(item => item.publicKey.toString() === craftingProcess.account.recipe.toString());
                             let calcEndTime = Math.max(craftingProcess.account.endTime.toNumber() - craftTime.starbaseTime, 0);
                             let adjustedEndTime = craftTime.resRemaining > 0 ? calcEndTime : (calcEndTime) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level];
-                            let craftTimeStr = 'Crafting [' + TimeToStr(new Date(Date.now() + adjustedEndTime * 1000)) + ']';
+                            //let craftTimeStr = 'Crafting [' + TimeToStr(new Date(Date.now() + adjustedEndTime * 1000)) + ']';
+                            let craftTimeStr = "&#9874; " + craftRecipe.name + (userCraft.item!=craftRecipe.name?' ('+userCraft.item+')':'') + ' [' + TimeToStr(new Date(Date.now() + adjustedEndTime * 1000)) + ']';
                             updateFleetState(userCraft, craftTimeStr);
                             await updateCraft(userCraft);
                         }
@@ -5265,7 +5278,8 @@
                 let craftRecipe = craftRecipes.find(item => item.publicKey.toString() === craftingProcess.recipe.toString());
                 if (userCraft.craftingId && craftingProcess.craftingId == userCraft.craftingId) {
                     cLog(1,`${FleetTimeStamp(userCraft.label)} Completing craft at [${targetX}, ${targetY}] for  ${craftRecipe.output.mint.toString()}`);
-                    updateFleetState(userCraft, 'Craft Completing');
+                    //updateFleetState(userCraft, 'Craft Completing');
+                    updateFleetState(userCraft, 'Completing: ' + craftRecipe.name + (userCraft.item!=craftRecipe.name?' ('+userCraft.item+')':''));
                     await execCompleteCrafting(starbase, starbasePlayer, starbasePlayerCargoHoldsAndTokens, craftingProcess, userCraft);
                     if (!userCraft.state.includes('ERROR')) {
                         if (userCraft.craftingId && craftingProcess.craftingId == userCraft.craftingId) {
@@ -5312,22 +5326,36 @@
             if (availableCrew >= userCraft.crew && targetRecipe && targetRecipe.amountCraftable > 0 && userCraft.state === 'Idle') {
                 let craftAmount = Math.min(targetRecipe.craftAmount, targetRecipe.amountCraftable);
                 cLog(1,`${FleetTimeStamp(userCraft.label)} Starting craft at [${targetX}, ${targetY}] for ${craftAmount} ${targetRecipe.craftRecipe.name}`);
-                updateFleetState(userCraft, 'Craft Starting');
+                //updateFleetState(userCraft, 'Craft Starting');
+                let activityType = craftRecipes.some(item => item.name === targetRecipe.craftRecipe.name) ? 'Crafting' : 'Upgrading';
+                let activityInfo = activityType == 'Crafting' ? "Starting: " + targetRecipe.craftRecipe.name + (userCraft.item!=targetRecipe.craftRecipe.name?' ('+userCraft.item+')':'') : 'Upgrade Starting';
+                updateFleetState(userCraft, activityInfo);
                 let result = await execStartCrafting(starbase, starbasePlayer, starbasePlayerCargoHoldsAndTokens, targetRecipe.craftRecipe, craftAmount, userCraft);
                 if (!userCraft.state.includes('ERROR')) {
-                    let activityType = craftRecipes.some(item => item.name === targetRecipe.craftRecipe.name) ? 'Crafting' : 'Upgrading';
+                    activityInfo = activityType == 'Crafting' ? "&#9874; " + targetRecipe.craftRecipe.name + (userCraft.item!=targetRecipe.craftRecipe.name?' ('+userCraft.item+')':'') : 'Upgrading';
                     let craftDuration = (targetRecipe.craftRecipe.duration * craftAmount) / userCraft.crew;
                     let calcEndTime = TimeToStr(new Date(Date.now() + craftDuration * 1000));
                     let upgradeTimeStr = upgradeTime.resRemaining > 0 ? calcEndTime : 'Paused';
                     let craftTimeStr = craftTime.resRemaining > 0 ? calcEndTime : TimeToStr(new Date(Date.now() + ((craftDuration * 1000) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level])));
                     let activityTimeStr = activityType == 'Crafting' ? craftTimeStr : upgradeTimeStr;
-                    updateFleetState(userCraft, activityType + ' [' + activityTimeStr + ']');
+                    //updateFleetState(userCraft, activityType + ' [' + activityTimeStr + ']');
+                    updateFleetState(userCraft, activityInfo + ' [' + activityTimeStr + ']');
                     userCraft.craftingId = result.craftingId;
                     await updateCraft(userCraft);
                     //await GM.setValue(userCraft.label, JSON.stringify(userCraft));
                 }
             } else if (userCraft.state === 'Idle') {
-                updateFleetState(userCraft, 'Waiting for crew/material');
+                //updateFleetState(userCraft, 'Waiting for crew/material');
+                let materialStr = craftRecipes.some(item => item.name === targetRecipe.craftRecipe.name) ? ': ' + targetRecipe.craftRecipe.name + (userCraft.item!=targetRecipe.craftRecipe.name?' ('+userCraft.item+')':'') : '';
+                if(availableCrew < userCraft.crew && targetRecipe.amountCraftable <= 0) {
+                    updateFleetState(userCraft, 'Waiting for crew/material' + materialStr);
+                }
+                else if(availableCrew < userCraft.crew) {
+                    updateFleetState(userCraft, 'Waiting for crew' + materialStr);
+                }
+                else {
+                    updateFleetState(userCraft, 'Waiting for material' + materialStr);
+                }		    
                 await updateCraft(userCraft);
             }
         }
