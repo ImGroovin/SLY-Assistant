@@ -1244,7 +1244,7 @@
 			cLog(1,`${FleetTimeStamp(fleet.label)} Subwarping to ${coordStr}`);
 			updateFleetState(fleet, 'Subwarping');
 
-			let txResult = await txSignAndSend(tx, fleet, 'SUBWARP', 5);
+			let txResult = await txSignAndSend(tx, fleet, 'SUBWARP', 10);
 
 			const travelEndTime = TimeToStr(new Date(Date.now()+(moveTime * 1000)));
 			const newFleetState = `Subwarp ${coordStr} ${travelEndTime}`;
@@ -1460,7 +1460,7 @@
             cLog(1,`${FleetTimeStamp(fleet.label)} Exiting Warp`);
             updateFleetState(fleet, 'Exiting Warp');
 
-            let txResult = await txSignAndSend(tx, fleet, 'EXIT WARP', 5);
+            let txResult = await txSignAndSend(tx, fleet, 'EXIT WARP', 10);
 
             cLog(1,`${FleetTimeStamp(fleet.label)} Idle 💤`);
             updateFleetState(fleet, 'Idle');
@@ -1542,7 +1542,7 @@
             cLog(1,`${FleetTimeStamp(fleet.label)} Docking`);
             updateFleetState(fleet, 'Docking');
 
-            let txResult = await txSignAndSend(tx, fleet, 'DOCK', 5);
+            let txResult = await txSignAndSend(tx, fleet, 'DOCK', 10);
 
             cLog(1,`${FleetTimeStamp(fleet.label)} Docked`);
             updateFleetState(fleet, 'Docked');
@@ -1583,7 +1583,7 @@
 					cLog(1,`${FleetTimeStamp(fleet.label)} Undocking`);
 					updateFleetState(fleet, 'Undocking');
 
-					let txResult = await txSignAndSend(tx, fleet, 'UNDOCK', 5);
+					let txResult = await txSignAndSend(tx, fleet, 'UNDOCK', 10);
 
 					//await wait(2000);
 					updateFleetState(fleet, 'Idle');
@@ -2038,7 +2038,7 @@
                 },
             ]).instruction()}
             updateFleetState(fleet, `Mining Stop`);
-            let tx1Result = await txSignAndSend(tx1, fleet, 'STOP MINING (fleetStateHandler)', 75);
+            let tx1Result = await txSignAndSend(tx1, fleet, 'STOP MINING (fleetStateHandler)', 80);
 
             let fuelCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.fuel);
             let tx2 = { instruction: await sageProgram.methods.stopMiningAsteroid({keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx)}).accountsStrict({
@@ -2074,7 +2074,7 @@
             cLog(1,`${FleetTimeStamp(fleet.label)} Mining Stop`);
             updateFleetState(fleet, 'Mining Stop')
 
-            let txResult = await txSignAndSend(tx2, fleet, 'STOP MINING', 75);
+            let txResult = await txSignAndSend(tx2, fleet, 'STOP MINING', 80);
 
             //await wait(2000);
             cLog(1,`${FleetTimeStamp(fleet.label)} Idle 💤`);
