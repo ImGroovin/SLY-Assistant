@@ -5346,7 +5346,12 @@
                 }
             } else if (userCraft.state === 'Idle') {
                 //updateFleetState(userCraft, 'Waiting for crew/material');
-                let materialStr = craftRecipes.some(item => item.name === targetRecipe.craftRecipe.name) ? ': ' + targetRecipe.craftRecipe.name + (userCraft.item!=targetRecipe.craftRecipe.name?' ('+userCraft.item+')':'') : '';
+                let materialStr = '';
+                if(targetRecipe === null) {
+                    materialStr = ': ' + userCraft.item;
+                } else {
+                    materialStr = ': ' + targetRecipe.craftRecipe.name + (userCraft.item != targetRecipe.craftRecipe.name ? ' (' + userCraft.item + ')' : '' );
+                }
                 if(availableCrew < userCraft.crew && targetRecipe.amountCraftable <= 0) {
                     updateFleetState(userCraft, 'Waiting for crew/material' + materialStr);
                 }
