@@ -1171,11 +1171,20 @@
 
 				let tryCount = 1;
 				if (!confirmation.name) {
-					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> Missing confirmation name, reading the transaction again until successful`);
+					cLog(3,`${FleetTimeStamp(fleetName)} <${opName}> Polling transaction until successful`);
 					while (!txResult) {
 						tryCount++;
+						if(tryCount >= 100) {
+							// couldn't find the transaction, it is possible a block re-org happened, so try to send the tx again
+							cLog(1,`${FleetTimeStamp(fleetName)} <${opName}> No transaction found after ${tryCount} tries, possible block re-org, resending the tx`);
+							break;
+						}
+						if((tryCount % 10) == 0) { cLog(3,`${FleetTimeStamp(fleetName)} <${opName}> Still polling the transaction`); }
 						txResult = await solanaReadConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
 						if(!txResult) await wait(1000);
+					}
+					if(tryCount >= 100) {
+						continue;
 					}
 				}
 
