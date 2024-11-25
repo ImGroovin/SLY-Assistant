@@ -1047,7 +1047,7 @@
 		let interimBlockHeight = curBlockHeight;
 		if (curBlockHeight > lastValidBlockHeight) return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
 		txHash = await solanaWriteConnection.sendRawTransaction(txSerialized, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
-        cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> txHash`, txHash);
+        cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> txHash`, txHash, `, last valid block `, lastValidBlockHeight, `, cur block `, curBlockHeight);
 
         // Force a retry if txHash is undefined. Not sure why sendRawTransaction would return nothing, but this happens occasionally.
         if (!txHash) return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
@@ -1171,6 +1171,7 @@
 
 				let tryCount = 1;
 				if (!confirmation.name) {
+					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> Missing confirmation name, reading the transaction again until successful`);
 					while (!txResult) {
 						tryCount++;
 						txResult = await solanaReadConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
