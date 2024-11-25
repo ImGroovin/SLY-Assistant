@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.16
+// @version      0.6.17
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -532,7 +532,7 @@
             if (craftRecipe.account.category.toString() === upgradeCategory.publicKey.toString()) {
                 upgradeRecipes.push({'name': recipeName, 'publicKey': craftRecipe.publicKey, 'category': craftRecipe.account.category, 'domain': craftRecipe.account.domain, 'feeRecipient': craftRecipe.account.feeRecipient.key, 'duration': craftRecipe.account.duration.toNumber(), 'input': recipeInputOutput, 'output': []});
             } else if (recipeName !== 'SDU') {
-                craftRecipes.push({'name': recipeName, 'publicKey': craftRecipe.publicKey, 'category': craftRecipe.account.category, 'domain': craftRecipe.account.domain, 'feeRecipient': craftRecipe.account.feeRecipient.key, 'duration': craftRecipe.account.duration.toNumber(), 'input': recipeInputOutput.slice(0, -1), 'output': recipeInputOutput.slice(-1)[0]});
+                craftRecipes.push({'name': recipeName, 'publicKey': craftRecipe.publicKey, 'category': craftRecipe.account.category, 'domain': craftRecipe.account.domain, 'feeAmount': craftRecipe.account.feeAmount.toNumber()/100000000, 'feeRecipient': craftRecipe.account.feeRecipient.key, 'duration': craftRecipe.account.duration.toNumber(), 'input': recipeInputOutput.slice(0, -1), 'output': recipeInputOutput.slice(-1)[0]});
             }
         }
         upgradeRecipes.sort(function (a, b) { return a.name.toUpperCase().localeCompare(b.name.toUpperCase()); });
@@ -5411,21 +5411,37 @@
                 cLog(1,`${FleetTimeStamp(userCraft.label)} Starting craft at [${targetX}, ${targetY}] for ${craftAmount} ${targetRecipe.craftRecipe.name}`);
                 //updateFleetState(userCraft, 'Craft Starting');
                 let activityType = craftRecipes.some(item => item.name === targetRecipe.craftRecipe.name) ? 'Crafting' : 'Upgrading';
-                let activityInfo = activityType == 'Crafting' ? "Starting: " + targetRecipe.craftRecipe.name + (userCraft.item!=targetRecipe.craftRecipe.name?' ('+userCraft.item+')':'') : 'Upgrade Starting';
-                updateFleetState(userCraft, activityInfo);
-                let result = await execStartCrafting(starbase, starbasePlayer, starbasePlayerCargoHoldsAndTokens, targetRecipe.craftRecipe, craftAmount, userCraft);
-                if (!userCraft.state.includes('ERROR')) {
-                    activityInfo = activityType == 'Crafting' ? "&#9874; " + targetRecipe.craftRecipe.name + (userCraft.item!=targetRecipe.craftRecipe.name?' ('+userCraft.item+')':'') : 'Upgrading';
-                    let craftDuration = (targetRecipe.craftRecipe.duration * craftAmount) / userCraft.crew;
-                    let calcEndTime = TimeToStr(new Date(Date.now() + craftDuration * 1000));
-                    let upgradeTimeStr = upgradeTime.resRemaining > 0 ? calcEndTime : 'Paused';
-                    let craftTimeStr = craftTime.resRemaining > 0 ? calcEndTime : TimeToStr(new Date(Date.now() + ((craftDuration * 1000) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level])));
-                    let activityTimeStr = activityType == 'Crafting' ? craftTimeStr : upgradeTimeStr;
-                    //updateFleetState(userCraft, activityType + ' [' + activityTimeStr + ']');
-                    updateFleetState(userCraft, activityInfo + ' [' + activityTimeStr + ']');
-                    userCraft.craftingId = result.craftingId;
-                    await updateCraft(userCraft);
-                    //await GM.setValue(userCraft.label, JSON.stringify(userCraft));
+
+                //Enough Atlas available for the craft?
+                let enoughAtlas = true;
+                if(activityType == 'Crafting') {
+                    const atlasNeeded = Number((craftAmount * targetRecipe.craftRecipe.feeAmount).toFixed(10));
+                    const atlasParsedBalance = await solanaReadConnection.getParsedTokenAccountsByOwner(userPublicKey,{ mint: new solanaWeb3.PublicKey('ATLASXmbPQxBUYbxPsV97usA3fPQYEqzQBUHgiFCUsXx')} );
+                    const atlasBalance = atlasParsedBalance.value[0].account.data.parsed.info.tokenAmount.uiAmount;
+                    cLog(3, FleetTimeStamp(userCraft.label), 'atlas needed: ', atlasNeeded, ', atlas available: ', atlasBalance);
+                    if(atlasBalance < atlasNeeded) {
+                    	enoughAtlas = false;
+                    }
+                }
+                if(!enoughAtlas) {
+                    updateFleetState(userCraft, 'Not enough Atlas: ' + targetRecipe.craftRecipe.name + (userCraft.item!=targetRecipe.craftRecipe.name?' ('+userCraft.item+')':''));
+                } else {					
+                    let activityInfo = activityType == 'Crafting' ? "Starting: " + targetRecipe.craftRecipe.name + (userCraft.item!=targetRecipe.craftRecipe.name?' ('+userCraft.item+')':'') : 'Upgrade Starting';
+                    updateFleetState(userCraft, activityInfo);
+                    let result = await execStartCrafting(starbase, starbasePlayer, starbasePlayerCargoHoldsAndTokens, targetRecipe.craftRecipe, craftAmount, userCraft);
+                    if (!userCraft.state.includes('ERROR')) {
+                        activityInfo = activityType == 'Crafting' ? "&#9874; " + targetRecipe.craftRecipe.name + (userCraft.item!=targetRecipe.craftRecipe.name?' ('+userCraft.item+')':'') : 'Upgrading';
+                        let craftDuration = (targetRecipe.craftRecipe.duration * craftAmount) / userCraft.crew;
+                        let calcEndTime = TimeToStr(new Date(Date.now() + craftDuration * 1000));
+                        let upgradeTimeStr = upgradeTime.resRemaining > 0 ? calcEndTime : 'Paused';
+                        let craftTimeStr = craftTime.resRemaining > 0 ? calcEndTime : TimeToStr(new Date(Date.now() + ((craftDuration * 1000) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level])));
+                        let activityTimeStr = activityType == 'Crafting' ? craftTimeStr : upgradeTimeStr;
+                        //updateFleetState(userCraft, activityType + ' [' + activityTimeStr + ']');
+                        updateFleetState(userCraft, activityInfo + ' [' + activityTimeStr + ']');
+                        userCraft.craftingId = result.craftingId;
+                        await updateCraft(userCraft);
+                        //await GM.setValue(userCraft.label, JSON.stringify(userCraft));
+		    }
                 }
             } else if (userCraft.state === 'Idle') {
                 //updateFleetState(userCraft, 'Waiting for crew/material');
