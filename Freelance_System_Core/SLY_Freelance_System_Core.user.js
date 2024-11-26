@@ -458,7 +458,7 @@
                 permissionNames = [['manageGame','manageSector','manageStar','managePlanet','manageShip','manageSagePlayerProfile','manageStarbase','manageMineItem'],
                                  ['manageResource','removeShipEscrow','moveFleet','transitionFromLoadingBay','transitionFromIdle','rentFleet','doCrafting','manageCargoPod'],
                                  ['addRemoveCargo','doStarbaseUpgrades','manageFleet','manageFleetCargo','doMining','respawn','manageSurveyDataUnit','scanSurveyDataUnit'],
-                                 ['doStarbaseUpkeep','manageProgression']];
+                                 ['doStarbaseUpkeep','manageProgression','manageCrewConfig','manageCrew']];
                 break;
             case 'points':
                 permissionNames = [['manageCategory','manageModifier','spendPoints']];
@@ -470,7 +470,7 @@
                 permissionNames = [['manageGame','manageSector','manageStar','managePlanet','manageShip','manageSagePlayerProfile','manageStarbase','manageMineItem'],
                                  ['manageResource','removeShipEscrow','moveFleet','transitionFromLoadingBay','transitionFromIdle','rentFleet','doCrafting','manageCargoPod'],
                                  ['addRemoveCargo','doStarbaseUpgrades','manageFleet','manageFleetCargo','doMining','respawn','manageSurveyDataUnit','scanSurveyDataUnit'],
-                                 ['doStarbaseUpkeep','manageProgression']];
+                                 ['doStarbaseUpkeep','manageProgression','manageCrewConfig','manageCrew']];
         };
 
         let permContainer = document.createElement('div');
