@@ -5461,7 +5461,7 @@
                 } else {
                     materialStr = ': ' + targetRecipe.craftRecipe.name + (userCraft.item != targetRecipe.craftRecipe.name ? ' (' + userCraft.item + ')' : '' );
                 }
-                if(availableCrew < userCraft.crew && targetRecipe && targetRecipe.amountCraftable <= 0) {
+                if(availableCrew < userCraft.crew && ((targetRecipe && targetRecipe.amountCraftable <= 0) || (!targetRecipe)) ) {
                     updateFleetState(userCraft, 'Waiting for crew/material' + materialStr);
                 }
                 else if(availableCrew < userCraft.crew) {
