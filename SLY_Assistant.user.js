@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.18
+// @version      0.6.19
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -4158,6 +4158,18 @@
 
 			//Start resupply immediately rather than waiting for scan cooldown
 			if(currentFoodCnt - userFleets[i].scanCost < userFleets[i].scanCost) userFleets[i].scanEnd = Date.now();
+
+			//save the scan end time, so after a reload the fleet waits accordingly
+			const fleetPK = userFleets[i].publicKey.toString();
+			const fleetSavedData = await GM.getValue(fleetPK, '{}');
+			const fleetParsedData = JSON.parse(fleetSavedData);
+			fleetParsedData.scanEnd = userFleets[i].scanEnd;
+			await GM.setValue(fleetPK, JSON.stringify(fleetParsedData));			
+
+		}
+		else if (!moved && Date.now() < userFleets[i].scanEnd && userFleets[i].state == 'Idle') {
+			const scanCDExpireTimeStr = `[${TimeToStr(new Date(userFleets[i].scanEnd))}]`;		
+			updateFleetState(userFleets[i], 'Waiting for scan cooldown ' + scanCDExpireTimeStr);
 		}
 	}
 
@@ -5748,6 +5760,10 @@
 				let fleetMoveType = fleetParsedData && fleetParsedData.moveType ? fleetParsedData.moveType : 'warp';
 				let fleetMoveTarget = fleetParsedData && fleetParsedData.moveTarget ? fleetParsedData.moveTarget : '';
 
+				let fleetScanEnd = fleetParsedData && fleetParsedData.scanEnd ? fleetParsedData.scanEnd : 0;
+				//double check for a wrongly set time and correct it if needed:
+				if(fleetScanEnd > Date.now() + fleet.account.stats.miscStats.scanCoolDown * 1000) { fleetScanEnd = Date.now() + fleet.account.stats.miscStats.scanCoolDown * 1000; }
+
 				const [fleetRepairKitToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
 					[
 						fleet.account.cargoHold.toBuffer(),
@@ -5823,7 +5839,7 @@
 					starbaseCoord: fleetStarbase,
 					scanBlock: fleetScanBlock,
 					scanBlockIdx: fleetScanBlockIdx,
-					scanEnd: 0,
+					scanEnd: fleetScanEnd,
 					scanSkipCnt: 0,
 					scanStrikes: 0,
 					scanMin: fleetScanMin,
