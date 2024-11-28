@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.19
+// @version      0.6.20
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -4078,7 +4078,7 @@
 								moved = true;
 								const scanEndsIn = Math.max(0, userFleets[i].scanEnd - Date.now());
 								//Clamp the scan end time to the cooldown if it is higher (due to paused scanning)
-								userFleets[i].scanEnd = scanEndsIn > userFleets[i].scanCooldown ? userFleets[i].scanCooldown : scanEndsIn;
+								userFleets[i].scanEnd = (scanEndsIn > userFleets[i].scanCooldown ? userFleets[i].scanCooldown : scanEndsIn) + Date.now(); //fixed a wrong time calculation
 								await handleMovement(i, moveDist, destCoords[0], destCoords[1]);
 								cLog(1,`${FleetTimeStamp(userFleets[i].label)} Movement finished`);
 								userFleets[i].scanStrikes = 0;
