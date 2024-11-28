@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.21
+// @version      0.6.22
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -4030,6 +4030,14 @@
 		return warpCooldownFinished;
 	}
 
+	async function saveScanEnd(i) {
+		const fleetPK = userFleets[i].publicKey.toString();
+		const fleetSavedData = await GM.getValue(fleetPK, '{}');
+		const fleetParsedData = JSON.parse(fleetSavedData);
+		fleetParsedData.scanEnd = userFleets[i].scanEnd;
+		await GM.setValue(fleetPK, JSON.stringify(fleetParsedData));			
+	}
+
 	async function handleScan(i, fleetCoords, destCoords) {
 		let fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
 		let cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount * cargoItems.find(r => r.token == account.data.parsed.info.mint).size, 0);
@@ -4079,6 +4087,7 @@
 								const scanEndsIn = Math.max(0, userFleets[i].scanEnd - Date.now());
 								//Clamp the scan end time to the cooldown if it is higher (due to paused scanning)
 								userFleets[i].scanEnd = (scanEndsIn > userFleets[i].scanCooldown * 1000 ? userFleets[i].scanCooldown * 1000 : scanEndsIn) + Date.now(); //fixed a wrong time calculation
+								await saveScanEnd(i);
 								await handleMovement(i, moveDist, destCoords[0], destCoords[1]);
 								cLog(1,`${FleetTimeStamp(userFleets[i].label)} Movement finished`);
 								userFleets[i].scanStrikes = 0;
@@ -4160,11 +4169,7 @@
 			if(currentFoodCnt - userFleets[i].scanCost < userFleets[i].scanCost) userFleets[i].scanEnd = Date.now();
 
 			//save the scan end time, so after a reload the fleet waits accordingly
-			const fleetPK = userFleets[i].publicKey.toString();
-			const fleetSavedData = await GM.getValue(fleetPK, '{}');
-			const fleetParsedData = JSON.parse(fleetSavedData);
-			fleetParsedData.scanEnd = userFleets[i].scanEnd;
-			await GM.setValue(fleetPK, JSON.stringify(fleetParsedData));			
+			await saveScanEnd(i);
 
 		}
 		else if (!moved && Date.now() < userFleets[i].scanEnd && userFleets[i].state == 'Idle') {
