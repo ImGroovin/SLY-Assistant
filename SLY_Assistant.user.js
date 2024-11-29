@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.24
+// @version      0.6.25
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -5125,9 +5125,11 @@
 							if(fleetState != 'MineAsteroid') {
 								break;
 							}
-						}						
-						cLog(1,`${FleetTimeStamp(userFleets[i].label)} Fleet State Mismatch - Updating to Mining again`);
-						updateFleetState(userFleets[i], 'Mine [' + TimeToStr(new Date(Date.now())) + ']');
+						}
+						if(fleetState == 'MineAsteroid' && !userFleets[i].state.includes('Mine')) {
+							cLog(1,`${FleetTimeStamp(userFleets[i].label)} Fleet State Mismatch - Updating to Mining again`);
+							updateFleetState(userFleets[i], 'Mine [' + TimeToStr(new Date(Date.now())) + ']');
+						}
 					}
 					await handleMining(i, userFleets[i].state, fleetCoords, fleetMining);
 				}
