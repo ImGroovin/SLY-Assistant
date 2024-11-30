@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.25
+// @version      0.6.26
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -4169,7 +4169,7 @@
 
 			//Start resupply/unload immediately rather than waiting for scan cooldown
 			//if(currentFoodCnt - userFleets[i].scanCost < userFleets[i].scanCost) userFleets[i].scanEnd = Date.now();
-			if(((userFleets[i].scanCost == 0) && (userFleets[i].cargoCapacity - cargoCnt - sduFound < userFleets[i].sduPerScan)) || (currentFoodCnt < userFleets[i].scanCost)) userFleets[i].scanEnd = Date.now();
+			if(((userFleets[i].scanCost == 0) && (userFleets[i].cargoCapacity - cargoCnt - sduFound < userFleets[i].sduPerScan)) || (currentFoodCnt - userFleets[i].scanCost < userFleets[i].scanCost)) userFleets[i].scanEnd = Date.now();
 
 			//save the scan end time, so after a reload the fleet waits accordingly
 			await saveScanEnd(i);
