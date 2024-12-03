@@ -5,7 +5,7 @@
 // @description  try to take over the world!
 // @author       SLY
 // @match        https://labs.staratlas.com/
-// @require      https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js
+// @require      https://unpkg.com/@solana/web3.js@1.95.8/lib/index.iife.min.js
 // @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/anchor-browserified.js
 // @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/buffer-browserified.js
 // @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/bs58-browserified.js
