@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.28
+// @version      0.6.29
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -3558,6 +3558,7 @@
 				let fleetJson = JSON.stringify(fleetObj);
 				await GM.setValue(key, fleetJson);
 		}
+		await loadGlobalSettings();
 		assistImportToggle();
 	}
 
