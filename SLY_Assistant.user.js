@@ -3234,7 +3234,7 @@
 	async function resetFleetState(fleet) {
 		if (fleet.state.includes('ERROR')) {
 			let userFleetIndex = userFleets.findIndex(item => {return item.publicKey == fleet.publicKey});
-			cLog(1,`${FleetTimeStamp(fleet.label)} Manual request: Resetting state for fleet idx`,userFleetIndex);
+			cLog(1,`${FleetTimeStamp(fleet.label)} Manual request for resetting the fleet state`);
 			updateFleetState(fleet,'ERROR: Trying to restart ...',true); // keep string "ERROR" for now to prevent an early start of operateFleet()
 				
 			let fleetAcctInfo = await getAccountInfo(fleet.label, 'full fleet info', fleet.publicKey);
