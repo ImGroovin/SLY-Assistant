@@ -3422,11 +3422,14 @@
 		let errBool = false;
 
 		for (let [i, row] of fleetRows.entries()) {
-			const inputError = (msg, innerHtml) => {
+			
+			const inputError = (msg, innerHtml, type) => {
+				// type 1: Distance exceeds fuel capacity
+				// type 2: Identical starbase/target sectors				
 				cLog(1, msg);
 				row.children[2].firstChild.style.border = '2px solid red';
 				row.children[3].firstChild.style.border = '2px solid red';
-				row.children[7].firstChild.style.border = '2px solid red';
+				if(type==1) row.children[7].firstChild.style.border = '2px solid red';
 				errElem[0].innerHTML = innerHtml;
 				errBool = true;
 				rowErrBool = true;
@@ -3451,11 +3454,15 @@
 				if (warpCost > userFleets[userFleetIndex].fuelCapacity) {
 					let subwarpCost = calculateSubwarpFuelBurn(userFleets[userFleetIndex], calculateMovementDistance(starbaseCoords, destCoords));
 					if (subwarpCost * 2 > userFleets[userFleetIndex].fuelCapacity) {
-						inputError('ERROR: Fleet will not have enough fuel to return to starbase', 'ERROR: Distance exceeds fuel capacity')
+						inputError('ERROR: Fleet will not have enough fuel to return to starbase', 'ERROR: Distance exceeds fuel capacity', 1);
 					} else {
 						moveType = 'subwarp';
 					}
 				}
+			}
+
+			if(fleetAssignment === 'Transport' && starbaseCoords[0]==destCoords[0] && starbaseCoords[1]==destCoords[1]) {
+				inputError('ERROR: Starbase and target sectors are identical.', 'ERROR: Identical starbase/target sectors', 2);
 			}
 
 			let scanMin = parseInt(scanRows[i].children[1].children[0].children[1].value) || 0;
