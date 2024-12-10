@@ -4285,6 +4285,10 @@
 				//Wait a while before trying again
 				await wait(errorWaitTime);
 				await loadFood();
+			} else {
+				if(userFleets[i].state.includes('ERROR: No food ⌛')) {
+					updateFleetState(userFleets[i], `Enough food loaded`, true);
+				}
 			}
 		}
 
@@ -4320,8 +4324,7 @@
 				await wait(errorWaitTime);
 				await loadFuel();
 			} else {
-				if(userFleets[i].state.includes('ERROR: No Fuel'))
-				{
+				if(userFleets[i].state.includes('ERROR: No Fuel ⌛')) {
 					updateFleetState(userFleets[i], `Enough fuel loaded`, true);
 				}
 			}
