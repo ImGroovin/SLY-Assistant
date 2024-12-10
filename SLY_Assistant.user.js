@@ -1190,7 +1190,7 @@
 					cLog(3,`${FleetTimeStamp(fleetName)} <${opName}> Polling transaction until successful`);
 					while (!txResult) {
 						tryCount++;
-						if(tryCount >= 100) {
+						if(tryCount >= 130) {
 							// couldn't find the transaction, it is possible a block re-org happened, so try to send the tx again
 							cLog(1,`${FleetTimeStamp(fleetName)} <${opName}> No transaction found after ${tryCount} tries, possible block re-org, resending the tx`);
 							break;
@@ -1199,7 +1199,7 @@
 						txResult = await solanaReadConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1});
 						if(!txResult) await wait(1000);
 					}
-					if(tryCount >= 100) {
+					if(tryCount >= 130) {
 						continue;
 					}
 				}
