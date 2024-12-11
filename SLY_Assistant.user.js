@@ -4228,7 +4228,7 @@
 	}
 
 	async function handleResupply(i, fleetCoords) {
-		const errorWaitTime = 5 * 60 * 1000;
+		const errorWaitTime = 8 * 60 * 1000;
 		const errorFuelRatio = 0.75;
 
 		async function unloadSDU() {
