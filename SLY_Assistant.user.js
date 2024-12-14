@@ -1097,7 +1097,7 @@
 
 		let pollDelay = Math.max(2500, globalSettings.confirmationCheckingDelay);
 		let retryCount = 0;
-		let pollDelayAdd = 100;
+		let pollDelayAdd = 0;
 		
 		// loop until block height exceeded and give the RPC a little more time (12 blocks = ~6 seconds) to prevent race conditions
 		while (curBlockHeight <= lastValidBlockHeight + 12) {
@@ -1114,7 +1114,7 @@
 				}
 				let epochInfo = await solanaReadConnection.getEpochInfo({ commitment: 'confirmed' });
 				curBlockHeight = epochInfo.blockHeight;
-				pollDelayAdd += 100;
+				pollDelayAdd += 200;
 				pollDelay += pollDelayAdd;
 				retryCount++;
 				cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> STILL POLLING TX 🌐 [try`,(retryCount+1),`, wait`,pollDelay,`ms]`);
