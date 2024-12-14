@@ -2378,7 +2378,7 @@
                 }).remainingAccounts(startCraftProcRemainingAccts).instruction()}
             transactions.push(tx2);
 
-            let txResult = {craftingId: formattedRandomBytes, result: await txSignAndSend(transactions, userCraft, 'START CRAFTING', 175)};
+            let txResult = {craftingId: formattedRandomBytes, result: await txSignAndSend(transactions, userCraft, 'START CRAFTING', 150)};
 
             // statsadd start
             let postTokenBalances = txResult.result.meta.postTokenBalances;
