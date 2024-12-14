@@ -4550,7 +4550,7 @@
 					let unloadAmount = currentResourceCnt;
 					if(globalSettings.minerKeep1 && unloadAmount > 0) { unloadAmount -= 1; }
 					if (unloadAmount > 0) {
-						await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, userFleets[i].mineResource, userFleets[i].starbaseCoord, currentResourceCnt);
+						await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, userFleets[i].mineResource, userFleets[i].starbaseCoord, unloadAmount);
 						//await wait(2000);
 					}
 
