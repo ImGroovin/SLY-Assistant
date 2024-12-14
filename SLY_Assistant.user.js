@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.31
+// @version      0.6.32
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -1061,7 +1061,8 @@
 	async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName) {
 		let {blockHeight: curBlockHeight} = await solanaReadConnection.getEpochInfo({ commitment: 'confirmed' });
 		let interimBlockHeight = curBlockHeight;
-		if (curBlockHeight > lastValidBlockHeight) return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
+		//a quick fix for a race condition problem: wait 30 blocks longer to be sure SLYA won't miss a very late transaction confirmation:
+		if (curBlockHeight > lastValidBlockHeight + 30) return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
 		txHash = await solanaWriteConnection.sendRawTransaction(txSerialized, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
         cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> txHash`, txHash, `, last valid block `, lastValidBlockHeight, `, cur block `, curBlockHeight);
 
@@ -1071,6 +1072,7 @@
 		while ((curBlockHeight - interimBlockHeight) < 30) {
 				const signatureStatus = await solanaReadConnection.getSignatureStatus(txHash);
 				if (signatureStatus.value && ['confirmed','finalized'].includes(signatureStatus.value.confirmationStatus)) {
+						if(curBlockHeight > lastValidBlockHeight) cLog(2,`${FleetTimeStamp(fleet.label)} Signature accepted after block height exceeded`);
 						return {txHash, confirmation: signatureStatus};
 				} else if (signatureStatus.err) {
 						cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> Err`,signatureStatus.err);
@@ -1247,7 +1249,7 @@
                     systemProgram: solanaWeb3.SystemProgram.programId
                 }).instruction()}
                 updateFleetState(fleet, `Scanning [${TimeToStr(new Date(Date.now()))}]`);
-                let txResult = await txSignAndSend(txDiscover, fleet, 'SCAN');
+                let txResult = await txSignAndSend(txDiscover, fleet, 'SCAN', 100);
             }
 
 			let sduCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sduItem.token);
@@ -1431,7 +1433,7 @@
 			cLog(1,`${FleetTimeStamp(fleet.label)} Exiting Subwarp`);
 			updateFleetState(fleet, 'Exiting Subwarp');
 
-			let txResult = await txSignAndSend(tx, fleet, 'EXIT SUBWARP', 60);
+			let txResult = await txSignAndSend(tx, fleet, 'EXIT SUBWARP', 100);
 
 			cLog(1,`${FleetTimeStamp(fleet.label)} Idle 💤`);
 			updateFleetState(fleet, 'Idle');
@@ -1469,7 +1471,7 @@
             cLog(1,`${FleetTimeStamp(fleet.label)} Warping to ${coordStr}`);
             updateFleetState(fleet, 'Warping');
 
-            let txResult = await txSignAndSend(tx, fleet, 'WARP', 90);
+            let txResult = await txSignAndSend(tx, fleet, 'WARP', 100);
 
             const travelEndTime = TimeToStr(new Date(Date.now()+(moveTime * 1000 + 10000)));
             const newFleetState = `Warp ${coordStr} ${travelEndTime}`;
@@ -1815,7 +1817,7 @@
 							isSigner: false,
 							isWritable: false
 					}]).instruction()}
-					let txResult = await txSignAndSend(tx, fleet, 'UNLOAD', 90);
+					let txResult = await txSignAndSend(tx, fleet, 'UNLOAD', 100);
 					resolve(txResult);
 			});
 	}
@@ -1915,7 +1917,7 @@
 				}]).instruction()}
 
 				//Send tx
-				txResult = {amount: amount, result: await txSignAndSend(tx, fleet, 'LOAD', 90)};
+				txResult = {amount: amount, result: await txSignAndSend(tx, fleet, 'LOAD', 100)};
 			}
 			else txResult = {name: "NotEnoughResource"};
 
@@ -2119,7 +2121,7 @@
                 },
             ]).instruction()}
             updateFleetState(fleet, `Mining Stop`);
-            let tx1Result = await txSignAndSend(tx1, fleet, 'STOP MINING (fleetStateHandler)', 80);
+            let tx1Result = await txSignAndSend(tx1, fleet, 'STOP MINING (fleetStateHandler)', 100);
 
             let fuelCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.fuel);
             let tx2 = { instruction: await sageProgram.methods.stopMiningAsteroid({keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx)}).accountsStrict({
@@ -2155,7 +2157,7 @@
             cLog(1,`${FleetTimeStamp(fleet.label)} Mining Stop`);
             updateFleetState(fleet, 'Mining Stop')
 
-            let txResult = await txSignAndSend(tx2, fleet, 'STOP MINING', 80);
+            let txResult = await txSignAndSend(tx2, fleet, 'STOP MINING', 100);
 
             //await wait(2000);
             cLog(1,`${FleetTimeStamp(fleet.label)} Idle 💤`);
@@ -2376,7 +2378,7 @@
                 }).remainingAccounts(startCraftProcRemainingAccts).instruction()}
             transactions.push(tx2);
 
-            let txResult = {craftingId: formattedRandomBytes, result: await txSignAndSend(transactions, userCraft, 'START CRAFTING', 100)};
+            let txResult = {craftingId: formattedRandomBytes, result: await txSignAndSend(transactions, userCraft, 'START CRAFTING', 175)};
 
             // statsadd start
             let postTokenBalances = txResult.result.meta.postTokenBalances;
@@ -2566,7 +2568,7 @@
             transactions.push(tx2);
 
             //let txResult = await txSignAndSend(tx2, userCraft, 'COMPLETING CRAFT TX2');
-            let txResult = await txSignAndSend(transactions, userCraft, 'COMPLETING CRAFT', 100);
+            let txResult = await txSignAndSend(transactions, userCraft, 'COMPLETING CRAFT', 175);
 
             // Allow RPC to catch up (to be sure the crew is available before starting the next job)
             await wait(4000);
@@ -2758,7 +2760,7 @@
             }).instruction()};
             transactions.push(tx2);
 
-            let txResult = await txSignAndSend(transactions, userCraft, 'COMPLETING UPGRADE', 80, userRedemptionAcct);
+            let txResult = await txSignAndSend(transactions, userCraft, 'COMPLETING UPGRADE', 100, userRedemptionAcct);
 
             resolve(txResult);
         });
@@ -5988,7 +5990,7 @@
 			settingsModal.style.display = 'none';
 			let settingsModalContent = document.createElement('div');
 			settingsModalContent.classList.add('assist-modal-content');
-			settingsModalContent.innerHTML = '<div class="assist-modal-header"> <img src="' + iconStr + '" /> <span style="padding-left: 15px;">SLY Assistant v' + GM_info.script.version + '</span> <div class="assist-modal-header-right"> <button class=" assist-modal-btn assist-modal-save">Save</button> <span class="assist-modal-close">x</span> </div></div><div class="assist-modal-body"> <span id="settings-modal-error"></span> <div id="settings-modal-header">Global Settings</div> <div>Priority Fee <input id="priorityFee" type="number" min="0" max="100000000" placeholder="1" ></input> <span>Added to each transaction. Set to 0 (zero) to disable. 1 Lamport = 0.000000001 SOL</span> </div> <div>Auto-Fee? <input id="automaticFee" type="checkbox"></input> <span>Enable the auto fee algorithm, works best if at least 1 tx is executed per minute.</span><fieldset id="autoFeeData">FeeMin: <input id="automaticFeeMin" type="number" min="0" max="100000" placeholder="1" size="6"></input> TimeMin: <input id="automaticFeeTimeMin" type="number" min="1" max="120" placeholder="6" size="3"></input><br/>FeeMax: <input id="automaticFeeMax" type="number" min="0" max="100000" placeholder="12000" size="6"></input> TimeMax: <input id="automaticFeeTimeMax" type="number" min="5" max="120" placeholder="40" size="3"></input><br/>Max fee change/tx: <input id="automaticFeeStep" type="number" min="1" max="1000" placeholder="80" size="6"></input><br/><span>Fee starts with the configured priority fee from above. The current fee is then somewhere between FeeMin and FeeMax. This is 1:1 carried over to TimeMin and TimeMax and results in a threshold time. If a new tx is below this time, the fee gets decreased. If a new tx is above this time, the fee gets increased. Both times the amount is limited to "Max fee change/tx". The more the time deviates from the current threshold time, the greater the change.</span></fieldset></div> <div>Save profile selection? <input id="saveProfile" type="checkbox"></input> <span>Should the profile selection be saved (uncheck to select a different profile each time)?</span> </div> <div>Tx Poll Delay <input id="confirmationCheckingDelay" type="number" min="200" max="10000" placeholder="200"></input> <span>How many milliseconds to wait before re-reading the chain for confirmation</span> </div> <div>Console Logging <input id="debugLogLevel" type="number" min="0" max="9" placeholder="3"></input> <span>How much console logging you want to see (higher number = more, 0 = none)</span> </div> <div>Crafting Jobs <input id="craftingJobs" type="number" min="0" max="100" placeholder="4"></input> <span>How many crafting jobs should be enabled?</span> </div> <div>Subwarp for short distances? <input id="subwarpShortDist" type="checkbox"></input> <span>Should fleets subwarp when travel distance is 1 diagonal square or less?</span> </div> <div>Use Ammo Banks for Transport? <input id="transportUseAmmoBank" type="checkbox"></input> <span>Should transports also use their ammo banks to help move ammo?</span> </div> <div>Stop Transports On Error <input id="transportStopOnError" type="checkbox"></input> <span>Should transport fleet stop completely if there is an error (example: not enough resource/fuel/etc.)?</span> </div> <div>Fuel to 100% for transports <input id="transportFuel100" type="checkbox"></input> <span>If a refuel is needed at the source, should transport fleets fill fuel to 100%?</span> </div> <div>Transports keep 1 resource <input id="transportKeep1" type="checkbox"></input> <span>If unloading a resource, should transport fleets keep 1 resource to save a CreatePDA transaction when loading it again?</span> </div> <div>Miners keep 1 resource <input id="minerKeep1" type="checkbox"></input> <span>Same as previous option but for miners. Also load 1 food more, so the food token account is not closed, too.</span> </div> <div>Moving Scan Pattern <select id="scanBlockPattern"> <option value="square">square</option> <option value="ring">ring</option> <option value="spiral">spiral</option> <option value="up">up</option> <option value="down">down</option> <option value="left">left</option> <option value="right">right</option> <option value="sly">sly</option> </select> <span>Only applies to fleets set to Move While Scanning</span> </div> <div>Scan Block Length <input id="scanBlockLength" type="number" min="2" max="50" placeholder="5"></input> <span>How far fleets should go for the up, down, left and right scanning patterns</span> </div> <div>Scan Block Resets After Resupply? <input id="scanBlockResetAfterResupply" type="checkbox"></input> <span>Start from the beginning of the pattern after resupplying at starbase?</span> </div> <div>Scan Resupply On Low Fuel? <input id="scanResupplyOnLowFuel" type="checkbox"></input> <span>Do scanning fleets set to Move While Scanning return to base to resupply when fuel is too low to move?</span> </div> <div>Scan Sector Regeneration Delay <input id="scanSectorRegenTime" type="number" min="0" placeholder="90"></input> <span>Number of seconds to wait after finding SDU</span> </div> <div>Scan Pause Time <input id="scanPauseTime" type="number" min="240" max="6000" placeholder="600"></input> <span>Number of seconds to wait when sectors probabilities are too low</span> </div> <div>Scan Strike Count <input id="scanStrikeCount" type="number" min="1" max="10" placeholder="3"></input> <span>Number of low % scans before moving on or pausing</span> </div> <div>Status Panel Opacity <input id="statusPanelOpacity" type="range" min="1" max="100" value="75"></input> <span>(requires page refresh)</span> </div> <div>---</div> <div>Advanced Settings</div> <div>Auto Start Script <input id="autoStartScript" type="checkbox"></input> <span>Should Lab Assistant automatically start after initialization is complete?</span> </div> <div>Reload On Stuck Fleets <input id="reloadPageOnFailedFleets" type="number" min="0" max="999" placeholder="0"></input> <span>Automatically refresh the page if this many fleets get stuck (0 = never)</span> </div><div>Exclude fleets:<br><textarea id="excludeFleets" cols="40" rows="6"></textarea><br><span>(one fleet name per line, case sensivity, reload required)</span> </div></div>';
+			settingsModalContent.innerHTML = '<div class="assist-modal-header"> <img src="' + iconStr + '" /> <span style="padding-left: 15px;">SLY Assistant v' + GM_info.script.version + '</span> <div class="assist-modal-header-right"> <button class=" assist-modal-btn assist-modal-save">Save</button> <span class="assist-modal-close">x</span> </div></div><div class="assist-modal-body"> <span id="settings-modal-error"></span> <div id="settings-modal-header">Global Settings</div> <div>Priority Fee <input id="priorityFee" type="number" min="0" max="100000000" placeholder="1" ></input> <span>Added to each transaction. Set to 0 (zero) to disable (the wallet will then decide the fee!). 1 Lamport = 0.000000001 SOL. Normal transactions will use the full priority fee, smaller transactions will use 10%. Exception: craft transactions are heavy and will use 175% of the fee.</span> </div> <div>Auto-Fee? <input id="automaticFee" type="checkbox"></input> <span>Enable the auto fee algorithm, works best if at least 1 tx is executed per minute.</span><fieldset id="autoFeeData">FeeMin: <input id="automaticFeeMin" type="number" min="0" max="100000" placeholder="1" size="6"></input> TimeMin: <input id="automaticFeeTimeMin" type="number" min="1" max="120" placeholder="6" size="3"></input><br/>FeeMax: <input id="automaticFeeMax" type="number" min="0" max="100000" placeholder="12000" size="6"></input> TimeMax: <input id="automaticFeeTimeMax" type="number" min="5" max="120" placeholder="40" size="3"></input><br/>Max fee change/tx: <input id="automaticFeeStep" type="number" min="1" max="1000" placeholder="80" size="6"></input><br/><span>Fee starts with the configured priority fee from above. The current fee is then somewhere between FeeMin and FeeMax. This is 1:1 carried over to TimeMin and TimeMax and results in a threshold time. If a new tx is below this time, the fee gets decreased. If a new tx is above this time, the fee gets increased. Both times the amount is limited to "Max fee change/tx". The more the time deviates from the current threshold time, the greater the change.</span></fieldset></div> <div>Save profile selection? <input id="saveProfile" type="checkbox"></input> <span>Should the profile selection be saved (uncheck to select a different profile each time)?</span> </div> <div>Tx Poll Delay <input id="confirmationCheckingDelay" type="number" min="200" max="10000" placeholder="200"></input> <span>How many milliseconds to wait before re-reading the chain for confirmation</span> </div> <div>Console Logging <input id="debugLogLevel" type="number" min="0" max="9" placeholder="3"></input> <span>How much console logging you want to see (higher number = more, 0 = none)</span> </div> <div>Crafting Jobs <input id="craftingJobs" type="number" min="0" max="100" placeholder="4"></input> <span>How many crafting jobs should be enabled?</span> </div> <div>Subwarp for short distances? <input id="subwarpShortDist" type="checkbox"></input> <span>Should fleets subwarp when travel distance is 1 diagonal square or less?</span> </div> <div>Use Ammo Banks for Transport? <input id="transportUseAmmoBank" type="checkbox"></input> <span>Should transports also use their ammo banks to help move ammo?</span> </div> <div>Stop Transports On Error <input id="transportStopOnError" type="checkbox"></input> <span>Should transport fleet stop completely if there is an error (example: not enough resource/fuel/etc.)?</span> </div> <div>Fuel to 100% for transports <input id="transportFuel100" type="checkbox"></input> <span>If a refuel is needed at the source, should transport fleets fill fuel to 100%?</span> </div> <div>Transports keep 1 resource <input id="transportKeep1" type="checkbox"></input> <span>If unloading a resource, should transport fleets keep 1 resource to save a CreatePDA transaction when loading it again?</span> </div> <div>Miners keep 1 resource <input id="minerKeep1" type="checkbox"></input> <span>Same as previous option but for miners. Also load 1 food more, so the food token account is not closed, too.</span> </div> <div>Moving Scan Pattern <select id="scanBlockPattern"> <option value="square">square</option> <option value="ring">ring</option> <option value="spiral">spiral</option> <option value="up">up</option> <option value="down">down</option> <option value="left">left</option> <option value="right">right</option> <option value="sly">sly</option> </select> <span>Only applies to fleets set to Move While Scanning</span> </div> <div>Scan Block Length <input id="scanBlockLength" type="number" min="2" max="50" placeholder="5"></input> <span>How far fleets should go for the up, down, left and right scanning patterns</span> </div> <div>Scan Block Resets After Resupply? <input id="scanBlockResetAfterResupply" type="checkbox"></input> <span>Start from the beginning of the pattern after resupplying at starbase?</span> </div> <div>Scan Resupply On Low Fuel? <input id="scanResupplyOnLowFuel" type="checkbox"></input> <span>Do scanning fleets set to Move While Scanning return to base to resupply when fuel is too low to move?</span> </div> <div>Scan Sector Regeneration Delay <input id="scanSectorRegenTime" type="number" min="0" placeholder="90"></input> <span>Number of seconds to wait after finding SDU</span> </div> <div>Scan Pause Time <input id="scanPauseTime" type="number" min="240" max="6000" placeholder="600"></input> <span>Number of seconds to wait when sectors probabilities are too low</span> </div> <div>Scan Strike Count <input id="scanStrikeCount" type="number" min="1" max="10" placeholder="3"></input> <span>Number of low % scans before moving on or pausing</span> </div> <div>Status Panel Opacity <input id="statusPanelOpacity" type="range" min="1" max="100" value="75"></input> <span>(requires page refresh)</span> </div> <div>---</div> <div>Advanced Settings</div> <div>Auto Start Script <input id="autoStartScript" type="checkbox"></input> <span>Should Lab Assistant automatically start after initialization is complete?</span> </div> <div>Reload On Stuck Fleets <input id="reloadPageOnFailedFleets" type="number" min="0" max="999" placeholder="0"></input> <span>Automatically refresh the page if this many fleets get stuck (0 = never)</span> </div><div>Exclude fleets:<br><textarea id="excludeFleets" cols="40" rows="6"></textarea><br><span>(one fleet name per line, case sensivity, reload required)</span> </div></div>';
 			settingsModal.append(settingsModalContent);
 
 			let importModal = document.createElement('div');
