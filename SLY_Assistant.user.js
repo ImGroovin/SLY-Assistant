@@ -1058,6 +1058,7 @@
 		return token;
 	}
 
+/*
 	async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName) {
 		let {blockHeight: curBlockHeight} = await solanaReadConnection.getEpochInfo({ commitment: 'confirmed' });
 		let interimBlockHeight = curBlockHeight;
@@ -1087,6 +1088,41 @@
 		cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> TRYING 🌐`);
 		return await sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName);
 	}
+ */
+
+	async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName) {
+		let {blockHeight: curBlockHeight} = await solanaReadConnection.getEpochInfo({ commitment: 'confirmed' });
+		txHash = await solanaWriteConnection.sendRawTransaction(txSerialized, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
+		cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> txHash`, txHash, `, last valid block `, lastValidBlockHeight, `, cur block `, curBlockHeight);
+
+		let pollDelay = Math.max(2500, globalSettings.confirmationCheckingDelay);
+		let retryCount = 0;
+		let pollDelayAdd = 100;
+		
+		// loop until block height exceeded and give the RPC a little more time (12 blocks = ~6 seconds) to prevent race conditions
+		while (curBlockHeight <= lastValidBlockHeight + 12) {
+		
+				await wait(pollDelay);
+		
+				const signatureStatus = await solanaReadConnection.getSignatureStatus(txHash);
+				if (signatureStatus.value && ['confirmed','finalized'].includes(signatureStatus.value.confirmationStatus)) {
+						cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> SIGNATURE FOUND ✅`);
+						return {txHash, confirmation: signatureStatus};
+				} else if (signatureStatus.err) {
+						cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> Err`,signatureStatus.err);
+						return {txHash, confirmation: signatureStatus}
+				}
+				let epochInfo = await solanaReadConnection.getEpochInfo({ commitment: 'confirmed' });
+				curBlockHeight = epochInfo.blockHeight;
+				pollDelayAdd += 100;
+				pollDelay += pollDelayAdd;
+				retryCount++;
+				cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> STILL POLLING TX 🌐 [try`,(retryCount+1),`, wait`,pollDelay,`ms]`);
+		}
+
+		return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};		
+	}
+
 
 	function txSignAndSend(ix, fleet, opName, priorityFeeMultiplier, extraSigner=false) {
 		return new Promise(async resolve => {
