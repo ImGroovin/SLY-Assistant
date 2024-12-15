@@ -2796,7 +2796,7 @@
             }).instruction()};
             transactions.push(tx2);
 
-            let txResult = await txSignAndSend(transactions, userCraft, 'COMPLETING UPGRADE', 100, userRedemptionAcct);
+            let txResult = await txSignAndSend(transactions, userCraft, 'COMPLETING UPGRADE', 200, userRedemptionAcct);
 
             resolve(txResult);
         });
