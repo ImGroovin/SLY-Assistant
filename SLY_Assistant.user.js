@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.33
+// @version      0.6.34
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -3306,6 +3306,7 @@
 				targetRow[0].children[2].firstChild.innerHTML = fleet.sduCnt || 0;
 				targetRow[0].children[3].firstChild.innerHTML = fleet.state;
 			} else {
+				targetRow[0].children[0].firstChild.innerHTML = fleet.label + " [" + fleet.coordinates + "]";
 				targetRow[0].children[1].firstChild.innerHTML = fleet.state;
 			}
 		} else {
@@ -3337,6 +3338,7 @@
 			} else {
 				fleetStatusTd.setAttribute('colspan', 3);
 				fleetStatusTd.appendChild(fleetStatus);
+				fleetLabel.innerHTML = fleetLabel.innerHTML + " [" + fleet.coordinates + "]";
 				fleetRow.appendChild(fleetLabelTd);
 				fleetRow.appendChild(fleetStatusTd);
 			}
