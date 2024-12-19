@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.35
+// @version      0.6.36
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -1103,6 +1103,12 @@
 		
 		// loop until block height exceeded and give the RPC a little more time (12 blocks = ~6 seconds) to prevent race conditions
 		while (curBlockHeight <= lastValidBlockHeight + 12) {
+
+				if(retryCount > 0 && (retryCount % 3) == 0) { // re-send the tx after every 3rd poll to force the queuing the tx again
+					txHash = await solanaWriteConnection.sendRawTransaction(txSerialized, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
+					cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> txHash`, txHash, `, last valid block `, lastValidBlockHeight, `, cur block `, curBlockHeight);
+					if (!txHash) return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
+				}			
 		
 				await wait(pollDelay);
 		
