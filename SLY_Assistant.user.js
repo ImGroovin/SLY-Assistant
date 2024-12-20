@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.36
+// @version      0.6.37
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -1060,7 +1060,7 @@
 		return token;
 	}
 
-/*
+
 	async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName) {
 		let {blockHeight: curBlockHeight} = await solanaReadConnection.getEpochInfo({ commitment: 'confirmed' });
 		let interimBlockHeight = curBlockHeight;
@@ -1090,8 +1090,9 @@
 		cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> TRYING 🌐`);
 		return await sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName);
 	}
- */
 
+	/*
+ 	// Swift's replacement:
 	async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName) {
 		let {blockHeight: curBlockHeight} = await solanaReadConnection.getEpochInfo({ commitment: 'confirmed' });
 		txHash = await solanaWriteConnection.sendRawTransaction(txSerialized, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
@@ -1130,6 +1131,7 @@
 
 		return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};		
 	}
+ 	*/
 
 
 	function txSignAndSend(ix, fleet, opName, priorityFeeMultiplier, extraSigner=false) {
