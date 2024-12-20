@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.37
+// @version      0.6.38
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -201,6 +201,13 @@
 		// update ui
 		let groups = transactionStats.groups;
 		let content = '<table><tr><td colspan="4">Started: '+started.toLocaleDateString()+' '+started.toLocaleTimeString()+' / Hours passed: '+((Date.now()-started)/1000/60/60).toFixed(2)+'</td></tr>';
+        let tempTotalRequests = solanaReadCount + solanaWriteCount;
+        let tempMinsPassed = (Date.now()-started)/1000/60;
+        let tempReqPerMin = (tempTotalRequests / tempMinsPassed).toFixed(2);
+        console.log('DEBUG tempTotalRequests:', tempTotalRequests);
+        console.log('DEBUG tempMinsPassed:', tempMinsPassed);
+        console.log('DEBUG tempReqPerMin:', tempReqPerMin);
+        content += '<tr><td colspan="4">RPC Requests: ' + solanaReadCount + ' reads | ' + solanaWriteCount + ' writes | ' + (tempTotalRequests / tempMinsPassed).toFixed(2) + ' per minute</td></tr>';
 		for (let group in groups) {
 			content += '<tr style="opacity:0.66"><td>'+group+'</td><td align="right">Count</td><td align="right">Total '+groups[group].TOTAL.unit+'</td><td align="right">Average '+groups[group].TOTAL.unit+'</td><td align="right">Last '+groups[group].TOTAL.unit+'</td></tr>';
 			let precision = +groups[group].TOTAL.precision;
@@ -320,6 +327,7 @@
 	const solanaReadConnection = new Proxy(rawSolanaReadConnection, readConnectionProxy);
 	const rawSolanaWriteConnection = new solanaWeb3.Connection(writeRPCs[writeIdx], 'confirmed');
 	const solanaWriteConnection = new Proxy(rawSolanaWriteConnection, writeConnectionProxy);
+    let cachedEpochInfo = {'blockHeight': 0, 'lastUpdated': 0};
 	let solanaReadCount = 0;
 	let solanaWriteCount = 0;
 	let tokenCheckCounter = 0;
@@ -536,7 +544,7 @@
             }
             if (craftRecipe.account.category.toString() === upgradeCategory.publicKey.toString()) {
                 upgradeRecipes.push({'name': recipeName, 'publicKey': craftRecipe.publicKey, 'category': craftRecipe.account.category, 'domain': craftRecipe.account.domain, 'feeRecipient': craftRecipe.account.feeRecipient.key, 'duration': craftRecipe.account.duration.toNumber(), 'input': recipeInputOutput, 'output': []});
-            } else if (recipeName !== 'SDU') {
+            } else {
                 craftRecipes.push({'name': recipeName, 'publicKey': craftRecipe.publicKey, 'category': craftRecipe.account.category, 'domain': craftRecipe.account.domain, 'feeAmount': craftRecipe.account.feeAmount.toNumber()/100000000, 'feeRecipient': craftRecipe.account.feeRecipient.key, 'duration': craftRecipe.account.duration.toNumber(), 'input': recipeInputOutput.slice(0, -1), 'output': recipeInputOutput.slice(-1)[0]});
             }
         }
@@ -1060,35 +1068,48 @@
 		return token;
 	}
 
+    async function localGetEpochInfo(fleet) {
+        let curTimestamp = Date.now();
+        let localBlockHeight;
+        if ((curTimestamp - cachedEpochInfo.lastUpdated) > 10000) {
+            let {blockHeight: curBlockHeight} = await solanaReadConnection.getEpochInfo({ commitment: 'confirmed' });
+            cachedEpochInfo.blockHeight = curBlockHeight;
+            cachedEpochInfo.lastUpdated = curTimestamp;
+            localBlockHeight = curBlockHeight;
+        } else {
+            localBlockHeight = cachedEpochInfo.blockHeight + Math.round((curTimestamp - cachedEpochInfo.lastUpdated) / 500);
+        }
+        return localBlockHeight;
+    }
 
-	async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName) {
-		let {blockHeight: curBlockHeight} = await solanaReadConnection.getEpochInfo({ commitment: 'confirmed' });
+	async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName, interval) {
+        let curBlockHeight = await localGetEpochInfo(fleet);
 		let interimBlockHeight = curBlockHeight;
-		//a quick fix for a race condition problem: wait 30 blocks longer to be sure SLYA won't miss a very late transaction confirmation:
-		if (curBlockHeight > lastValidBlockHeight + 30) return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
+		if (curBlockHeight > lastValidBlockHeight) return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
 		txHash = await solanaWriteConnection.sendRawTransaction(txSerialized, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
         cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> txHash`, txHash, `, last valid block `, lastValidBlockHeight, `, cur block `, curBlockHeight);
 
         // Force a retry if txHash is undefined. Not sure why sendRawTransaction would return nothing, but this happens occasionally.
         if (!txHash) return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
 
-		while ((curBlockHeight - interimBlockHeight) < 30) {
-				const signatureStatus = await solanaReadConnection.getSignatureStatus(txHash);
-				if (signatureStatus.value && ['confirmed','finalized'].includes(signatureStatus.value.confirmationStatus)) {
-						if(curBlockHeight > lastValidBlockHeight) cLog(2,`${FleetTimeStamp(fleet.label)} Signature accepted after block height exceeded`);
-						return {txHash, confirmation: signatureStatus};
-				} else if (signatureStatus.err) {
-						cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> Err`,signatureStatus.err);
-						return {txHash, confirmation: signatureStatus}
-				}
+        let confCheckDelay = Math.floor(interval*500/4);
+		while ((curBlockHeight - interimBlockHeight) < interval) {
+            await wait(confCheckDelay);
+            const signatureStatus = await solanaReadConnection.getSignatureStatus(txHash);
+            if (signatureStatus.value && ['confirmed','finalized'].includes(signatureStatus.value.confirmationStatus)) {
+                if(curBlockHeight > lastValidBlockHeight) cLog(2,`${FleetTimeStamp(fleet.label)} Signature accepted after block height exceeded`);
+                return {txHash, confirmation: signatureStatus};
+            } else if (signatureStatus.err) {
+                cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> Err`,signatureStatus.err);
+                return {txHash, confirmation: signatureStatus}
+            }
 
-				await wait(Math.max(10000, globalSettings.confirmationCheckingDelay));
-				let epochInfo = await solanaReadConnection.getEpochInfo({ commitment: 'confirmed' });
-				curBlockHeight = epochInfo.blockHeight;
-		}
+            curBlockHeight = await localGetEpochInfo(fleet);
+        }
+        interval += 4
 
 		cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> TRYING 🌐`);
-		return await sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName);
+		return await sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName, interval);
 	}
 
 	/*
@@ -1101,7 +1122,7 @@
 		let pollDelay = Math.max(2500, globalSettings.confirmationCheckingDelay);
 		let retryCount = 0;
 		let pollDelayAdd = 0;
-		
+
 		// loop until block height exceeded and give the RPC a little more time (12 blocks = ~6 seconds) to prevent race conditions
 		while (curBlockHeight <= lastValidBlockHeight + 12) {
 
@@ -1109,10 +1130,10 @@
 					txHash = await solanaWriteConnection.sendRawTransaction(txSerialized, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
 					cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> txHash`, txHash, `, last valid block `, lastValidBlockHeight, `, cur block `, curBlockHeight);
 					if (!txHash) return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
-				}			
-		
+				}
+
 				await wait(pollDelay);
-		
+
 				const signatureStatus = await solanaReadConnection.getSignatureStatus(txHash);
 				if (signatureStatus.value && ['confirmed','finalized'].includes(signatureStatus.value.confirmationStatus)) {
 						cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> SIGNATURE FOUND ✅`);
@@ -1129,7 +1150,7 @@
 				cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> STILL POLLING TX 🌐 [try`,(retryCount+1),`, wait`,pollDelay,`ms]`);
 		}
 
-		return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};		
+		return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
 	}
  	*/
 
@@ -1182,30 +1203,31 @@
 				let txSigned = null;
                 cLog(4,`${FleetTimeStamp(fleetName)} <${opName}> tx: `, tx);
 
-		try {
-				if (typeof solflare === 'undefined') {
-					txSigned = phantom && phantom.solana ? await phantom.solana.signAllTransactions([tx]) : solana.signAllTransactions([tx]);
-				} else {
-					txSigned = await solflare.signAllTransactions([tx]);
-				}
-		} catch (error1) {
-			/* Catch the very rare "Could not establish connection. Receiving end does not exist" error from Solflare and just try it again: */
-			cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> Wallet extension error`, error1);
-			await wait(1000);
-			if (typeof solflare === 'undefined') {
-				txSigned = phantom && phantom.solana ? await phantom.solana.signAllTransactions([tx]) : solana.signAllTransactions([tx]);
-			} else {
-				txSigned = await solflare.signAllTransactions([tx]);
-			}
-		}
+                try {
+                    if (typeof solflare === 'undefined') {
+                        txSigned = phantom && phantom.solana ? await phantom.solana.signAllTransactions([tx]) : solana.signAllTransactions([tx]);
+                    } else {
+                        txSigned = await solflare.signAllTransactions([tx]);
+                    }
+                } catch (error1) {
+                    /* Catch the very rare "Could not establish connection. Receiving end does not exist" error from Solflare and just try it again: */
+                    cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> Wallet extension error`, error1);
+                    await wait(1000);
+                    if (typeof solflare === 'undefined') {
+                        txSigned = phantom && phantom.solana ? await phantom.solana.signAllTransactions([tx]) : solana.signAllTransactions([tx]);
+                    } else {
+                        txSigned = await solflare.signAllTransactions([tx]);
+                    }
+                }
 
                 cLog(4,`${FleetTimeStamp(fleetName)} <${opName}> txSigned: `, txSigned);
 				let txSerialized = await txSigned[0].serialize();
                 cLog(4,`${FleetTimeStamp(fleetName)} <${opName}> txSerialized: `, txSerialized);
 
 				let microOpStart = Date.now();
-				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> SEND ➡️`);
-				let response = await sendAndConfirmTx(txSerialized, latestBH.lastValidBlockHeight, null, fleet, opName);
+				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> SEND ➡️ lastValidBlockHeight+25: `, latestBH.lastValidBlockHeight+25);
+                // Adding a 25 block buffer before considering a transaction expired
+				let response = await sendAndConfirmTx(txSerialized, latestBH.lastValidBlockHeight + 25, null, fleet, opName, 10);
 				let txHash = response.txHash;
 				let confirmation = response.confirmation;
 				let txResult = txHash ? await solanaReadConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1}) : undefined;
@@ -2357,7 +2379,7 @@
                     tokenProgram: tokenProgramPK
                 }).instruction()}
                 transactions.push(tx);
-                }
+            }
 
             let [signerFeeMintToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
                 [
@@ -3256,7 +3278,7 @@
         craftCrewTd.appendChild(craftCrew);
 
         let filteredUpgradeRecipes = upgradeRecipes.filter(item => item.name.indexOf('SB Tier') === -1 );
-        let allRecipes = craftRecipes.concat(filteredUpgradeRecipes);
+        let allRecipes = craftRecipes.filter(item => item.name.indexOf('SDU') === -1 ).concat(filteredUpgradeRecipes);
         const craftItems = [''].concat(allRecipes.map((r) => r.name));
         let craftOptStr = '';
         craftItems.forEach( function(item) {craftOptStr += '<option value="' + item + '">' + item + '</option>';});
@@ -3290,11 +3312,11 @@
 			let userFleetIndex = userFleets.findIndex(item => {return item.publicKey == fleet.publicKey});
 			cLog(1,`${FleetTimeStamp(fleet.label)} Manual request for resetting the fleet state`);
 			updateFleetState(fleet,'ERROR: Trying to restart ...',true); // keep string "ERROR" for now to prevent an early start of operateFleet()
-				
+
 			let fleetAcctInfo = await getAccountInfo(fleet.label, 'full fleet info', fleet.publicKey);
 			let [fleetState, extra] = getFleetState(fleetAcctInfo);
 			let fleetCoords = fleetState == 'Idle' && extra ? extra : [];
-				
+
 			//now we have all necessary info, let's do the reset
 			fleet.startingCoords = fleetCoords;
 			fleet.iterCnt=0;
@@ -3478,10 +3500,10 @@
 		let errBool = false;
 
 		for (let [i, row] of fleetRows.entries()) {
-			
+
 			const inputError = (msg, innerHtml, type) => {
 				// type 1: Distance exceeds fuel capacity
-				// type 2: Identical starbase/target sectors				
+				// type 2: Identical starbase/target sectors
 				cLog(1, msg);
 				row.children[2].firstChild.style.border = '2px solid red';
 				row.children[3].firstChild.style.border = '2px solid red';
@@ -4027,17 +4049,17 @@
 	}
 
 	async function handleClean() {
-	
+
 		let fleetKeys = GM_listValues();
 		let fleetKey = null;
 		let removedCounter = 0;
 		for (let i in fleetKeys) {
-		
+
 			fleetKey = fleetKeys[i];
-		
+
 			let fleetSavedData = await GM.getValue(fleetKey, '{}');
 			let fleetParsedData = JSON.parse(fleetSavedData);
-			
+
 			if(typeof fleetParsedData.assignment == "undefined") continue; //skip crafting jobs and global settings
 
 			if (!userFleets.some(item => item.publicKey.toString() === fleetKey)) {
@@ -4048,9 +4070,9 @@
 		}
 		let cleanBtn = document.querySelector('#cleanBtn');
 		if(cleanBtn) cleanBtn.innerHTML = '' + removedCounter + ' removed';
-		
+
 		setTimeout(() => { if(cleanBtn) cleanBtn.innerHTML = 'Clean'; }, 2000);
-	}	
+	}
 
 	async function handleMovement(i, moveDist, moveX, moveY) {
 		let moveTime = 1;
@@ -5378,10 +5400,13 @@
 
         let limitingIngredient = starbasePlayerIngredientCargoHolds.reduce((prev, curr) => prev && prev.amountCraftable < curr.amountCraftable ? prev : curr);
 
+        console.log('DEBUG limitingIngredient: ', limitingIngredient);
+        console.log('DEBUG targetAmount: ', targetAmount);
         if (limitingIngredient.amountCraftable < targetAmount) {
             for (let ingredient of starbasePlayerIngredientCargoHolds) {
+                console.log('DEBUG ingredient: ', ingredient);
                 if (ingredient.craftAmount > 0) {
-                    let filteredCraftRecipes = craftRecipes.filter(item => !['Framework 2','Framework 3','Toolkit 2','Toolkit 3'].includes(item.name));
+                    let filteredCraftRecipes = craftRecipes.filter(item => !['Framework 2','Framework 3','Toolkit 2','Toolkit 3','SDU'].includes(item.name));
                     let ingredientRecipes = filteredCraftRecipes.filter(item => item.output.mint.toString() === ingredient.cargoHoldToken.mint);
                     for (let ingredientRecipe of ingredientRecipes) {
                         let checkRecipe = getTargetRecipe(starbasePlayerCargoHoldsAndTokens, ingredientRecipe, ingredient.craftAmount);
