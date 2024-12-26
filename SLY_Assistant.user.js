@@ -225,7 +225,7 @@
 	//statsadd end
 
 	//autofee
-	async function alterFees(seconds) {
+	async function alterFees(seconds,opName) {
 		if((!globalSettings.craftingTxAffectsAutoFee) && (opName.includes('CRAFT') || opName.includes('UPGRADE'))) return;
 		const proportionFee = (globalSettings.automaticFeeMax <= globalSettings.automaticFeeMin) ? 1 : (currentFee - globalSettings.automaticFeeMin) / ( globalSettings.automaticFeeMax - globalSettings.automaticFeeMin );
 		let thresholdTime = (globalSettings.automaticFeeTimeMax - globalSettings.automaticFeeTimeMin) * proportionFee + globalSettings.automaticFeeTimeMin;
