@@ -1285,9 +1285,9 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                 cLog(4,`${FleetTimeStamp(fleetName)} <${opName}> txSerialized: `, txSerialized);
 
 				let microOpStart = Date.now();
-				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> SEND ➡️ lastValidBlockHeight+25: `, latestBH.lastValidBlockHeight+25);
+				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> SEND ➡️ lastValidBlockHeight: `, latestBH.lastValidBlockHeight);
                 // Adding a 25 block buffer before considering a transaction expired
-				let response = await sendAndConfirmTx(txSerialized, latestBH.lastValidBlockHeight + 25, null, fleet, opName);
+				let response = await sendAndConfirmTx(txSerialized, latestBH.lastValidBlockHeight, null, fleet, opName);
 				let txHash = response.txHash;
 				let confirmation = response.confirmation;
 				let txResult = txHash ? await solanaReadConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1}) : undefined;
@@ -1311,13 +1311,13 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> CONFIRM ❌ ${confirmationTimeStr}`);
 					cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> RESEND 🔂`);
 					await alterStats('Txs Resent',opName,(Date.now() - macroOpStart)/1000,'Seconds',1); //statsadd
-					await alterFees(-1); //autofee
+					await alterFees(-1, opName); //autofee
 					continue; //retart loop to try again
 				}
 
 				let tryCount = 1;
 				if (!confirmation.name) {
-					cLog(3,`${FleetTimeStamp(fleetName)} <${opName}> Polling transaction until successful`);
+					if(!txResult) cLog(3,`${FleetTimeStamp(fleetName)} <${opName}> Polling transaction until successful`);
 					while (!txResult) {
 						tryCount++;
 						if(tryCount >= 130) {
@@ -1346,7 +1346,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				await alterStats('SOL Fees',undefined,txResult.meta.fee*0.000000001,'SOL',7); // undefined name => only totals tracked //statsadd
 				let statGroup = ((confirmation && confirmation.value && confirmation.value.err && confirmation.value.err.InstructionError) || (txResult && txResult.meta && txResult.meta.err && txResult.meta.err.InstructionError)) ? 'Txs IxErrors' : 'Txs Confirmed'; //statsadd
 				await alterStats(statGroup,opName,fullMsTaken/1000,'Seconds',1); //statsadd
-				await alterFees(fullMsTaken/1000); //autofee
+				await alterFees(fullMsTaken/1000, opName); //autofee
 
 				resolve(txResult);
 			}
@@ -3800,7 +3800,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			//lowPriorityFeeMultiplier: parseIntDefault(document.querySelector('#lowPriorityFeeMultiplier').value, 10),
             saveProfile: saveProfile,
             savedProfile: saveProfile ? (userProfileAcct && userProfileKeyIdx) ? [userProfileAcct.toString(), userProfileKeyIdx, pointsProfileKeyIdx] : [] : [],
-			confirmationCheckingDelay: parseIntDefault(document.querySelector('#confirmationCheckingDelay').value, 10000),
+			confirmationCheckingDelay: parseIntDefault(document.querySelector('#confirmationCheckingDelay').value, 2000),
 			debugLogLevel: parseIntDefault(document.querySelector('#debugLogLevel').value, 3),
             craftingJobs: parseIntDefault(document.querySelector('#craftingJobs').value, 4),
 			subwarpShortDist: document.querySelector('#subwarpShortDist').checked,
@@ -6223,7 +6223,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			settingsModalContentString += '<div>Fleets keep 1 resource in starbases <input id="starbaseKeep1" type="checkbox"></input><br><small>Same as previous option but for starbases.</small></div>';
 			settingsModalContentString += '</li>';
 			settingsModalContentString += '<li class="tab_advanced">';
-			settingsModalContentString += '<div>Tx Poll Delay <input id="confirmationCheckingDelay" type="number" min="200" max="10000" placeholder="2000"></input><br><small>How many milliseconds to wait before re-reading the chain for confirmation</small></div>';
+			settingsModalContentString += '<div>Tx Poll Delay <input id="confirmationCheckingDelay" type="number" min="2000" max="10000" placeholder="2000"></input><br><small>How many milliseconds to wait before re-reading the chain for confirmation (min: 2000)</small></div>';
 			settingsModalContentString += '<div>Console Logging <input id="debugLogLevel" type="number" min="0" max="9" placeholder="3"></input><br><small>How much console logging you want to see (higher number = more, 0 = none)</small></div>';
 			settingsModalContentString += '<div>Auto Start Script <input id="autoStartScript" type="checkbox"></input><br><small>Should Lab Assistant automatically start after initialization is complete?</small></div>';
 			settingsModalContentString += '<div>Reload On Stuck Fleets <input id="reloadPageOnFailedFleets" type="number" min="0" max="999" placeholder="0"></input><br><small>Automatically refresh the page if this many fleets get stuck (0 = never)</small></div>';
