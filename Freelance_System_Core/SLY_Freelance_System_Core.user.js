@@ -298,7 +298,8 @@
             (input[3][0] ? 1 << 0 : 0) | // doStarbaseUpkeep
             (input[3][1] ? 1 << 1 : 0) | // manageProgression
             (input[3][2] ? 1 << 2 : 0) | // manageCrewConfig
-            (input[3][3] ? 1 << 3 : 0)); // manageCrew
+            (input[3][3] ? 1 << 3 : 0) | // manageCrew
+            (input[3][3] ? 1 << 4 : 0)); // withdrawCrew
         return out;
     }
 
@@ -346,7 +347,7 @@
             [false,false,false,false,false,false,false,false],
             [false,false,true,true,true,false,true,true],
             [false,true,true,true,true,true,false,true],
-            [true,false,false,true]
+            [true,false,false,true,false]
         ]);
 	
         // This requests the 'spendPoints' permission from the Points program
@@ -458,7 +459,7 @@
                 permissionNames = [['manageGame','manageSector','manageStar','managePlanet','manageShip','manageSagePlayerProfile','manageStarbase','manageMineItem'],
                                  ['manageResource','removeShipEscrow','moveFleet','transitionFromLoadingBay','transitionFromIdle','rentFleet','doCrafting','manageCargoPod'],
                                  ['addRemoveCargo','doStarbaseUpgrades','manageFleet','manageFleetCargo','doMining','respawn','manageSurveyDataUnit','scanSurveyDataUnit'],
-                                 ['doStarbaseUpkeep','manageProgression','manageCrewConfig','manageCrew']];
+                                 ['doStarbaseUpkeep','manageProgression','manageCrewConfig','manageCrew','withdrawCrew']];
                 break;
             case 'points':
                 permissionNames = [['manageCategory','manageModifier','spendPoints']];
@@ -470,7 +471,7 @@
                 permissionNames = [['manageGame','manageSector','manageStar','managePlanet','manageShip','manageSagePlayerProfile','manageStarbase','manageMineItem'],
                                  ['manageResource','removeShipEscrow','moveFleet','transitionFromLoadingBay','transitionFromIdle','rentFleet','doCrafting','manageCargoPod'],
                                  ['addRemoveCargo','doStarbaseUpgrades','manageFleet','manageFleetCargo','doMining','respawn','manageSurveyDataUnit','scanSurveyDataUnit'],
-                                 ['doStarbaseUpkeep','manageProgression','manageCrewConfig','manageCrew']];
+                                 ['doStarbaseUpkeep','manageProgression','manageCrewConfig','manageCrew','withdrawCrew']];
         };
 
         let permContainer = document.createElement('div');
