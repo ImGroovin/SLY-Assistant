@@ -3790,7 +3790,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			automaticFeeTimeMin: parseIntDefault(document.querySelector('#automaticFeeTimeMin').value, 10),
 			automaticFeeTimeMax: parseIntDefault(document.querySelector('#automaticFeeTimeMax').value, 70),
 
-			craftingTxMultiplier: parseIntDefault(document.querySelector('#craftingTxMultiplier').checked, 200),
+			craftingTxMultiplier: parseIntDefault(document.querySelector('#craftingTxMultiplier').value, 200),
 			craftingTxAffectsAutoFee: document.querySelector('#craftingTxAffectsAutoFee').checked,
 			
 			transportKeep1: document.querySelector('#transportKeep1').checked,
