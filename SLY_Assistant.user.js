@@ -1117,7 +1117,7 @@
         } else {
 		// We estimate the current block height and use the current timestamp for the calculation, because it is possible that the above while loop took some time. The average block time is 420ms, but just to be sure we use a little more (450ms), so a tx doesn't expire too early.
 		localBlockHeight = cachedEpochInfo.blockHeight + Math.round((Date.now() - cachedEpochInfo.lastUpdated) / useBlockTime);
-		//cLog(3,`${FleetTimeStamp(fleet.label)} using estimated block height of`, localBlockHeight);
+		cLog(3,`${FleetTimeStamp(fleet.label)} using estimated block height of`, localBlockHeight);
         }
         return localBlockHeight;
     }
