@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.39
+// @version      0.6.40
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -112,6 +112,9 @@
 			automaticFeeTimeMin: parseIntDefault(globalSettings.automaticFeeTimeMin, 6),
 			automaticFeeTimeMax: parseIntDefault(globalSettings.automaticFeeTimeMax, 40),
 
+			craftingTxMultiplier: parseIntDefault(globalSettings.craftingTxMultiplier, 200),
+			craftingTxAffectsAutoFee: parseBoolDefault(globalSettings.craftingTxAffectsAutoFee, true),
+
 			transportKeep1: parseBoolDefault(globalSettings.transportKeep1, false),
 			minerKeep1: parseBoolDefault(globalSettings.minerKeep1, false),
 			starbaseKeep1: parseBoolDefault(globalSettings.starbaseKeep1, false),
@@ -124,7 +127,7 @@
             savedProfile: globalSettings.savedProfile && globalSettings.savedProfile.length > 0 ? globalSettings.savedProfile : [],
 
 			//How many milliseconds to wait before re-reading the chain for confirmation
-			confirmationCheckingDelay: parseIntDefault(globalSettings.confirmationCheckingDelay, 10000),
+			confirmationCheckingDelay: parseIntDefault(globalSettings.confirmationCheckingDelay, 2000),
 
 			//How much console logging you want to see (higher number = more, 0 = none)
 			debugLogLevel: parseIntDefault(globalSettings.debugLogLevel, 3),
@@ -204,9 +207,9 @@
         let tempTotalRequests = solanaReadCount + solanaWriteCount;
         let tempMinsPassed = (Date.now()-started)/1000/60;
         let tempReqPerMin = (tempTotalRequests / tempMinsPassed).toFixed(2);
-        console.log('DEBUG tempTotalRequests:', tempTotalRequests);
-        console.log('DEBUG tempMinsPassed:', tempMinsPassed);
-        console.log('DEBUG tempReqPerMin:', tempReqPerMin);
+        //console.log('DEBUG tempTotalRequests:', tempTotalRequests);
+        //console.log('DEBUG tempMinsPassed:', tempMinsPassed);
+        //console.log('DEBUG tempReqPerMin:', tempReqPerMin);
         content += '<tr><td colspan="4">RPC Requests: ' + solanaReadCount + ' reads | ' + solanaWriteCount + ' writes | ' + (tempTotalRequests / tempMinsPassed).toFixed(2) + ' per minute</td></tr>';
 		for (let group in groups) {
 			content += '<tr style="opacity:0.66"><td>'+group+'</td><td align="right">Count</td><td align="right">Total '+groups[group].TOTAL.unit+'</td><td align="right">Average '+groups[group].TOTAL.unit+'</td><td align="right">Last '+groups[group].TOTAL.unit+'</td></tr>';
@@ -223,6 +226,7 @@
 
 	//autofee
 	async function alterFees(seconds) {
+		if((!globalSettings.craftingTxAffectsAutoFee) && (opName.includes('CRAFT') || opName.includes('UPGRADE'))) return;
 		const proportionFee = (globalSettings.automaticFeeMax <= globalSettings.automaticFeeMin) ? 1 : (currentFee - globalSettings.automaticFeeMin) / ( globalSettings.automaticFeeMax - globalSettings.automaticFeeMin );
 		let thresholdTime = (globalSettings.automaticFeeTimeMax - globalSettings.automaticFeeTimeMin) * proportionFee + globalSettings.automaticFeeTimeMin;
 		if(thresholdTime < globalSettings.automaticFeeTimeMin) { thresholdTime = globalSettings.automaticFeeTimeMin; }
@@ -327,7 +331,7 @@
 	const solanaReadConnection = new Proxy(rawSolanaReadConnection, readConnectionProxy);
 	const rawSolanaWriteConnection = new solanaWeb3.Connection(writeRPCs[writeIdx], 'confirmed');
 	const solanaWriteConnection = new Proxy(rawSolanaWriteConnection, writeConnectionProxy);
-    let cachedEpochInfo = {'blockHeight': 0, 'lastUpdated': 0};
+    let cachedEpochInfo = {'blockHeight': 0, 'lastUpdated': 0, 'isUpdating': false};
 	let solanaReadCount = 0;
 	let solanaWriteCount = 0;
 	let tokenCheckCounter = 0;
@@ -708,7 +712,7 @@
             let travelDistNew = Math.sqrt((startX - val[0]) ** 2 + (startY - val[1]) ** 2);
             if (globalSettings.subwarpShortDist && remainingDistOld > 0 && remainingDistNew < remainingDistOld && remainingDistNew < 1.5 && travelDistNew <= realWarpRange) {
                 return val;
-            } else if (globalSettings.subwarpShortDist && remainingDistOld < 1.5 && remainingDistNew >= 1.5) {
+            } else if (globalSettings.subwarpShortDist && remainingDistOld < 1.5 && remainingDistNew >= 1.5) {
                 return best;
             } else if (remainingDistNew <= realWarpRange && travelDistNew <= realWarpRange && remainingDistNew+travelDistNew < remainingDistOld+travelDistOld) {
                 return val;
@@ -1068,6 +1072,7 @@
 		return token;
 	}
 
+/*
     async function localGetEpochInfo(fleet) {
         let curTimestamp = Date.now();
         let localBlockHeight;
@@ -1081,7 +1086,104 @@
         }
         return localBlockHeight;
     }
+*/
 
+    // localGetEpochInfo caches the last block height and estimates the current block height if the cached value has been requested recently.
+    async function localGetEpochInfo(fleet) {
+	const cachedValueExpires = 15000, useBlockTime = 450;
+        let curTimestamp = Date.now(), localBlockHeight = 0, loopCounter = 0;
+	// if another async call is already requesting the current blocktime, we wait for the result, but max 2.5 seconds (= 20 * 125ms)
+        while (cachedEpochInfo.isUpdating && (curTimestamp - cachedEpochInfo.lastUpdated) > cachedValueExpires && loopCounter < 20) {
+		await wait(125);
+		loopCounter++;
+		if(loopCounter >= 20 && cachedEpochInfo.isUpdating) cLog(1,`${FleetTimeStamp(fleet.label)} Concurrent read of block height took too long, forcing read`);
+	}
+        if ((curTimestamp - cachedEpochInfo.lastUpdated) > cachedValueExpires) {
+		// We request the current block height. We use a try/catch block, so if something goes wrong, we can be sure that "isUpdating" is reset
+		try {
+			cachedEpochInfo.isUpdating = true;
+			let {blockHeight: curBlockHeight} = await solanaReadConnection.getEpochInfo({ commitment: 'confirmed' });
+			cachedEpochInfo.blockHeight = curBlockHeight;
+			cachedEpochInfo.lastUpdated = Date.now(); // we must use the current time (instead of the previously saved timestamp), because it is possible that several re-reads occured (it would then lead to a block height that's way too high). Also it is possible that the while loop from above took some time.
+			localBlockHeight = curBlockHeight;
+			cLog(3,`${FleetTimeStamp(fleet.label)} using requested block height of`, localBlockHeight);
+			cachedEpochInfo.isUpdating = false;
+		} catch(error) {
+			// something went wrong, we reset "isUpdating" and use the cached value
+			localBlockHeight = cachedEpochInfo.blockHeight + Math.round((Date.now() - cachedEpochInfo.lastUpdated) / useBlockTime);
+			cachedEpochInfo.isUpdating = false;
+			cLog(1,`${FleetTimeStamp(fleet.label)} Uncaught error in localGetEpochInfo`, error);
+		}
+        } else {
+		// We estimate the current block height and use the current timestamp for the calculation, because it is possible that the above while loop took some time. The average block time is 420ms, but just to be sure we use a little more (450ms), so a tx doesn't expire too early.
+		localBlockHeight = cachedEpochInfo.blockHeight + Math.round((Date.now() - cachedEpochInfo.lastUpdated) / useBlockTime);
+		//cLog(3,`${FleetTimeStamp(fleet.label)} using estimated block height of`, localBlockHeight);
+        }
+        return localBlockHeight;
+    }
+
+let signatureStatusQueue = [];
+	
+function requestSignatureStatus(txHash) {
+  return new Promise((resolve, reject) => {
+	signatureStatusQueue.push({ txHash, resolve, reject });
+  });
+}
+
+// The handler processes the queue and calls the corresponding callbacks with the result
+async function signatureStatusHandler() {
+	const currentHashes = signatureStatusQueue.splice(0, signatureStatusQueue.length);
+	if (currentHashes.length > 0) {
+			
+		const txHashes = currentHashes.map(req => req.txHash);
+		cLog(3,`Requesting`, currentHashes.length, `signature statuses at once`);
+			
+		try {
+			const signatureStatuses = await solanaReadConnection.getSignatureStatuses(txHashes);
+			//cLog(3,`Got signature results:`, signatureStatuses);
+			for (let i = 0 ; i < currentHashes.length; i++) {
+				const { resolve } = currentHashes[i];
+				const signatureStatus = { value: signatureStatuses.value[i] };
+				resolve(signatureStatus);
+			}
+		} catch(error) {
+			// If something goes wrong, we reject each request. If a promise of the queue was already resolved in the "try" block, the reject does (correctly) nothing and won't throw an error
+			for (const req of currentRequests) {
+				req.reject({err: error});
+			}
+		}
+	}
+	setTimeout(() => { signatureStatusHandler(); }, Math.max(2000, globalSettings.confirmationCheckingDelay));
+}	
+setTimeout(() => { signatureStatusHandler(); }, Math.max(2000, globalSettings.confirmationCheckingDelay));
+
+async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName) {
+	let curBlockHeight = await localGetEpochInfo(fleet);
+	let retryCount = 0;		
+	// loop until block height exceeded and give the RPC a little more time (20 blocks = ~8 seconds) to prevent race conditions (and take into account that the estimated block time can be slightly off). The loop doesn't need a wait time, because it is enforced by the signature queue (2 seconds)
+        while (curBlockHeight <= lastValidBlockHeight + 20) {
+		// we initially send the tx. Also we resend the tx every fourth loop (=~8 seconds), because: "With many transactions in the network queue, our initial send might get stuck behind a large backlog. While the blockhash is still valid, the transaction must still be seen and processed by validators. Continuously resending it can increase the chance that our transaction “bubbles up” to the front of processing queues.
+		if((retryCount % 4) == 0) {
+			txHash = await solanaWriteConnection.sendRawTransaction(txSerialized, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
+			cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}>`,(retryCount > 0 ? 'TRYING 🌐' : ''),`txHash`, txHash, `/ last valid block`, lastValidBlockHeight, `/ cur block`, curBlockHeight);
+			if (!txHash) return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
+		}
+		const signatureStatus = await requestSignatureStatus(txHash);
+		if (signatureStatus.value && ['confirmed','finalized'].includes(signatureStatus.value.confirmationStatus)) {
+			cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> SIGNATURE FOUND ✅`);
+			return {txHash, confirmation: signatureStatus};
+		} else if (signatureStatus.err) {
+			cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> Err`,signatureStatus.err);
+			return {txHash, confirmation: signatureStatus}
+		}
+		curBlockHeight = await localGetEpochInfo(fleet); // todo: if for some reason the request of the block height takes a very long time (e.g. 20 seconds) and the block height is near the block limit, it is possible that the loop will exit without doing a final signature check.
+		retryCount++;			
+	}
+        return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};		
+}
+
+
+/*
 	async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName, interval) {
         let curBlockHeight = await localGetEpochInfo(fleet);
 		let interimBlockHeight = curBlockHeight;
@@ -1111,49 +1213,7 @@
 		cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> TRYING 🌐`);
 		return await sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName, interval);
 	}
-
-	/*
- 	// Swift's replacement:
-	async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName) {
-		let {blockHeight: curBlockHeight} = await solanaReadConnection.getEpochInfo({ commitment: 'confirmed' });
-		txHash = await solanaWriteConnection.sendRawTransaction(txSerialized, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
-		cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> txHash`, txHash, `, last valid block `, lastValidBlockHeight, `, cur block `, curBlockHeight);
-
-		let pollDelay = Math.max(2500, globalSettings.confirmationCheckingDelay);
-		let retryCount = 0;
-		let pollDelayAdd = 0;
-
-		// loop until block height exceeded and give the RPC a little more time (12 blocks = ~6 seconds) to prevent race conditions
-		while (curBlockHeight <= lastValidBlockHeight + 12) {
-
-				if(retryCount > 0 && (retryCount % 3) == 0) { // re-send the tx after every 3rd poll to force the queuing the tx again
-					txHash = await solanaWriteConnection.sendRawTransaction(txSerialized, {skipPreflight: true, maxRetries: 0, preflightCommitment: 'confirmed'});
-					cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> txHash`, txHash, `, last valid block `, lastValidBlockHeight, `, cur block `, curBlockHeight);
-					if (!txHash) return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
-				}
-
-				await wait(pollDelay);
-
-				const signatureStatus = await solanaReadConnection.getSignatureStatus(txHash);
-				if (signatureStatus.value && ['confirmed','finalized'].includes(signatureStatus.value.confirmationStatus)) {
-						cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> SIGNATURE FOUND ✅`);
-						return {txHash, confirmation: signatureStatus};
-				} else if (signatureStatus.err) {
-						cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> Err`,signatureStatus.err);
-						return {txHash, confirmation: signatureStatus}
-				}
-				let epochInfo = await solanaReadConnection.getEpochInfo({ commitment: 'confirmed' });
-				curBlockHeight = epochInfo.blockHeight;
-				pollDelayAdd += 200;
-				pollDelay += pollDelayAdd;
-				retryCount++;
-				cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> STILL POLLING TX 🌐 [try`,(retryCount+1),`, wait`,pollDelay,`ms]`);
-		}
-
-		return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
-	}
- 	*/
-
+ */
 
 	function txSignAndSend(ix, fleet, opName, priorityFeeMultiplier, extraSigner=false) {
 		return new Promise(async resolve => {
@@ -1227,7 +1287,7 @@
 				let microOpStart = Date.now();
 				cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> SEND ➡️ lastValidBlockHeight+25: `, latestBH.lastValidBlockHeight+25);
                 // Adding a 25 block buffer before considering a transaction expired
-				let response = await sendAndConfirmTx(txSerialized, latestBH.lastValidBlockHeight + 25, null, fleet, opName, 10);
+				let response = await sendAndConfirmTx(txSerialized, latestBH.lastValidBlockHeight + 25, null, fleet, opName);
 				let txHash = response.txHash;
 				let confirmation = response.confirmation;
 				let txResult = txHash ? await solanaReadConnection.getTransaction(txHash, {commitment: 'confirmed', preflightCommitment: 'confirmed', maxSupportedTransactionVersion: 1}) : undefined;
@@ -2452,7 +2512,7 @@
                 }).remainingAccounts(startCraftProcRemainingAccts).instruction()}
             transactions.push(tx2);
 
-            let txResult = {craftingId: formattedRandomBytes, result: await txSignAndSend(transactions, userCraft, 'START CRAFTING', 250)};
+            let txResult = {craftingId: formattedRandomBytes, result: await txSignAndSend(transactions, userCraft, 'START CRAFTING', Math.min(globalSettings.craftingTxMultiplier, 500) )};
 
             // statsadd start
             let postTokenBalances = txResult.result.meta.postTokenBalances;
@@ -2642,7 +2702,7 @@
             transactions.push(tx2);
 
             //let txResult = await txSignAndSend(tx2, userCraft, 'COMPLETING CRAFT TX2');
-            let txResult = await txSignAndSend(transactions, userCraft, 'COMPLETING CRAFT', 250);
+            let txResult = await txSignAndSend(transactions, userCraft, 'COMPLETING CRAFT', Math.min(globalSettings.craftingTxMultiplier, 500) );
 
             // Allow RPC to catch up (to be sure the crew is available before starting the next job)
             await wait(4000);
@@ -2834,7 +2894,7 @@
             }).instruction()};
             transactions.push(tx2);
 
-            let txResult = await txSignAndSend(transactions, userCraft, 'COMPLETING UPGRADE', 250, userRedemptionAcct);
+            let txResult = await txSignAndSend(transactions, userCraft, 'COMPLETING UPGRADE', Math.min(globalSettings.craftingTxMultiplier, 500), userRedemptionAcct);
 
             resolve(txResult);
         });
@@ -3730,6 +3790,9 @@
 			automaticFeeTimeMin: parseIntDefault(document.querySelector('#automaticFeeTimeMin').value, 6),
 			automaticFeeTimeMax: parseIntDefault(document.querySelector('#automaticFeeTimeMax').value, 40),
 
+			craftingTxMultiplier: parseIntDefault(document.querySelector('#craftingTxMultiplier').checked, 200),
+			craftingTxAffectsAutoFee: document.querySelector('#craftingTxAffectsAutoFee').checked,
+			
 			transportKeep1: document.querySelector('#transportKeep1').checked,
 			minerKeep1: document.querySelector('#minerKeep1').checked,
 			starbaseKeep1: document.querySelector('#starbaseKeep1').checked,
@@ -3781,6 +3844,9 @@
 		document.querySelector('#automaticFeeTimeMin').value = globalSettings.automaticFeeTimeMin;
 		document.querySelector('#automaticFeeTimeMax').value = globalSettings.automaticFeeTimeMax;
 
+		document.querySelector('#craftingTxMultiplier').value = globalSettings.craftingTxMultiplier;
+		document.querySelector('#craftingTxAffectsAutoFee').checked = globalSettings.craftingTxAffectsAutoFee;
+		
 		document.querySelector('#transportKeep1').checked = globalSettings.transportKeep1;
 		document.querySelector('#minerKeep1').checked = globalSettings.minerKeep1;
 		document.querySelector('#starbaseKeep1').checked = globalSettings.starbaseKeep1;
@@ -5555,113 +5621,118 @@
                 await updateCraft(userCraft);
             }
 
-            let starbasePlayerCargoHoldsAndTokens = await getStarbasePlayerCargoHolds(starbasePlayer);
+            // if the crafting process is still running and there is nothing to complete, we can stop here
+            if((!craftingProcessRunning) || completedCraftingProcesses.length || completedUpgradeProcesses.length)
+            {
 
-            for (let craftingProcess of completedCraftingProcesses) {
-                let craftRecipe = craftRecipes.find(item => item.publicKey.toString() === craftingProcess.recipe.toString());
-                if (userCraft.craftingId && craftingProcess.craftingId == userCraft.craftingId) {
-                    cLog(1,`${FleetTimeStamp(userCraft.label)} Completing craft at [${targetX}, ${targetY}] for  ${craftRecipe.output.mint.toString()}`);
-                    //updateFleetState(userCraft, 'Craft Completing');
-                    updateFleetState(userCraft, 'Completing: ' + craftRecipe.name + (userCraft.item!=craftRecipe.name?' ('+userCraft.item+')':''));
-                    await execCompleteCrafting(starbase, starbasePlayer, starbasePlayerCargoHoldsAndTokens, craftingProcess, userCraft);
-                    if (!userCraft.state.includes('ERROR')) {
-                        if (userCraft.craftingId && craftingProcess.craftingId == userCraft.craftingId) {
-                            updateFleetState(userCraft, 'Idle');
-                            userCraft.craftingId = 0;
-                            await updateCraft(userCraft);
+                let starbasePlayerCargoHoldsAndTokens = await getStarbasePlayerCargoHolds(starbasePlayer);
+
+                for (let craftingProcess of completedCraftingProcesses) {
+                    let craftRecipe = craftRecipes.find(item => item.publicKey.toString() === craftingProcess.recipe.toString());
+                    if (userCraft.craftingId && craftingProcess.craftingId == userCraft.craftingId) {
+                        cLog(1,`${FleetTimeStamp(userCraft.label)} Completing craft at [${targetX}, ${targetY}] for  ${craftRecipe.output.mint.toString()}`);
+                        //updateFleetState(userCraft, 'Craft Completing');
+                        updateFleetState(userCraft, 'Completing: ' + craftRecipe.name + (userCraft.item!=craftRecipe.name?' ('+userCraft.item+')':''));
+                        await execCompleteCrafting(starbase, starbasePlayer, starbasePlayerCargoHoldsAndTokens, craftingProcess, userCraft);
+                        if (!userCraft.state.includes('ERROR')) {
+                            if (userCraft.craftingId && craftingProcess.craftingId == userCraft.craftingId) {
+                                updateFleetState(userCraft, 'Idle');
+                                userCraft.craftingId = 0;
+                                await updateCraft(userCraft);
+                            }
                         }
                     }
                 }
-            }
 
-            for (let upgradeProcess of completedUpgradeProcesses) {
-                let craftingRecipe = upgradeRecipes.find(item => item.publicKey.toString() === upgradeProcess.recipe.toString());
-                if (userCraft.craftingId && upgradeProcess.craftingId == userCraft.craftingId) {
-                    cLog(1,`${FleetTimeStamp(userCraft.label)} Completing upgrade at [${targetX}, ${targetY}] for  ${craftingRecipe.input[0].mint.toString()}`);
-                    updateFleetState(userCraft, 'Upgrade Completing');
-                    await execCompleteUpgrade(starbase, starbasePlayer, starbasePlayerCargoHoldsAndTokens, upgradeProcess, userCraft);
-                    if (!userCraft.state.includes('ERROR')) {
-                        if (userCraft.craftingId && upgradeProcess.craftingId == userCraft.craftingId) {
-                            updateFleetState(userCraft, 'Idle');
-                            userCraft.craftingId = 0;
+                for (let upgradeProcess of completedUpgradeProcesses) {
+                    let craftingRecipe = upgradeRecipes.find(item => item.publicKey.toString() === upgradeProcess.recipe.toString());
+                    if (userCraft.craftingId && upgradeProcess.craftingId == userCraft.craftingId) {
+                        cLog(1,`${FleetTimeStamp(userCraft.label)} Completing upgrade at [${targetX}, ${targetY}] for  ${craftingRecipe.input[0].mint.toString()}`);
+                        updateFleetState(userCraft, 'Upgrade Completing');
+                        await execCompleteUpgrade(starbase, starbasePlayer, starbasePlayerCargoHoldsAndTokens, upgradeProcess, userCraft);
+                        if (!userCraft.state.includes('ERROR')) {
+                            if (userCraft.craftingId && upgradeProcess.craftingId == userCraft.craftingId) {
+                                updateFleetState(userCraft, 'Idle');
+                                userCraft.craftingId = 0;
+                                await updateCraft(userCraft);
+                                //await GM.setValue(userCraft.label, JSON.stringify(userCraft));
+                            }
+                        }
+                    }
+                }
+
+                let starbasePlayerInfo = await sageProgram.account.starbasePlayer.fetch(starbasePlayer);
+                let availableCrew = starbasePlayerInfo.totalCrew - starbasePlayerInfo.busyCrew.toNumber();
+                starbasePlayerCargoHoldsAndTokens = await getStarbasePlayerCargoHolds(starbasePlayer);
+
+                let targetRecipe = getTargetRecipe(starbasePlayerCargoHoldsAndTokens, userCraft, Number(userCraft.amount));
+
+                if (!enableAssistant) return;
+
+                cLog(3, FleetTimeStamp(userCraft.label), 'targetRecipe: ', targetRecipe);
+                cLog(3, FleetTimeStamp(userCraft.label), 'starbasePlayerInfo: ', starbasePlayerInfo);
+                cLog(3, FleetTimeStamp(userCraft.label), 'availableCrew: ', availableCrew);
+                cLog(3, FleetTimeStamp(userCraft.label), 'userCraft: ', userCraft);
+                cLog(3, FleetTimeStamp(userCraft.label), 'userCraft.crew: ', userCraft.crew);
+                cLog(3, FleetTimeStamp(userCraft.label), 'userCraft.state: ', userCraft.state);
+
+                if (availableCrew >= userCraft.crew && targetRecipe && targetRecipe.amountCraftable > 0 && userCraft.state === 'Idle') {
+                    let craftAmount = Math.min(targetRecipe.craftAmount, targetRecipe.amountCraftable);
+                    cLog(1,`${FleetTimeStamp(userCraft.label)} Starting craft at [${targetX}, ${targetY}] for ${craftAmount} ${targetRecipe.craftRecipe.name}`);
+                    //updateFleetState(userCraft, 'Craft Starting');
+                    let activityType = craftRecipes.some(item => item.name === targetRecipe.craftRecipe.name) ? 'Crafting' : 'Upgrading';
+
+                    //Enough Atlas available for the craft?
+                    let enoughAtlas = true;
+                    if(activityType == 'Crafting') {
+                        const atlasNeeded = Number((craftAmount * targetRecipe.craftRecipe.feeAmount).toFixed(10));
+                        const atlasParsedBalance = await solanaReadConnection.getParsedTokenAccountsByOwner(userPublicKey,{ mint: new solanaWeb3.PublicKey('ATLASXmbPQxBUYbxPsV97usA3fPQYEqzQBUHgiFCUsXx')} );
+                        const atlasBalance = atlasParsedBalance.value[0].account.data.parsed.info.tokenAmount.uiAmount;
+                        cLog(3, FleetTimeStamp(userCraft.label), 'atlas needed: ', atlasNeeded, ', atlas available: ', atlasBalance);
+                        if(atlasBalance < atlasNeeded) {
+                    	    enoughAtlas = false;
+                        }
+                    }
+                    if(!enoughAtlas) {
+                        updateFleetState(userCraft, 'Not enough Atlas: ' + targetRecipe.craftRecipe.name + (userCraft.item!=targetRecipe.craftRecipe.name?' ('+userCraft.item+')':''));
+                    } else {
+                        let activityInfo = activityType == 'Crafting' ? "Starting: " + targetRecipe.craftRecipe.name + (userCraft.item!=targetRecipe.craftRecipe.name?' ('+userCraft.item+')':'') : 'Upgrade Starting';
+                        updateFleetState(userCraft, activityInfo);
+                        let result = await execStartCrafting(starbase, starbasePlayer, starbasePlayerCargoHoldsAndTokens, targetRecipe.craftRecipe, craftAmount, userCraft);
+                        if (!userCraft.state.includes('ERROR')) {
+                            activityInfo = activityType == 'Crafting' ? "&#9874; " + targetRecipe.craftRecipe.name + (userCraft.item!=targetRecipe.craftRecipe.name?' ('+userCraft.item+')':'') : 'Upgrading';
+                            let craftDuration = (targetRecipe.craftRecipe.duration * craftAmount) / userCraft.crew;
+                            let calcEndTime = TimeToStr(new Date(Date.now() + craftDuration * 1000));
+                            let upgradeTimeStr = upgradeTime.resRemaining > 0 ? calcEndTime : 'Paused';
+                            let craftTimeStr = craftTime.resRemaining > 0 ? calcEndTime : TimeToStr(new Date(Date.now() + ((craftDuration * 1000) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level])));
+                            let activityTimeStr = activityType == 'Crafting' ? craftTimeStr : upgradeTimeStr;
+                            //updateFleetState(userCraft, activityType + ' [' + activityTimeStr + ']');
+                            updateFleetState(userCraft, activityInfo + ' [' + activityTimeStr + ']');
+                            userCraft.craftingId = result.craftingId;
                             await updateCraft(userCraft);
                             //await GM.setValue(userCraft.label, JSON.stringify(userCraft));
-                        }
+		        }
                     }
-                }
-            }
-
-            let starbasePlayerInfo = await sageProgram.account.starbasePlayer.fetch(starbasePlayer);
-            let availableCrew = starbasePlayerInfo.totalCrew - starbasePlayerInfo.busyCrew.toNumber();
-            starbasePlayerCargoHoldsAndTokens = await getStarbasePlayerCargoHolds(starbasePlayer);
-
-            let targetRecipe = getTargetRecipe(starbasePlayerCargoHoldsAndTokens, userCraft, Number(userCraft.amount));
-
-            if (!enableAssistant) return;
-
-            cLog(3, FleetTimeStamp(userCraft.label), 'targetRecipe: ', targetRecipe);
-            cLog(3, FleetTimeStamp(userCraft.label), 'starbasePlayerInfo: ', starbasePlayerInfo);
-            cLog(3, FleetTimeStamp(userCraft.label), 'availableCrew: ', availableCrew);
-            cLog(3, FleetTimeStamp(userCraft.label), 'userCraft: ', userCraft);
-            cLog(3, FleetTimeStamp(userCraft.label), 'userCraft.crew: ', userCraft.crew);
-            cLog(3, FleetTimeStamp(userCraft.label), 'userCraft.state: ', userCraft.state);
-
-            if (availableCrew >= userCraft.crew && targetRecipe && targetRecipe.amountCraftable > 0 && userCraft.state === 'Idle') {
-                let craftAmount = Math.min(targetRecipe.craftAmount, targetRecipe.amountCraftable);
-                cLog(1,`${FleetTimeStamp(userCraft.label)} Starting craft at [${targetX}, ${targetY}] for ${craftAmount} ${targetRecipe.craftRecipe.name}`);
-                //updateFleetState(userCraft, 'Craft Starting');
-                let activityType = craftRecipes.some(item => item.name === targetRecipe.craftRecipe.name) ? 'Crafting' : 'Upgrading';
-
-                //Enough Atlas available for the craft?
-                let enoughAtlas = true;
-                if(activityType == 'Crafting') {
-                    const atlasNeeded = Number((craftAmount * targetRecipe.craftRecipe.feeAmount).toFixed(10));
-                    const atlasParsedBalance = await solanaReadConnection.getParsedTokenAccountsByOwner(userPublicKey,{ mint: new solanaWeb3.PublicKey('ATLASXmbPQxBUYbxPsV97usA3fPQYEqzQBUHgiFCUsXx')} );
-                    const atlasBalance = atlasParsedBalance.value[0].account.data.parsed.info.tokenAmount.uiAmount;
-                    cLog(3, FleetTimeStamp(userCraft.label), 'atlas needed: ', atlasNeeded, ', atlas available: ', atlasBalance);
-                    if(atlasBalance < atlasNeeded) {
-                    	enoughAtlas = false;
+                } else if (userCraft.state === 'Idle') {
+                    //updateFleetState(userCraft, 'Waiting for crew/material');
+                    let materialStr = '';
+                    if(targetRecipe === null) {
+                        materialStr = ': ' + userCraft.item;
+                    } else {
+                        materialStr = ': ' + targetRecipe.craftRecipe.name + (userCraft.item != targetRecipe.craftRecipe.name ? ' (' + userCraft.item + ')' : '' );
                     }
+                    if(availableCrew < userCraft.crew && ((targetRecipe && targetRecipe.amountCraftable <= 0) || (!targetRecipe)) ) {
+                        updateFleetState(userCraft, 'Waiting for crew/material' + materialStr);
+                    }
+                    else if(availableCrew < userCraft.crew) {
+                        updateFleetState(userCraft, 'Waiting for crew' + materialStr);
+                    }
+                    else {
+                        updateFleetState(userCraft, 'Waiting for material' + materialStr);
+                    }
+                    await updateCraft(userCraft);
                 }
-                if(!enoughAtlas) {
-                    updateFleetState(userCraft, 'Not enough Atlas: ' + targetRecipe.craftRecipe.name + (userCraft.item!=targetRecipe.craftRecipe.name?' ('+userCraft.item+')':''));
-                } else {
-                    let activityInfo = activityType == 'Crafting' ? "Starting: " + targetRecipe.craftRecipe.name + (userCraft.item!=targetRecipe.craftRecipe.name?' ('+userCraft.item+')':'') : 'Upgrade Starting';
-                    updateFleetState(userCraft, activityInfo);
-                    let result = await execStartCrafting(starbase, starbasePlayer, starbasePlayerCargoHoldsAndTokens, targetRecipe.craftRecipe, craftAmount, userCraft);
-                    if (!userCraft.state.includes('ERROR')) {
-                        activityInfo = activityType == 'Crafting' ? "&#9874; " + targetRecipe.craftRecipe.name + (userCraft.item!=targetRecipe.craftRecipe.name?' ('+userCraft.item+')':'') : 'Upgrading';
-                        let craftDuration = (targetRecipe.craftRecipe.duration * craftAmount) / userCraft.crew;
-                        let calcEndTime = TimeToStr(new Date(Date.now() + craftDuration * 1000));
-                        let upgradeTimeStr = upgradeTime.resRemaining > 0 ? calcEndTime : 'Paused';
-                        let craftTimeStr = craftTime.resRemaining > 0 ? calcEndTime : TimeToStr(new Date(Date.now() + ((craftDuration * 1000) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level])));
-                        let activityTimeStr = activityType == 'Crafting' ? craftTimeStr : upgradeTimeStr;
-                        //updateFleetState(userCraft, activityType + ' [' + activityTimeStr + ']');
-                        updateFleetState(userCraft, activityInfo + ' [' + activityTimeStr + ']');
-                        userCraft.craftingId = result.craftingId;
-                        await updateCraft(userCraft);
-                        //await GM.setValue(userCraft.label, JSON.stringify(userCraft));
-		    }
-                }
-            } else if (userCraft.state === 'Idle') {
-                //updateFleetState(userCraft, 'Waiting for crew/material');
-                let materialStr = '';
-                if(targetRecipe === null) {
-                    materialStr = ': ' + userCraft.item;
-                } else {
-                    materialStr = ': ' + targetRecipe.craftRecipe.name + (userCraft.item != targetRecipe.craftRecipe.name ? ' (' + userCraft.item + ')' : '' );
-                }
-                if(availableCrew < userCraft.crew && ((targetRecipe && targetRecipe.amountCraftable <= 0) || (!targetRecipe)) ) {
-                    updateFleetState(userCraft, 'Waiting for crew/material' + materialStr);
-                }
-                else if(availableCrew < userCraft.crew) {
-                    updateFleetState(userCraft, 'Waiting for crew' + materialStr);
-                }
-                else {
-                    updateFleetState(userCraft, 'Waiting for material' + materialStr);
-                }
-                await updateCraft(userCraft);
-            }
+	    }
         }
         catch(error) {
             cLog(1,`${FleetTimeStamp(userCraft.label)} Uncaught crafting error`, error);
@@ -6083,9 +6154,13 @@
 			observer && observer.disconnect();
 			let assistCSS = document.createElement('style');
 			const statusPanelOpacity = globalSettings.statusPanelOpacity / 100;
-			assistCSS.innerHTML = `.assist-modal {display: none; position: fixed; z-index: 2; padding-top: 100px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);} .assist-modal-content {position: relative; display: flex; flex-direction: column; background-color: rgb(41, 41, 48); margin: auto; padding: 0; border: 1px solid #888; width: 785px; min-width: 450px; max-width: 75%; height: auto; min-height: 50px; max-height: 85%; overflow-y: auto; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19); -webkit-animation-name: animatetop; -webkit-animation-duration: 0.4s; animation-name: animatetop; animation-duration: 0.4s;} #assist-modal-error {color: red; margin-left: 5px; margin-right: 5px; font-size: 16px;} .assist-modal-header-right {color: rgb(255, 190, 77); margin-left: auto !important; font-size: 20px;} .assist-btn {background-color: rgb(41, 41, 48); color: rgb(255, 190, 77); margin-left: 2px; margin-right: 2px;} .assist-btn:hover {background-color: rgba(255, 190, 77, 0.2);} .assist-modal-close:hover, .assist-modal-close:focus {font-weight: bold; text-decoration: none; cursor: pointer;} .assist-modal-btn {color: rgb(255, 190, 77); padding: 5px 5px; margin-right: 5px; text-decoration: none; background-color: rgb(41, 41, 48); border: none; cursor: pointer;} .assist-modal-save:hover { background-color: rgba(255, 190, 77, 0.2); } .assist-modal-header {display: flex; align-items: center; padding: 2px 16px; background-color: rgba(255, 190, 77, 0.2); border-bottom: 2px solid rgb(255, 190, 77); color: rgb(255, 190, 77);} .assist-modal-body {padding: 2px 16px; font-size: 12px;} .assist-modal-body > table {width: 100%;border-collapse: collapse;} .assist-modal-body th, .assist-modal-body td {padding:0 7px 0 0; line-height:136%;} #assistStatus {background-color: rgba(0,0,0,${statusPanelOpacity}); opacity: ${statusPanelOpacity}; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1;} #assistStarbaseStatus {background-color: rgba(0,0,0,${statusPanelOpacity}); opacity: ${statusPanelOpacity}; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1;} #assistCheck {background-color: rgba(0,0,0,0.75); backdrop-filter: blur(10px); position: absolute; margin: auto; left: 0; right: 0; top: 100px; width: 650px; min-width: 450px; max-width: 75%; z-index: 1;} .dropdown { position: absolute; display: none; margin-top: 25px; margin-left: 152px; background-color: rgb(41, 41, 48); min-width: 120px; box-shadow: 0 8px 16px 0 rgba(0, 0, 0, 0.2); z-index: 2; } .dropdown.show { display: block; } .assist-btn-alt { color: rgb(255, 190, 77); padding: 12px 16px; text-decoration: none; display: block; background-color: rgb(41, 41, 48); border: none; cursor: pointer; } .assist-btn-alt:hover { background-color: rgba(255, 190, 77, 0.2); } #checkresults { padding: 5px; margin-top: 20px; border: 1px solid grey; border-radius: 8px;} .dropdown button {width: 100%; text-align: left;} #assistModal table {border-collapse: collapse;} .assist-scan-row, .assist-mine-row, .assist-transport-row {background-color: rgba(255, 190, 77, 0.1); border-left: 1px solid white; border-right: 1px solid white; border-bottom: 1px solid white} .show-top-border {background-color: rgba(255, 190, 77, 0.1); border-left: 1px solid white; border-right: 1px solid white; border-top: 1px solid white;}`;
-			assistCSS.innerHTML += ` #assistStats {background-color: rgba(0,0,0,${statusPanelOpacity}); opacity: ${statusPanelOpacity}; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1; } #assistStats table { border-collapse: collapse; border-spacing:1px; } #assistStats td, #assistStats th { padding:0 7px 0 0; }`; // statsadd
-			assistCSS.innerHTML +=  `#autoFeeData { display:none; } #automaticFee:checked ~ #autoFeeData { display:block; }`;
+			let assistCSSString = `.assist-modal {display: none; position: fixed; z-index: 2; padding-top: 100px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);} .assist-modal-content {position: relative; display: flex; flex-direction: column; background-color: rgb(41, 41, 48); margin: auto; padding: 0; border: 1px solid #888; width: 785px; min-width: 450px; max-width: 75%; height: auto; min-height: 50px; max-height: 85%; overflow-y: auto; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19); -webkit-animation-name: animatetop; -webkit-animation-duration: 0.4s; animation-name: animatetop; animation-duration: 0.4s;} #assist-modal-error {color: red; margin-left: 5px; margin-right: 5px; font-size: 16px;} .assist-modal-header-right {color: rgb(255, 190, 77); margin-left: auto !important; font-size: 20px;} .assist-btn {background-color: rgb(41, 41, 48); color: rgb(255, 190, 77); margin-left: 2px; margin-right: 2px;} .assist-btn:hover {background-color: rgba(255, 190, 77, 0.2);} .assist-modal-close:hover, .assist-modal-close:focus {font-weight: bold; text-decoration: none; cursor: pointer;} .assist-modal-btn {color: rgb(255, 190, 77); padding: 5px 5px; margin-right: 5px; text-decoration: none; background-color: rgb(41, 41, 48); border: none; cursor: pointer;} .assist-modal-save:hover { background-color: rgba(255, 190, 77, 0.2); } .assist-modal-header {display: flex; align-items: center; padding: 2px 16px; background-color: rgba(255, 190, 77, 0.2); border-bottom: 2px solid rgb(255, 190, 77); color: rgb(255, 190, 77);} .assist-modal-body {padding: 2px 16px; font-size: 12px;} .assist-modal-body > table {width: 100%;border-collapse: collapse;} .assist-modal-body th, .assist-modal-body td {padding:0 7px 0 0; line-height:136%;} #assistStatus {background-color: rgba(0,0,0,${statusPanelOpacity}); opacity: ${statusPanelOpacity}; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1;} #assistStarbaseStatus {background-color: rgba(0,0,0,${statusPanelOpacity}); opacity: ${statusPanelOpacity}; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1;} #assistCheck {background-color: rgba(0,0,0,0.75); backdrop-filter: blur(10px); position: absolute; margin: auto; left: 0; right: 0; top: 100px; width: 650px; min-width: 450px; max-width: 75%; z-index: 1;} .dropdown { position: absolute; display: none; margin-top: 25px; margin-left: 152px; background-color: rgb(41, 41, 48); min-width: 120px; box-shadow: 0 8px 16px 0 rgba(0, 0, 0, 0.2); z-index: 2; } .dropdown.show { display: block; } .assist-btn-alt { color: rgb(255, 190, 77); padding: 12px 16px; text-decoration: none; display: block; background-color: rgb(41, 41, 48); border: none; cursor: pointer; } .assist-btn-alt:hover { background-color: rgba(255, 190, 77, 0.2); } #checkresults { padding: 5px; margin-top: 20px; border: 1px solid grey; border-radius: 8px;} .dropdown button {width: 100%; text-align: left;} #assistModal table {border-collapse: collapse;} .assist-scan-row, .assist-mine-row, .assist-transport-row {background-color: rgba(255, 190, 77, 0.1); border-left: 1px solid white; border-right: 1px solid white; border-bottom: 1px solid white} .show-top-border {background-color: rgba(255, 190, 77, 0.1); border-left: 1px solid white; border-right: 1px solid white; border-top: 1px solid white;}`;
+			assistCSSString += ` #assistStats {background-color: rgba(0,0,0,${statusPanelOpacity}); opacity: ${statusPanelOpacity}; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1; } #assistStats table { border-collapse: collapse; border-spacing:1px; } #assistStats td, #assistStats th { padding:0 7px 0 0; }`; // statsadd
+			assistCSSString += ` #autoFeeData { display:none; } #automaticFee:checked ~ #autoFeeData { display:block; }`;
+			assistCSSString += ` #settingsModal nav label { width:100px; display:block; padding: 15px 15px; border-top: 1px solid silver; border-right: 1px solid silver; background-color: #888; color: #ddd; } #settingsModal nav label:nth-child(1) { border-left: 1px solid silver; } #settingsModal .tabbed > input, #settingsModal .tabbed menu li { display: none;} #settingsModal nav label:hover { background: hsl(210,50%,40%); } #settingsModal nav label:active { background: #ffffff; } #settingsModal .tabbed menu>li { padding: 20px; width: 100%; border: 1px solid silver; background-color: #f4f4f4; line-height: 1.5em; letter-spacing: 0.3px; color: #444; } #settingsModal .tabbed menu { padding-left:100px } #settingsModal nav { float:left } #settingsModal .tabbed menu li div { margin-bottom: 10px; } #settingsModal .tabbed menu li small { display:block; line-height:130%; } `;
+			assistCSSString += ` #settingsModal #tab_general:checked ~ menu .tab_general, #settingsModal #tab_fees:checked ~ menu .tab_fees, #settingsModal #tab_crafting:checked ~ menu .tab_crafting, #settingsModal #tab_scanning:checked ~ menu .tab_scanning, #settingsModal #tab_fleets:checked ~ menu .tab_fleets, #settingsModal #tab_advanced:checked ~ menu .tab_advanced { display: block; }`;
+			assistCSSString += ` #settingsModal #tab_general:checked ~ nav label[for="tab_general"], #settingsModal #tab_fees:checked ~ nav label[for="tab_fees"], #settingsModal #tab_crafting:checked ~ nav label[for="tab_crafting"], #settingsModal #tab_scanning:checked ~ nav label[for="tab_scanning"], #settingsModal #tab_fleets:checked ~ nav label[for="tab_fleets"], #settingsModal #tab_advanced:checked ~ nav label[for="tab_advanced"] { background: #fc0; color: #111; position: relative; border-bottom: none; }`;
+			assistCSS.innerHTML = assistCSSString;
 
 			let assistModal = document.createElement('div');
 			assistModal.classList.add('assist-modal');
@@ -6103,7 +6178,59 @@
 			settingsModal.style.display = 'none';
 			let settingsModalContent = document.createElement('div');
 			settingsModalContent.classList.add('assist-modal-content');
-			settingsModalContent.innerHTML = '<div class="assist-modal-header"> <img src="' + iconStr + '" /> <span style="padding-left: 15px;">SLY Assistant v' + GM_info.script.version + '</span> <div class="assist-modal-header-right"> <button class=" assist-modal-btn assist-modal-save">Save</button> <span class="assist-modal-close">x</span> </div></div><div class="assist-modal-body"> <span id="settings-modal-error"></span> <div id="settings-modal-header">Global Settings</div> <div>Priority Fee <input id="priorityFee" type="number" min="0" max="100000000" placeholder="1" ></input> <span>Added to each transaction. Set to 0 (zero) to disable (the wallet will then decide the fee!). 1 Lamport = 0.000000001 SOL. Normal transactions will use the full priority fee, smaller transactions will use 10%. Exception: craft transactions are super heavy and will use 250% of the fee.</span> </div> <div>Auto-Fee? <input id="automaticFee" type="checkbox"></input> <span>Enable the auto fee algorithm, works best if at least 1 tx is executed per minute.</span><fieldset id="autoFeeData">FeeMin: <input id="automaticFeeMin" type="number" min="0" max="100000" placeholder="1" size="6"></input> TimeMin: <input id="automaticFeeTimeMin" type="number" min="1" max="120" placeholder="6" size="3"></input><br/>FeeMax: <input id="automaticFeeMax" type="number" min="0" max="100000" placeholder="12000" size="6"></input> TimeMax: <input id="automaticFeeTimeMax" type="number" min="5" max="120" placeholder="40" size="3"></input><br/>Max fee change/tx: <input id="automaticFeeStep" type="number" min="1" max="1000" placeholder="80" size="6"></input><br/><span>Fee starts with the configured priority fee from above. The current fee is then somewhere between FeeMin and FeeMax. This is 1:1 carried over to TimeMin and TimeMax and results in a threshold time. If a new tx is below this time, the fee gets decreased. If a new tx is above this time, the fee gets increased. Both times the amount is limited to "Max fee change/tx". The more the time deviates from the current threshold time, the greater the change.</span></fieldset></div> <div>Save profile selection? <input id="saveProfile" type="checkbox"></input> <span>Should the profile selection be saved (uncheck to select a different profile each time)?</span> </div> <div>Tx Poll Delay <input id="confirmationCheckingDelay" type="number" min="200" max="10000" placeholder="200"></input> <span>How many milliseconds to wait before re-reading the chain for confirmation</span> </div> <div>Console Logging <input id="debugLogLevel" type="number" min="0" max="9" placeholder="3"></input> <span>How much console logging you want to see (higher number = more, 0 = none)</span> </div> <div>Crafting Jobs <input id="craftingJobs" type="number" min="0" max="100" placeholder="4"></input> <span>How many crafting jobs should be enabled?</span> </div> <div>Subwarp for short distances? <input id="subwarpShortDist" type="checkbox"></input> <span>Should fleets subwarp when travel distance is 1 diagonal square or less?</span> </div> <div>Use Ammo Banks for Transport? <input id="transportUseAmmoBank" type="checkbox"></input> <span>Should transports also use their ammo banks to help move ammo?</span> </div> <div>Stop Transports On Error <input id="transportStopOnError" type="checkbox"></input> <span>Should transport fleet stop completely if there is an error (example: not enough resource/fuel/etc.)?</span> </div> <div>Fuel to 100% for transports <input id="transportFuel100" type="checkbox"></input> <span>If a refuel is needed at the source, should transport fleets fill fuel to 100%?</span> </div> <div>Transports keep 1 resource <input id="transportKeep1" type="checkbox"></input> <span>If unloading a resource, should transport fleets keep 1 resource to save a CreatePDA transaction when loading it again?</span> </div> <div>Miners keep 1 resource <input id="minerKeep1" type="checkbox"></input> <span>Same as previous option but for miners. Also load 1 food more, so the food token account is not closed, too.</span> </div> <div>Starbases keep 1 resource <input id="starbaseKeep1" type="checkbox"></input> <span>Same as previous option but for starbases.</span> </div> <div>Moving Scan Pattern <select id="scanBlockPattern"> <option value="square">square</option> <option value="ring">ring</option> <option value="spiral">spiral</option> <option value="up">up</option> <option value="down">down</option> <option value="left">left</option> <option value="right">right</option> <option value="sly">sly</option> </select> <span>Only applies to fleets set to Move While Scanning</span> </div> <div>Scan Block Length <input id="scanBlockLength" type="number" min="2" max="50" placeholder="5"></input> <span>How far fleets should go for the up, down, left and right scanning patterns</span> </div> <div>Scan Block Resets After Resupply? <input id="scanBlockResetAfterResupply" type="checkbox"></input> <span>Start from the beginning of the pattern after resupplying at starbase?</span> </div> <div>Scan Resupply On Low Fuel? <input id="scanResupplyOnLowFuel" type="checkbox"></input> <span>Do scanning fleets set to Move While Scanning return to base to resupply when fuel is too low to move?</span> </div> <div>Scan Sector Regeneration Delay <input id="scanSectorRegenTime" type="number" min="0" placeholder="90"></input> <span>Number of seconds to wait after finding SDU</span> </div> <div>Scan Pause Time <input id="scanPauseTime" type="number" min="240" max="6000" placeholder="600"></input> <span>Number of seconds to wait when sectors probabilities are too low</span> </div> <div>Scan Strike Count <input id="scanStrikeCount" type="number" min="1" max="10" placeholder="3"></input> <span>Number of low % scans before moving on or pausing</span> </div> <div>Status Panel Opacity <input id="statusPanelOpacity" type="range" min="1" max="100" value="75"></input> <span>(requires page refresh)</span> </div> <div>---</div> <div>Advanced Settings</div> <div>Auto Start Script <input id="autoStartScript" type="checkbox"></input> <span>Should Lab Assistant automatically start after initialization is complete?</span> </div> <div>Reload On Stuck Fleets <input id="reloadPageOnFailedFleets" type="number" min="0" max="999" placeholder="0"></input> <span>Automatically refresh the page if this many fleets get stuck (0 = never)</span> </div><div>Exclude fleets:<br><textarea id="excludeFleets" cols="40" rows="6"></textarea><br><span>(one fleet name per line, case sensivity, reload required)</span> </div></div>';
+			let settingsModalContentString = '<div class="assist-modal-header"> <img src="' + iconStr + '" /> <span style="padding-left: 15px;">SLY Assistant v' + GM_info.script.version + '</span> <div class="assist-modal-header-right"> <button class=" assist-modal-btn assist-modal-save">Save</button> <span class="assist-modal-close">x</span> </div></div><div class="assist-modal-body"> <span id="settings-modal-error"></span> ';
+			settingsModalContentString += '<div class="tabbed">';
+			settingsModalContentString += '<input checked="checked" id="tab_general" type="radio" name="tabs">';
+			settingsModalContentString += '<input id="tab_fees" type="radio" name="tabs">';
+			settingsModalContentString += '<input id="tab_scanning" type="radio" name="tabs">';
+			settingsModalContentString += '<input id="tab_fleets" type="radio" name="tabs">';
+			settingsModalContentString += '<input id="tab_advanced" type="radio" name="tabs">';
+			settingsModalContentString += '<nav>';
+			settingsModalContentString += '<label for="tab_general">General</label>';
+			settingsModalContentString += '<label for="tab_fees">Fees</label>';
+			settingsModalContentString += '<label for="tab_scanning">Scanning</label>';
+			settingsModalContentString += '<label for="tab_fleets">Fleets/RSS</label>';
+			settingsModalContentString += '<label for="tab_advanced">Advanced</label>';
+			settingsModalContentString += '</nav>';
+			settingsModalContentString += '<menu>';
+			settingsModalContentString += '<li class="tab_general">';
+			settingsModalContentString += '<div>Crafting Jobs <input id="craftingJobs" type="number" min="0" max="100" placeholder="4"></input><br><small>How many crafting jobs should be enabled?</small></div>';
+			settingsModalContentString += '<div>Save profile selection? <input id="saveProfile" type="checkbox"></input><br><small>Should the profile selection be saved (uncheck to select a different profile each time)?</small></div>';
+			settingsModalContentString += '<div>Status Panel Opacity <input id="statusPanelOpacity" type="range" min="1" max="100" value="75"></input><br><small>(requires page refresh)</small></div>';
+			settingsModalContentString += '<div>Exclude fleets:<br><textarea id="excludeFleets" cols="40" rows="6"></textarea><br><small>(one fleet name per line, case sensivity, reload required)</small></div>';
+			settingsModalContentString += '</li>';
+			settingsModalContentString += '<li class="tab_fees">';
+			settingsModalContentString += '<div>Priority Fee <input id="priorityFee" type="number" min="0" max="100000000" placeholder="1" ></input><br><small>Added to each transaction. Set to 0 (zero) to disable (the wallet will then decide the fee!). 1 Lamport = 0.000000001 SOL. Normal transactions will use the full priority fee, smaller transactions will use 10%. Exception: craft transactions are heavy and will use 200% of the fee.</small> </div>';
+			settingsModalContentString += '<div>Fee multiplier for crafting transactions <input id="craftingTxMultiplier" type="number" min="10" max="500" placeholder="200" ></input>%<br><small>How much of the current fee should be used for crafting transactions? (max: 500%)</small> </div>';
+			settingsModalContentString += '<div>Auto-Fee? <input id="automaticFee" type="checkbox"></input> <span>Enable the auto fee algorithm, works best if at least 1 tx is executed per minute.</span><fieldset id="autoFeeData">FeeMin: <input id="automaticFeeMin" type="number" min="0" max="100000" placeholder="1" size="6"></input> TimeMin: <input id="automaticFeeTimeMin" type="number" min="1" max="120" placeholder="6" size="3"></input><br/>FeeMax: <input id="automaticFeeMax" type="number" min="0" max="100000" placeholder="12000" size="6"></input> TimeMax: <input id="automaticFeeTimeMax" type="number" min="5" max="120" placeholder="40" size="3"></input><br/>Max fee change/tx: <input id="automaticFeeStep" type="number" min="1" max="1000" placeholder="80" size="6"></input><br/>Crafting transactions are included when calculating the auto fee. <input id="craftingTxAffectsAutoFee" type="checkbox"></input><br><small>Fee starts with the configured priority fee from above. The current fee is then somewhere between FeeMin and FeeMax. This is 1:1 carried over to TimeMin and TimeMax and results in a threshold time. If a new tx is below this time, the fee gets decreased. If a new tx is above this time, the fee gets increased. Both times the amount is limited to "Max fee change/tx". The more the time deviates from the current threshold time, the greater the change.<br>If you choose a small fee multiplier for crafting transactions, it may be useful to exclude the crafting transaction from the adaptive fee calculation.</small></fieldset></div>';
+			settingsModalContentString += '</li>';
+			settingsModalContentString += '<li class="tab_scanning">';
+			settingsModalContentString += '<div>Moving Scan Pattern <select id="scanBlockPattern"> <option value="square">square</option> <option value="ring">ring</option> <option value="spiral">spiral</option> <option value="up">up</option> <option value="down">down</option> <option value="left">left</option> <option value="right">right</option> <option value="sly">sly</option> </select><br><small>Only applies to fleets set to Move While Scanning</small></div>';
+			settingsModalContentString += '<div>Scan Block Length <input id="scanBlockLength" type="number" min="2" max="50" placeholder="5"></input><br><small>How far fleets should go for the up, down, left and right scanning patterns</small></div>';
+			settingsModalContentString += '<div>Scan Block Resets After Resupply? <input id="scanBlockResetAfterResupply" type="checkbox"></input><br><small>Start from the beginning of the pattern after resupplying at starbase?</small></div>';
+			settingsModalContentString += '<div>Scan Resupply On Low Fuel? <input id="scanResupplyOnLowFuel" type="checkbox"></input><br><small>Do scanning fleets set to Move While Scanning return to base to resupply when fuel is too low to move?</small></div>';
+			settingsModalContentString += '<div>Scan Sector Regeneration Delay <input id="scanSectorRegenTime" type="number" min="0" placeholder="90"></input><br><small>Number of seconds to wait after finding SDU</small></div>';
+			settingsModalContentString += '<div>Scan Pause Time <input id="scanPauseTime" type="number" min="240" max="6000" placeholder="600"></input><br><small>Number of seconds to wait when sectors probabilities are too low</small></div>';
+			settingsModalContentString += '<div>Scan Strike Count <input id="scanStrikeCount" type="number" min="1" max="10" placeholder="3"></input><br><small>Number of low % scans before moving on or pausing</small></div>';
+			settingsModalContentString += '</li>';
+			settingsModalContentString += '<li class="tab_fleets">';
+			settingsModalContentString += '<div>Subwarp for short distances? <input id="subwarpShortDist" type="checkbox"></input><br><small>Should fleets subwarp when travel distance is 1 diagonal square or less?</small></div>';
+			settingsModalContentString += '<div>Use Ammo Banks for Transport? <input id="transportUseAmmoBank" type="checkbox"></input><br><small>Should transports also use their ammo banks to help move ammo?</small></div>';
+			settingsModalContentString += '<div>Stop Transports On Error <input id="transportStopOnError" type="checkbox"></input><br><small>Should transport fleet stop completely if there is an error (example: not enough resource/fuel/etc.)?</small></div>';
+			settingsModalContentString += '<div>Fuel to 100% for transports <input id="transportFuel100" type="checkbox"></input><br><small>If a refuel is needed at the source, should transport fleets fill fuel to 100%?</small></div>';
+			settingsModalContentString += '<div>Transports keep 1 resource <input id="transportKeep1" type="checkbox"></input><br><small>If unloading a resource, should transport fleets keep 1 resource to save a CreatePDA transaction when loading it again?</small></div>';
+			settingsModalContentString += '<div>Miners keep 1 resource <input id="minerKeep1" type="checkbox"></input><br><small>Same as previous option but for miners. Also load 1 food more, so the food token account is not closed, too.</small></div>';
+			settingsModalContentString += '<div>Fleets keep 1 resource in starbases <input id="starbaseKeep1" type="checkbox"></input><br><small>Same as previous option but for starbases.</small></div>';
+			settingsModalContentString += '</li>';
+			settingsModalContentString += '<li class="tab_advanced">';
+			settingsModalContentString += '<div>Tx Poll Delay <input id="confirmationCheckingDelay" type="number" min="200" max="10000" placeholder="2000"></input><br><small>How many milliseconds to wait before re-reading the chain for confirmation</small></div>';
+			settingsModalContentString += '<div>Console Logging <input id="debugLogLevel" type="number" min="0" max="9" placeholder="3"></input><br><small>How much console logging you want to see (higher number = more, 0 = none)</small></div>';
+			settingsModalContentString += '<div>Auto Start Script <input id="autoStartScript" type="checkbox"></input><br><small>Should Lab Assistant automatically start after initialization is complete?</small></div>';
+			settingsModalContentString += '<div>Reload On Stuck Fleets <input id="reloadPageOnFailedFleets" type="number" min="0" max="999" placeholder="0"></input><br><small>Automatically refresh the page if this many fleets get stuck (0 = never)</small></div>';
+			settingsModalContentString += '</li>';
+			settingsModalContentString += '</menu></div>';
+			//settingsModalContent.innerHTML = '<div class="assist-modal-header"> <img src="' + iconStr + '" /> <span style="padding-left: 15px;">SLY Assistant v' + GM_info.script.version + '</span> <div class="assist-modal-header-right"> <button class=" assist-modal-btn assist-modal-save">Save</button> <span class="assist-modal-close">x</span> </div></div><div class="assist-modal-body"> <span id="settings-modal-error"></span> <div id="settings-modal-header">Global Settings</div> <div>Priority Fee <input id="priorityFee" type="number" min="0" max="100000000" placeholder="1" ></input> <span>Added to each transaction. Set to 0 (zero) to disable (the wallet will then decide the fee!). 1 Lamport = 0.000000001 SOL. Normal transactions will use the full priority fee, smaller transactions will use 10%. Exception: craft transactions are super heavy and will use 250% of the fee.</span> </div> <div>Auto-Fee? <input id="automaticFee" type="checkbox"></input> <span>Enable the auto fee algorithm, works best if at least 1 tx is executed per minute.</span><fieldset id="autoFeeData">FeeMin: <input id="automaticFeeMin" type="number" min="0" max="100000" placeholder="1" size="6"></input> TimeMin: <input id="automaticFeeTimeMin" type="number" min="1" max="120" placeholder="6" size="3"></input><br/>FeeMax: <input id="automaticFeeMax" type="number" min="0" max="100000" placeholder="12000" size="6"></input> TimeMax: <input id="automaticFeeTimeMax" type="number" min="5" max="120" placeholder="40" size="3"></input><br/>Max fee change/tx: <input id="automaticFeeStep" type="number" min="1" max="1000" placeholder="80" size="6"></input><br/><span>Fee starts with the configured priority fee from above. The current fee is then somewhere between FeeMin and FeeMax. This is 1:1 carried over to TimeMin and TimeMax and results in a threshold time. If a new tx is below this time, the fee gets decreased. If a new tx is above this time, the fee gets increased. Both times the amount is limited to "Max fee change/tx". The more the time deviates from the current threshold time, the greater the change.</span></fieldset></div> <div>Save profile selection? <input id="saveProfile" type="checkbox"></input> <span>Should the profile selection be saved (uncheck to select a different profile each time)?</span> </div> <div>Tx Poll Delay <input id="confirmationCheckingDelay" type="number" min="200" max="10000" placeholder="200"></input> <span>How many milliseconds to wait before re-reading the chain for confirmation</span> </div> <div>Console Logging <input id="debugLogLevel" type="number" min="0" max="9" placeholder="3"></input> <span>How much console logging you want to see (higher number = more, 0 = none)</span> </div> <div>Crafting Jobs <input id="craftingJobs" type="number" min="0" max="100" placeholder="4"></input> <span>How many crafting jobs should be enabled?</span> </div> <div>Subwarp for short distances? <input id="subwarpShortDist" type="checkbox"></input> <span>Should fleets subwarp when travel distance is 1 diagonal square or less?</span> </div> <div>Use Ammo Banks for Transport? <input id="transportUseAmmoBank" type="checkbox"></input> <span>Should transports also use their ammo banks to help move ammo?</span> </div> <div>Stop Transports On Error <input id="transportStopOnError" type="checkbox"></input> <span>Should transport fleet stop completely if there is an error (example: not enough resource/fuel/etc.)?</span> </div> <div>Fuel to 100% for transports <input id="transportFuel100" type="checkbox"></input> <span>If a refuel is needed at the source, should transport fleets fill fuel to 100%?</span> </div> <div>Transports keep 1 resource <input id="transportKeep1" type="checkbox"></input> <span>If unloading a resource, should transport fleets keep 1 resource to save a CreatePDA transaction when loading it again?</span> </div> <div>Miners keep 1 resource <input id="minerKeep1" type="checkbox"></input> <span>Same as previous option but for miners. Also load 1 food more, so the food token account is not closed, too.</span> </div> <div>Starbases keep 1 resource <input id="starbaseKeep1" type="checkbox"></input> <span>Same as previous option but for starbases.</span> </div> <div>Moving Scan Pattern <select id="scanBlockPattern"> <option value="square">square</option> <option value="ring">ring</option> <option value="spiral">spiral</option> <option value="up">up</option> <option value="down">down</option> <option value="left">left</option> <option value="right">right</option> <option value="sly">sly</option> </select> <span>Only applies to fleets set to Move While Scanning</span> </div> <div>Scan Block Length <input id="scanBlockLength" type="number" min="2" max="50" placeholder="5"></input> <span>How far fleets should go for the up, down, left and right scanning patterns</span> </div> <div>Scan Block Resets After Resupply? <input id="scanBlockResetAfterResupply" type="checkbox"></input> <span>Start from the beginning of the pattern after resupplying at starbase?</span> </div> <div>Scan Resupply On Low Fuel? <input id="scanResupplyOnLowFuel" type="checkbox"></input> <span>Do scanning fleets set to Move While Scanning return to base to resupply when fuel is too low to move?</span> </div> <div>Scan Sector Regeneration Delay <input id="scanSectorRegenTime" type="number" min="0" placeholder="90"></input> <span>Number of seconds to wait after finding SDU</span> </div> <div>Scan Pause Time <input id="scanPauseTime" type="number" min="240" max="6000" placeholder="600"></input> <span>Number of seconds to wait when sectors probabilities are too low</span> </div> <div>Scan Strike Count <input id="scanStrikeCount" type="number" min="1" max="10" placeholder="3"></input> <span>Number of low % scans before moving on or pausing</span> </div> <div>Status Panel Opacity <input id="statusPanelOpacity" type="range" min="1" max="100" value="75"></input> <span>(requires page refresh)</span> </div> <div>---</div> <div>Advanced Settings</div> <div>Auto Start Script <input id="autoStartScript" type="checkbox"></input> <span>Should Lab Assistant automatically start after initialization is complete?</span> </div> <div>Reload On Stuck Fleets <input id="reloadPageOnFailedFleets" type="number" min="0" max="999" placeholder="0"></input> <span>Automatically refresh the page if this many fleets get stuck (0 = never)</span> </div><div>Exclude fleets:<br><textarea id="excludeFleets" cols="40" rows="6"></textarea><br><span>(one fleet name per line, case sensivity, reload required)</span> </div></div>';
+			settingsModalContent.innerHTML = settingsModalContentString;
 			settingsModal.append(settingsModalContent);
 
 			let importModal = document.createElement('div');
@@ -6202,7 +6329,7 @@
 			let assistConfigButton = document.createElement('button');
 			assistConfigButton.id = 'assistConfigBtn';
 			assistConfigButton.classList.add('assist-btn','assist-btn-alt');
-			assistConfigButton.addEventListener('click', function(e) {if(initComplete) assistModalToggle();});
+			assistConfigButton.addEventListener('click', function(e) {assistModalToggle();});
 			let assistConfigSpan = document.createElement('span');
 			assistConfigSpan.innerText = 'Config (wait)';
 			assistConfigSpan.style.fontSize = '14px';
