@@ -108,9 +108,9 @@
 			automaticFee: parseBoolDefault(globalSettings.automaticFee, false),
 			automaticFeeStep: parseIntDefault(globalSettings.automaticFeeStep, 80),
 			automaticFeeMin: parseIntDefault(globalSettings.automaticFeeMin, 1),
-			automaticFeeMax: parseIntDefault(globalSettings.automaticFeeMax, 12000),
-			automaticFeeTimeMin: parseIntDefault(globalSettings.automaticFeeTimeMin, 6),
-			automaticFeeTimeMax: parseIntDefault(globalSettings.automaticFeeTimeMax, 40),
+			automaticFeeMax: parseIntDefault(globalSettings.automaticFeeMax, 10000),
+			automaticFeeTimeMin: parseIntDefault(globalSettings.automaticFeeTimeMin, 10),
+			automaticFeeTimeMax: parseIntDefault(globalSettings.automaticFeeTimeMax, 70),
 
 			craftingTxMultiplier: parseIntDefault(globalSettings.craftingTxMultiplier, 200),
 			craftingTxAffectsAutoFee: parseBoolDefault(globalSettings.craftingTxAffectsAutoFee, true),
@@ -3786,9 +3786,9 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			automaticFee: document.querySelector('#automaticFee').checked,
 			automaticFeeStep: parseIntDefault(document.querySelector('#automaticFeeStep').value, 80),
 			automaticFeeMin: parseIntDefault(document.querySelector('#automaticFeeMin').value, 1),
-			automaticFeeMax: parseIntDefault(document.querySelector('#automaticFeeMax').value, 12000),
-			automaticFeeTimeMin: parseIntDefault(document.querySelector('#automaticFeeTimeMin').value, 6),
-			automaticFeeTimeMax: parseIntDefault(document.querySelector('#automaticFeeTimeMax').value, 40),
+			automaticFeeMax: parseIntDefault(document.querySelector('#automaticFeeMax').value, 10000),
+			automaticFeeTimeMin: parseIntDefault(document.querySelector('#automaticFeeTimeMin').value, 10),
+			automaticFeeTimeMax: parseIntDefault(document.querySelector('#automaticFeeTimeMax').value, 70),
 
 			craftingTxMultiplier: parseIntDefault(document.querySelector('#craftingTxMultiplier').checked, 200),
 			craftingTxAffectsAutoFee: document.querySelector('#craftingTxAffectsAutoFee').checked,
@@ -6202,7 +6202,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			settingsModalContentString += '<li class="tab_fees">';
 			settingsModalContentString += '<div>Priority Fee <input id="priorityFee" type="number" min="0" max="100000000" placeholder="1" ></input><br><small>Added to each transaction. Set to 0 (zero) to disable (the wallet will then decide the fee!). 1 Lamport = 0.000000001 SOL. Normal transactions will use the full priority fee, smaller transactions will use 10%. Exception: craft transactions are heavy and will use 200% of the fee.</small> </div>';
 			settingsModalContentString += '<div>Fee multiplier for crafting transactions <input id="craftingTxMultiplier" type="number" min="10" max="500" placeholder="200" ></input>%<br><small>How much of the current fee should be used for crafting transactions? (max: 500%)</small> </div>';
-			settingsModalContentString += '<div>Auto-Fee? <input id="automaticFee" type="checkbox"></input> <span>Enable the auto fee algorithm, works best if at least 1 tx is executed per minute.</span><fieldset id="autoFeeData">FeeMin: <input id="automaticFeeMin" type="number" min="0" max="100000" placeholder="1" size="6"></input> TimeMin: <input id="automaticFeeTimeMin" type="number" min="1" max="120" placeholder="6" size="3"></input><br/>FeeMax: <input id="automaticFeeMax" type="number" min="0" max="100000" placeholder="12000" size="6"></input> TimeMax: <input id="automaticFeeTimeMax" type="number" min="5" max="120" placeholder="40" size="3"></input><br/>Max fee change/tx: <input id="automaticFeeStep" type="number" min="1" max="1000" placeholder="80" size="6"></input><br/>Crafting transactions are included when calculating the auto fee. <input id="craftingTxAffectsAutoFee" type="checkbox"></input><br><small>Fee starts with the configured priority fee from above. The current fee is then somewhere between FeeMin and FeeMax. This is 1:1 carried over to TimeMin and TimeMax and results in a threshold time. If a new tx is below this time, the fee gets decreased. If a new tx is above this time, the fee gets increased. Both times the amount is limited to "Max fee change/tx". The more the time deviates from the current threshold time, the greater the change.<br>If you choose a small fee multiplier for crafting transactions, it may be useful to exclude the crafting transaction from the adaptive fee calculation.</small></fieldset></div>';
+			settingsModalContentString += '<div>Auto-Fee? <input id="automaticFee" type="checkbox"></input> <span>Enable the auto fee algorithm, works best if at least 1 tx is executed per minute.</span><fieldset id="autoFeeData">FeeMin: <input id="automaticFeeMin" type="number" min="0" max="100000" placeholder="1" size="6"></input> TimeMin: <input id="automaticFeeTimeMin" type="number" min="1" max="120" placeholder="10" size="3"></input><br/>FeeMax: <input id="automaticFeeMax" type="number" min="0" max="100000" placeholder="10000" size="6"></input> TimeMax: <input id="automaticFeeTimeMax" type="number" min="5" max="120" placeholder="70" size="3"></input><br/>Max fee change/tx: <input id="automaticFeeStep" type="number" min="1" max="1000" placeholder="80" size="6"></input><br/>Crafting transactions are included when calculating the auto fee. <input id="craftingTxAffectsAutoFee" type="checkbox"></input><br><small>Fee starts with the configured priority fee from above. The current fee is then somewhere between FeeMin and FeeMax. This is 1:1 carried over to TimeMin and TimeMax and results in a threshold time. If a new tx is below this time, the fee gets decreased. If a new tx is above this time, the fee gets increased. Both times the amount is limited to "Max fee change/tx". The more the time deviates from the current threshold time, the greater the change.<br>If you choose a small fee multiplier for crafting transactions, it may be useful to exclude the crafting transaction from the adaptive fee calculation.</small></fieldset></div>';
 			settingsModalContentString += '</li>';
 			settingsModalContentString += '<li class="tab_scanning">';
 			settingsModalContentString += '<div>Moving Scan Pattern <select id="scanBlockPattern"> <option value="square">square</option> <option value="ring">ring</option> <option value="spiral">spiral</option> <option value="up">up</option> <option value="down">down</option> <option value="left">left</option> <option value="right">right</option> <option value="sly">sly</option> </select><br><small>Only applies to fleets set to Move While Scanning</small></div>';
