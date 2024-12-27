@@ -6197,7 +6197,6 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			settingsModalContentString += '<div>Crafting Jobs <input id="craftingJobs" type="number" min="0" max="100" placeholder="4"></input><br><small>How many crafting jobs should be enabled?</small></div>';
 			settingsModalContentString += '<div>Save profile selection? <input id="saveProfile" type="checkbox"></input><br><small>Should the profile selection be saved (uncheck to select a different profile each time)?</small></div>';
 			settingsModalContentString += '<div>Status Panel Opacity <input id="statusPanelOpacity" type="range" min="1" max="100" value="75"></input><br><small>(requires page refresh)</small></div>';
-			settingsModalContentString += '<div>Exclude fleets:<br><textarea id="excludeFleets" cols="40" rows="6"></textarea><br><small>(one fleet name per line, case sensivity, reload required)</small></div>';
 			settingsModalContentString += '</li>';
 			settingsModalContentString += '<li class="tab_fees">';
 			settingsModalContentString += '<div>Priority Fee <input id="priorityFee" type="number" min="0" max="100000000" placeholder="1" ></input><br><small>Added to each transaction. Set to 0 (zero) to disable (the wallet will then decide the fee!). 1 Lamport = 0.000000001 SOL. Normal transactions will use the full priority fee, smaller transactions will use 10%. Exception: craft transactions are heavy and will use the configured multiplier below.</small> </div>';
@@ -6221,6 +6220,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			settingsModalContentString += '<div>Transports keep 1 resource <input id="transportKeep1" type="checkbox"></input><br><small>If unloading a resource, should transport fleets keep 1 resource to save a CreatePDA transaction when loading it again?</small></div>';
 			settingsModalContentString += '<div>Miners keep 1 resource <input id="minerKeep1" type="checkbox"></input><br><small>Same as previous option but for miners. Also load 1 food more, so the food token account is not closed, too.</small></div>';
 			settingsModalContentString += '<div>Fleets leave 1 resource in starbases <input id="starbaseKeep1" type="checkbox"></input><br><small>Same as previous option but for starbases.</small></div>';
+			settingsModalContentString += '<div>Exclude fleets:<br><textarea id="excludeFleets" cols="40" rows="6"></textarea><br><small>(one fleet name per line, case sensivity, reload required)</small></div>';
 			settingsModalContentString += '</li>';
 			settingsModalContentString += '<li class="tab_advanced">';
 			settingsModalContentString += '<div>Tx Poll Delay <input id="confirmationCheckingDelay" type="number" min="2000" max="10000" placeholder="2000"></input><br><small>How many milliseconds to wait before re-reading the chain for confirmation (min: 2000)</small></div>';
