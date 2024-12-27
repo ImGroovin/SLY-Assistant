@@ -299,7 +299,7 @@
             (input[3][1] ? 1 << 1 : 0) | // manageProgression
             (input[3][2] ? 1 << 2 : 0) | // manageCrewConfig
             (input[3][3] ? 1 << 3 : 0) | // manageCrew
-            (input[3][3] ? 1 << 4 : 0)); // withdrawCrew
+            (input[3][4] ? 1 << 4 : 0)); // withdrawCrew
         return out;
     }
 
