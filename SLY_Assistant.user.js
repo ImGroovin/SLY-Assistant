@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.41
+// @version      0.6.42
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -4345,6 +4345,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					sduFound = changesSDU.postBalance - changesSDU.preBalance;
 					userFleets[i].scanSkipCnt = 0;
 			}
+			await alterStats('SDUs found',undefined,sduFound,'SDU',0);
 
 			cLog(1,`${FleetTimeStamp(userFleets[i].label)} 📡 ${Math.round(scanCondition)}%${sduFound > 0 ? ` | 💰 FOUND: ${sduFound}` : ''}`);
 			if(!sduFound && scanCondition < userFleets[i].scanMin) {
@@ -5829,15 +5830,16 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         if (enableAssistant === true) {
             let waitForSequence = true;
             autoSpanRef.innerHTML = 'Wait...';
+            enableAssistant = false;
             while (waitForSequence) {
                 let fleetBusy = false;
                 for (let i=0, n=userFleets.length; i < n; i++) {
-                    if (['Mine Starting','Mining Stop','Unloading','Loading','Refueling','Craft Completing','Upgrade Completing'].includes(userFleets[i].state)) fleetBusy = true;
+                    //if (['Mine Starting','Mining Stop','Unloading','Loading','Refueling','Craft Completing','Upgrade Completing'].includes(userFleets[i].state)) fleetBusy = true;
+                    if(['Mine Starting','Mining Stop','Unloading','Loading','Refueling','Craft Completing','Upgrade Completing'].some(v => userFleets[i].state.includes(v))) fleetBusy = true;
                 }
                 if (!fleetBusy) waitForSequence = false;
                 await wait(5000);
             }
-            enableAssistant = false;
             autoSpanRef.innerHTML = newState ? newState : 'Start';
         } else {
             enableAssistant = true;
