@@ -4453,7 +4453,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			const foodCargo = await solanaReadConnection.getTokenAccountBalance(userFleets[i].foodToken);
 			userFleets[i].foodCnt = foodCargo.value.amount;
 
-			//Were enough food loaded?
+			//Was enough food loaded?
 			if (userFleets[i].foodCnt < userFleets[i].scanCost) {
 				cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough food at starbase - waiting for more`);
 				updateFleetState(userFleets[i], `ERROR: No food ⌛ ${TimeToStr(new Date(Date.now() + errorWaitTime))}`);
