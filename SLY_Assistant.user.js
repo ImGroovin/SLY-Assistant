@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.42
+// @version      0.6.43
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -5825,9 +5825,17 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		if(enableAssistant)	setTimeout(fleetHealthCheck, 10000);
 	}
 
+    let globalWaitForStopSequence = false;
     async function toggleAssistant(newState=null) {
         let autoSpanRef = document.querySelector('#autoScanBtn > span');
-        if (enableAssistant === true) {
+	// Race condition prevented: user presses STOP, waitForSequence is done, enableAssistant is false, but SLYA still executes dock->load/unload->undock sequences, then an error occurs which hits the error threshold and SLYA switches to ERROR state, which would call toogleAssistant. But enableAssistant is false in this moment, which would enable SLYA again. So we need to make sure that an error state always stops SLYA. 
+	// Also we set enableAssistant to FALSE before the loop, so SLYA stops immediately (which is better/faster when you have a lot of fleets, because otherwise: as long as at least 1 fleet is in a special state, enableAssistant would never be switched to FALSE).
+	// To prevent that the user enables SLYA again while SLYA waits for the stop sequence, we make an additional global variable.
+	// And we ignore the start/stop button as long as the init sequence isn't done yet.
+	// Added Docking and Undocking to the wait sequence, so a fleet finishes the docking->load/unload->undock loop first (and doesn't get interrupted in between).
+        if((!initComplete) || ((!newState) && globalWaitForStopSequence)) return;
+        if (enableAssistant === true || newState) {
+            globalWaitForStopSequence = true;
             let waitForSequence = true;
             autoSpanRef.innerHTML = 'Wait...';
             enableAssistant = false;
@@ -5835,11 +5843,12 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                 let fleetBusy = false;
                 for (let i=0, n=userFleets.length; i < n; i++) {
                     //if (['Mine Starting','Mining Stop','Unloading','Loading','Refueling','Craft Completing','Upgrade Completing'].includes(userFleets[i].state)) fleetBusy = true;
-                    if(['Mine Starting','Mining Stop','Unloading','Loading','Refueling','Craft Completing','Upgrade Completing'].some(v => userFleets[i].state.includes(v))) fleetBusy = true;
+                    if(['Mine Starting','Mining Stop','Unloading','Loading','Docking','Undocking','Refueling','Craft Completing','Upgrade Completing'].some(v => userFleets[i].state.startsWith(v))) fleetBusy = true;
                 }
                 if (!fleetBusy) waitForSequence = false;
                 await wait(5000);
             }
+            globalWaitForStopSequence = false;
             autoSpanRef.innerHTML = newState ? newState : 'Start';
         } else {
             enableAssistant = true;
