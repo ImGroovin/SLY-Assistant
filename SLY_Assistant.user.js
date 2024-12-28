@@ -5843,7 +5843,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                 let fleetBusy = false;
                 for (let i=0, n=userFleets.length; i < n; i++) {
                     //if (['Mine Starting','Mining Stop','Unloading','Loading','Refueling','Craft Completing','Upgrade Completing'].includes(userFleets[i].state)) fleetBusy = true;
-                    if(['Mine Starting','Mining Stop','Unloading','Loading','Docking','Undocking','Refueling','Craft Completing','Upgrade Completing'].some(v => userFleets[i].state.startsWith(v))) fleetBusy = true;
+                    if(['Mine Starting','Mining Stop','Unloading','Loading','Docking','Undocking','Refueling','Completing','Upgrade Completing'].some(v => userFleets[i].state.startsWith(v))) fleetBusy = true;
                 }
                 if (!fleetBusy) waitForSequence = false;
                 await wait(5000);
