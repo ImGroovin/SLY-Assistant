@@ -6231,7 +6231,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			settingsModalContentString += '<div>Transports keep 1 resource <input id="transportKeep1" type="checkbox"></input><br><small>If unloading a resource, should transport fleets keep 1 resource to save a CreatePDA transaction when loading it again?</small></div>';
 			settingsModalContentString += '<div>Miners keep 1 resource <input id="minerKeep1" type="checkbox"></input><br><small>Same as previous option but for miners. Also load 1 food more, so the food token account is not closed, too.</small></div>';
 			settingsModalContentString += '<div>Fleets leave 1 resource in starbases <input id="starbaseKeep1" type="checkbox"></input><br><small>Same as previous option but for starbases.</small></div>';
-			settingsModalContentString += '<div>Exclude fleets:<br><textarea id="excludeFleets" cols="40" rows="6"></textarea><br><small>(one fleet name per line, case sensivity, reload required)</small></div>';
+			settingsModalContentString += '<div>Exclude fleets:<br><textarea id="excludeFleets" cols="40" rows="6"></textarea><br><small>Fleets that should be ignored<br>(one fleet name per line, case sensivity, reload required)</small></div>';
 			settingsModalContentString += '</li>';
 			settingsModalContentString += '<li class="tab_advanced">';
 			settingsModalContentString += '<div>Tx Poll Delay <input id="confirmationCheckingDelay" type="number" min="2000" max="10000" placeholder="2000"></input><br><small>How many milliseconds to wait before re-reading the chain for confirmation (min: 2000)</small></div>';
