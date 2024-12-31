@@ -18,7 +18,7 @@
 (async function() {
     'use strict';
 
-    const solanaConnection = new solanaWeb3.Connection('https://rpc.ironforge.network/mainnet?apiKey=01HZFVRZ4A5WVX2NDA4PCPHJ7N', 'confirmed');
+    const solanaConnection = new solanaWeb3.Connection('https://rpc.ironforge.network/mainnet?apiKey=01JEEEQP3FTZJFCP5RCCKB2NSQ', 'confirmed');
     const anchorProvider = new BrowserAnchor.anchor.AnchorProvider(solanaConnection, null, null);
 
     const sageProgramId = new solanaWeb3.PublicKey('SAGE2HAwep459SNq61LHvjxPk4pLPEJLoMETef7f7EE');
