@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.44
+// @version      0.6.45
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -1263,6 +1263,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				let txSigned = null;
                 cLog(4,`${FleetTimeStamp(fleetName)} <${opName}> tx: `, tx);
 
+		const signStart = Date.now();
+
                 try {
                     if (typeof solflare === 'undefined') {
                         txSigned = phantom && phantom.solana ? await phantom.solana.signAllTransactions([tx]) : solana.signAllTransactions([tx]);
@@ -1279,6 +1281,10 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                         txSigned = await solflare.signAllTransactions([tx]);
                     }
                 }
+
+		const signMsTaken = Date.now() - signStart;
+		if(signMsTaken>2000) cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> WARNING: Signing of tx took`,signMsTaken,`milliseconds`);
+		document.getElementById('assist-modal-time').innerHTML='Last sign time: <span style="color:'+(signMsTaken >= 2000 ? (signMsTaken >= 20000 ? 'Red' : 'Yellow') : 'inherit')+'">'+(signMsTaken/1000).toFixed(1) + 's</span>';
 
                 cLog(4,`${FleetTimeStamp(fleetName)} <${opName}> txSigned: `, txSigned);
 				let txSerialized = await txSigned[0].serialize();
@@ -5688,7 +5694,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                     if(activityType == 'Crafting') {
                         const atlasNeeded = Number((craftAmount * targetRecipe.craftRecipe.feeAmount).toFixed(10));
                         const atlasParsedBalance = await solanaReadConnection.getParsedTokenAccountsByOwner(userPublicKey,{ mint: new solanaWeb3.PublicKey('ATLASXmbPQxBUYbxPsV97usA3fPQYEqzQBUHgiFCUsXx')} );
-                        const atlasBalance = atlasParsedBalance.value[0].account.data.parsed.info.tokenAmount.uiAmount;
+                        const atlasBalance = (atlasParsedBalance.value[0] ? atlasParsedBalance.value[0].account.data.parsed.info.tokenAmount.uiAmount : 0);
                         cLog(3, FleetTimeStamp(userCraft.label), 'atlas needed: ', atlasNeeded, ', atlas available: ', atlasBalance);
                         if(atlasBalance < atlasNeeded) {
                     	    enoughAtlas = false;
@@ -5772,7 +5778,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			cLog(1, 'Checking SOL and Atlas balance');
 			const solBalance = await solanaReadConnection.getBalance(userPublicKey);
 			const atlasBalance = await solanaReadConnection.getParsedTokenAccountsByOwner(userPublicKey,{ mint: new solanaWeb3.PublicKey('ATLASXmbPQxBUYbxPsV97usA3fPQYEqzQBUHgiFCUsXx')} );
-			document.getElementById('assist-modal-balance').innerHTML='SOL:'+((solBalance/1000000000).toFixed(3))+' Atlas:'+parseInt(atlasBalance.value[0].account.data.parsed.info.tokenAmount.uiAmount);
+			document.getElementById('assist-modal-balance').innerHTML='SOL:'+((solBalance/1000000000).toFixed(3))+' Atlas:'+(atlasBalance.value[0] ? parseInt(atlasBalance.value[0].account.data.parsed.info.tokenAmount.uiAmount) : 0);
 		}
 		tokenCheckCounter++;
 
@@ -6278,7 +6284,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			assistStats.style.display = 'none';
 			let assistStatsContent = document.createElement('div');
 			assistStatsContent.classList.add('assist-status-content');
-			assistStatsContent.innerHTML = '<div class="assist-modal-header" style="cursor: move;">Statistics &nbsp;<a href="javascript:;" id="assist-stats-reset" style="color:inherit;font-size:70%;">Reset</a>&nbsp;&nbsp;<div class="assist-modal-header-right"><span class="assist-modal-close">x</span></div></div><div id="assistStatsContent" class="assist-modal-body"></div>'
+			assistStatsContent.innerHTML = '<div class="assist-modal-header" style="cursor: move;">Statistics &nbsp;<small id="assist-modal-time" style="font-size:75%;"></small>&nbsp;&nbsp;<a href="javascript:;" id="assist-stats-reset" style="color:inherit;font-size:70%;">Reset</a>&nbsp;&nbsp;<div class="assist-modal-header-right"><span class="assist-modal-close">x</span></div></div><div id="assistStatsContent" class="assist-modal-body"></div>'
 			assistStats.append(assistStatsContent);
 			//statsadd end
 
