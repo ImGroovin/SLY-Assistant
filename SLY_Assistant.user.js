@@ -3758,7 +3758,7 @@
                         && transportDistance > maxWarpDistance // if samll then maxWarpDistance, just wait for warp
                         && (moveDist === transportDistance || moveDist <= transportDistance - Math.floor(maxWarpDistance)))
                     {
-                        console.log('handleMovement - smart go2')
+                        // console.log('handleMovement - smart go2')
                         let moveDistNew = moveDist
                         if (moveDist === transportDistance) {
                             moveDistNew = moveDist - userFleets[i].maxWarpDistance;
@@ -3767,7 +3767,7 @@
                         moveTime = calculateSubwarpTime(userFleets[i], moveDistNew);
                         await execSubwarp(userFleets[i], moveX, moveY, moveTime);
                     } else {
-                        console.log('handleMovement - Wait for cooldown')
+                        // console.log('handleMovement - Wait for cooldown')
                         // Wait for cooldown
                         while (Date.now() < warpCooldownExpiresAt) {
                             if (!userFleets[i].state.includes('Warp C/D')) {
