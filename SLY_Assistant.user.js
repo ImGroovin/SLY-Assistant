@@ -3414,6 +3414,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				fleetStatusCurColumn++;
 								
 				let fleetColumn = document.createElement('td');
+				fleetColumn.setAttribute('valign', 'top');
 				if(fleetStatusCurColumn > 1) fleetColumn.setAttribute('style','padding-left:10px; border-left:1px solid rgb(255, 190, 77)');
 
 				fleetColumn.classList.add('assist-fleet-column-'+fleetStatusCurColumn);
