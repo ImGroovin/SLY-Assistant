@@ -119,6 +119,8 @@
 			minerKeep1: parseBoolDefault(globalSettings.minerKeep1, false),
 			starbaseKeep1: parseBoolDefault(globalSettings.starbaseKeep1, false),
 
+			fleetsPerColumn: parseIntDefault(globalSettings.fleetsPerColumn, 0),
+
 			//Percentage of the priority fees above should be used for all actions except scanning
 			//lowPriorityFeeMultiplier: parseIntDefault(globalSettings.lowPriorityFeeMultiplier, 10),
 
@@ -335,6 +337,8 @@
 	let solanaReadCount = 0;
 	let solanaWriteCount = 0;
 	let tokenCheckCounter = 0;
+	let fleetStatusCount=0;
+	let fleetStatusCurColumn=0;	
     let globalErrorTracker = {'firstErrorTime': 0, 'errorCount': 0};
     cLog(1, `Read RPC: ${readRPCs[readIdx]}`);
     cLog(1, `Write RPC: ${writeRPCs[writeIdx]}`);
@@ -3406,6 +3410,20 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				targetRow[0].children[1].firstChild.innerHTML = fleet.state;
 			}
 		} else {
+			if((globalSettings.fleetsPerColumn <= 0 && fleetStatusCount == 0) || (globalSettings.fleetsPerColumn > 0 && (fleetStatusCount % globalSettings.fleetsPerColumn) == 0)) {
+				fleetStatusCurColumn++;
+								
+				let fleetColumn = document.createElement('td');
+				if(fleetStatusCurColumn > 1) fleetColumn.setAttribute('style','padding-left:10px; border-left:1px solid rgb(255, 190, 77)');
+
+				fleetColumn.classList.add('assist-fleet-column-'+fleetStatusCurColumn);
+				fleetColumn.innerHTML = '<table><tr><td>Fleet</td><td>Food</td><td>SDUs</td><td>State</td></tr></table>';
+				
+				let targetTableElem = document.querySelector('#assistStatus .assist-modal-body table.main tr');
+				targetTableElem.appendChild(fleetColumn);
+			}
+			fleetStatusCount++;
+			
 			let fleetRow = document.createElement('tr');
 			fleetRow.classList.add('assist-fleet-row');
 			fleetRow.setAttribute('pk', rowPK);
@@ -3438,7 +3456,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				fleetRow.appendChild(fleetLabelTd);
 				fleetRow.appendChild(fleetStatusTd);
 			}
-			let targetElem = document.querySelector('#assistStatus .assist-modal-body table');
+			let targetElem = document.querySelector('#assistStatus .assist-modal-body table.main td.assist-fleet-column-'+fleetStatusCurColumn+' table');
 			targetElem.appendChild(fleetRow);
 		}
 
@@ -3803,6 +3821,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			minerKeep1: document.querySelector('#minerKeep1').checked,
 			starbaseKeep1: document.querySelector('#starbaseKeep1').checked,
 
+			fleetsPerColumn: parseIntDefault(document.querySelector('#fleetsPerColumn').value, 0),
+
 			//lowPriorityFeeMultiplier: parseIntDefault(document.querySelector('#lowPriorityFeeMultiplier').value, 10),
             saveProfile: saveProfile,
             savedProfile: saveProfile ? (userProfileAcct && userProfileKeyIdx) ? [userProfileAcct.toString(), userProfileKeyIdx, pointsProfileKeyIdx] : [] : [],
@@ -3856,6 +3876,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		document.querySelector('#transportKeep1').checked = globalSettings.transportKeep1;
 		document.querySelector('#minerKeep1').checked = globalSettings.minerKeep1;
 		document.querySelector('#starbaseKeep1').checked = globalSettings.starbaseKeep1;
+
+		document.querySelector('#fleetsPerColumn').value = globalSettings.fleetsPerColumn;
 
 		//document.querySelector('#lowPriorityFeeMultiplier').value = globalSettings.lowPriorityFeeMultiplier;
         document.querySelector('#saveProfile').checked = globalSettings.saveProfile;
@@ -6214,6 +6236,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			settingsModalContentString += '<div>Crafting Jobs <input id="craftingJobs" type="number" min="0" max="100" placeholder="4"></input><br><small>How many crafting jobs should be enabled?</small></div>';
 			settingsModalContentString += '<div>Save profile selection? <input id="saveProfile" type="checkbox"></input><br><small>Should the profile selection be saved (uncheck to select a different profile each time)?</small></div>';
 			settingsModalContentString += '<div>Status Panel Opacity <input id="statusPanelOpacity" type="range" min="1" max="100" value="75"></input><br><small>(requires page refresh)</small></div>';
+			settingsModalContentString += '<div>Fleets per Column <input id="fleetsPerColumn" type="number" min="0" max="100" placeholder="0"></input><br><small>How many fleets should be displayed per column (0 = all fleets in one column)</small></div>';
 			settingsModalContentString += '</li>';
 			settingsModalContentString += '<li class="tab_fees">';
 			settingsModalContentString += '<div>Priority Fee <input id="priorityFee" type="number" min="0" max="100000000" placeholder="1" ></input><br><small>Added to each transaction. Set to 0 (zero) to disable (the wallet will then decide the fee!). 1 Lamport = 0.000000001 SOL. Normal transactions will use the full priority fee, smaller transactions will use 10%. Exception: craft transactions are heavy and will use the configured multiplier below.</small> </div>';
@@ -6275,7 +6298,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			assistStatus.style.display = 'none';
 			let assistStatusContent = document.createElement('div');
 			assistStatusContent.classList.add('assist-status-content');
-			assistStatusContent.innerHTML = '<div class="assist-modal-header" style="cursor: move;">Status<div>&nbsp;&nbsp;<small id="assist-modal-balance" style="font-size:75%"></small>&nbsp;<small id="assist-modal-fee" style="font-size:75%;">Fee:'+currentFee+'</small>&nbsp;</div><div class="assist-modal-header-right"><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><table><tr><td>Fleet</td><td>Food</td><td>SDUs</td><td>State</td></tr></table></div>'
+			assistStatusContent.innerHTML = '<div class="assist-modal-header" style="cursor: move;">Status<div>&nbsp;&nbsp;<small id="assist-modal-balance" style="font-size:75%"></small>&nbsp;<small id="assist-modal-fee" style="font-size:75%;">Fee:'+currentFee+'</small>&nbsp;</div><div class="assist-modal-header-right"><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><table class="main"><tr></tr></table></div>'
 			assistStatus.append(assistStatusContent);
 
 			//statsadd start
@@ -6461,7 +6484,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			let assistStatsClose = document.querySelector('#assistStats .assist-modal-close'); //statsadd
 			assistStatsClose.addEventListener('click', function(e) {assistStatToggle('#assistStats');}); //statsadd
 			let assistStatsReset = document.querySelector('#assistStats #assist-stats-reset'); //statsadd
-			assistStatsReset.addEventListener('click', function(e) { transactionStats={ "start": (Math.round(Date.now() / 1000)), "groups":{} }; document.querySelector('#assistStatsContent').innerHTML=''; }); //statsadd
+			assistStatsReset.addEventListener('click', function(e) { transactionStats={ "start": (Math.round(Date.now() / 1000)), "groups":{} }; solanaReadCount = 0; solanaWriteCount = 0; document.querySelector('#assistStatsContent').innerHTML=''; }); //statsadd
 			let configImportExport = document.querySelector('#configImportExport');
 			configImportExport.addEventListener('click', function(e) {assistImportToggle();});
 			let configImport = document.querySelector('#importConfigBtn');
