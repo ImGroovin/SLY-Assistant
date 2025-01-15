@@ -272,8 +272,10 @@
 				(error.message === 'Failed to fetch') ||
 				(error.message.includes('failed to get')) ||
 				(error.message.includes('failed to send')) ||
+				(error.message.includes('NetworkError')) ||
 				(error.message.includes('Unable to complete request'))
 			);
+			// Added "NetworkError": It happens when Cloudflare blocks the request with Status Code 502. Error message: "TypeError: NetworkError when attempting to fetch resource at [...]"
 		}
 
 		let result;
