@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.46
+// @version      0.6.47
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -63,6 +63,7 @@
 
 	let enableAssistant = false;
 	let initComplete = false;
+	let solanaErrorCount = 0;
 
 	let globalSettings;
 	const settingsGmKey = 'globalSettings';
@@ -212,7 +213,7 @@
         //console.log('DEBUG tempTotalRequests:', tempTotalRequests);
         //console.log('DEBUG tempMinsPassed:', tempMinsPassed);
         //console.log('DEBUG tempReqPerMin:', tempReqPerMin);
-        content += '<tr><td colspan="4">RPC Requests: ' + solanaReadCount + ' reads | ' + solanaWriteCount + ' writes | ' + (tempTotalRequests / tempMinsPassed).toFixed(2) + ' per minute</td></tr>';
+        content += '<tr><td colspan="4">RPC Requests: ' + solanaReadCount + ' reads | ' + solanaWriteCount + ' writes | ' + (tempTotalRequests / tempMinsPassed).toFixed(2) + ' per minute | ' + solanaErrorCount + ' errors</td></tr>';
 		for (let group in groups) {
 			content += '<tr style="opacity:0.66"><td>'+group+'</td><td align="right">Count</td><td align="right">Total '+groups[group].TOTAL.unit+'</td><td align="right">Average '+groups[group].TOTAL.unit+'</td><td align="right">Last '+groups[group].TOTAL.unit+'</td></tr>';
 			let precision = +groups[group].TOTAL.precision;
@@ -282,6 +283,7 @@
 		try {
 			result = await origMethod.apply(target, args);
 		} catch (error1) {
+			solanaErrorCount++;
 			cLog(2, `${proxyType} CONNECTION ERROR: `, error1);
             cLog(2, `${proxyType} current RPC: ${target._rpcWsEndpoint}`);
 			if (isConnectivityError(error1)) {
@@ -294,6 +296,7 @@
 						result = await origMethod.apply(newConnection, args);
 						success = true;
 					} catch (error2) {
+						solanaErrorCount++;
 						cLog(2, `${proxyType} INNER ERROR: `, error2);
 						if (!isConnectivityError(error2)) return error2;
 					}
