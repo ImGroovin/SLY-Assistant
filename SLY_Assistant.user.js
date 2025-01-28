@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.47
+// @version      0.6.48
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -3383,7 +3383,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
     }
 
 	async function resetFleetState(fleet) {
-		if (fleet.state.includes('ERROR') && !fleet.state.includes('⌛')) {
+		if ((fleet.state.includes('ERROR') && !fleet.state.includes('⌛')) || fleet.state.includes('STOPPED')) {
 			let userFleetIndex = userFleets.findIndex(item => {return item.publicKey == fleet.publicKey});
 			cLog(1,`${FleetTimeStamp(fleet.label)} Manual request for resetting the fleet state`);
 			updateFleetState(fleet,'ERROR: Trying to restart ...',true); // keep string "ERROR" for now to prevent an early start of operateFleet()
@@ -3396,8 +3396,13 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			fleet.startingCoords = fleetCoords;
 			fleet.iterCnt=0;
 			fleet.resupplying=false;
-			updateFleetState(fleet, fleetState, true);
+			//updateFleetState(fleet, fleetState, true);
+			updateFleetState(fleet, 'Starting', true);
 		}
+		else {
+			fleet.stopping = true;
+			updateFleetState(fleet, 'Stopping ...');
+		}		
 	}
 
 
@@ -4432,9 +4437,10 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 		}
 		else if (!moved && Date.now() < userFleets[i].scanEnd && userFleets[i].state == 'Idle') {
+			userFleets[i].lastScanCoord = userFleets[i].destCoord;
 			const scanCDExpireTimeStr = `[${TimeToStr(new Date(userFleets[i].scanEnd))}]`;
 			updateFleetState(userFleets[i], 'Waiting for scan cooldown ' + scanCDExpireTimeStr);
-			await wait(userFleets[i].scanEnd - Date.now());
+			//await wait(userFleets[i].scanEnd - Date.now());
 		}
 	}
 
@@ -5325,12 +5331,18 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 		userFleets[i].lastOp = Date.now();
 
+		if (userFleets[i].stopping || userFleets[i].state.includes('STOPPED')) {
+			userFleets[i].stopping = false;
+			updateFleetState(userFleets[i], 'STOPPED');
+			return;
+		}		
+
 		const moving =
 			userFleets[i].state.includes('Move [') ||
 			userFleets[i].state.includes('Warp [') ||
 			userFleets[i].state.includes('Subwarp [');
 		const waitingForWarpCD = userFleets[i].state.includes('Warp C/D');
-		const scanning = userFleets[i].state.includes('Scan');
+		const scanning = userFleets[i].state.includes('Scan') || userFleets[i].state.includes('scan cooldown');
 		const mining = userFleets[i].mineEnd && userFleets[i].state.includes('Mine') && (Date.now() < userFleets[i].mineEnd);
 		const onTarget = userFleets[i].lastScanCoord == userFleets[i].destCoord;
 		const waitingForScan = userFleets[i].scanEnd && (Date.now() <= userFleets[i].scanEnd);
