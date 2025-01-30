@@ -3364,7 +3364,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         let craftAmount = document.createElement('input');
         craftAmount.setAttribute('type', 'text');
         craftAmount.placeholder = '0';
-        craftAmount.style.width = '60px';
+        craftAmount.style.width = '70px';
         craftAmount.style.marginRight = '10px';
         craftAmount.value = craftParsedData && craftParsedData.amount ? craftParsedData.amount : '';
         let craftItemDiv = document.createElement('div');
