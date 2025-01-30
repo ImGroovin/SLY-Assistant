@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.48
+// @version      0.6.49
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -413,6 +413,7 @@
     let planetData = [];
     let minableResourceData = null;
     let starbasePlayerData = [];
+    let validTargets = [];
 
 	let currentFee = globalSettings.priorityFee; //autofee
 
@@ -3006,8 +3007,35 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			fleetDestCoord.style.width = '50px';
 			fleetDestCoord.value = fleetParsedData && fleetParsedData.dest ? fleetParsedData.dest : '';
 			let fleetDestCoordTd = document.createElement('td');
+			fleetDestCoord.style.display = fleetParsedData && fleetParsedData.assignment == 'Scan' ? 'inline-block' : 'none';
 			fleetDestCoordTd.appendChild(fleetDestCoord);
 
+			let fleetDestCoordSelect = document.createElement('select');
+			fleetDestCoordSelect.style.width = '80px';
+			fleetDestCoordSelect.appendChild(document.createElement('option'))
+			validTargets.forEach(target => {
+				let fleetDestCoordOption = document.createElement('option');
+				fleetDestCoordOption.value = target.x + ',' + target.y;
+				fleetDestCoordOption.innerHTML = target.name + '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[' + target.x + ',' + target.y + ']';
+				if(fleetParsedData && fleetDestCoordOption.value == fleetParsedData.dest) fleetDestCoordOption.setAttribute('selected', 'selected');
+				fleetDestCoordSelect.appendChild(fleetDestCoordOption);
+			});
+			fleetDestCoordSelect.style.display = fleetParsedData && fleetParsedData.assignment == 'Scan' ? 'none' : 'inline-block';
+			fleetDestCoordTd.appendChild(fleetDestCoordSelect);
+
+			let fleetStarbaseCoordSelect = document.createElement('select');
+			fleetStarbaseCoordSelect.style.width = '80px';
+			fleetStarbaseCoordSelect.appendChild(document.createElement('option'))
+			validTargets.forEach(target => {
+				let fleetStarbaseCoordOption = document.createElement('option');
+				fleetStarbaseCoordOption.value = target.x + ',' + target.y;
+				fleetStarbaseCoordOption.innerHTML = target.name + '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[' + target.x + ',' + target.y + ']';
+				if(fleetParsedData && fleetStarbaseCoordOption.value == fleetParsedData.starbase) fleetStarbaseCoordOption.setAttribute('selected', 'selected');
+				fleetStarbaseCoordSelect.appendChild(fleetStarbaseCoordOption);
+			});
+			let fleetStarbaseCoordTd = document.createElement('td');
+			fleetStarbaseCoordTd.appendChild(fleetStarbaseCoordSelect);
+			/*
 			let fleetStarbaseCoord = document.createElement('input');
 			fleetStarbaseCoord.setAttribute('type', 'text');
 			fleetStarbaseCoord.placeholder = 'x, y';
@@ -3015,6 +3043,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			fleetStarbaseCoord.value = fleetParsedData && fleetParsedData.starbase ? fleetParsedData.starbase : '';
 			let fleetStarbaseCoordTd = document.createElement('td');
 			fleetStarbaseCoordTd.appendChild(fleetStarbaseCoord);
+   			*/
 
 			let fleetSubwarpPref = document.createElement('input');
 			fleetSubwarpPref.setAttribute('type', 'checkbox');
@@ -3302,24 +3331,32 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 							transportRow.style.display = 'none';
 							padRow.style.display = 'table-row';
 							fleetRow.classList.add('show-top-border');
+							fleetDestCoord.style.display = 'inline-block';
+							fleetDestCoordSelect.style.display = 'none';
 					} else if (fleetAssignment.value == 'Mine') {
 							mineRow.style.display = 'table-row';
 							scanRow.style.display = 'none';
 							transportRow.style.display = 'none';
 							padRow.style.display = 'table-row';
 							fleetRow.classList.add('show-top-border');
+							fleetDestCoord.style.display = 'none';
+							fleetDestCoordSelect.style.display = 'inline-block';
 					} else if (fleetAssignment.value == 'Transport') {
 							transportRow.style.display = 'table-row';
 							scanRow.style.display = 'none';
 							mineRow.style.display = 'none';
 							padRow.style.display = 'table-row';
 							fleetRow.classList.add('show-top-border');
+							fleetDestCoord.style.display = 'none';
+							fleetDestCoordSelect.style.display = 'inline-block';
 					} else {
 							scanRow.style.display = 'none';
 							mineRow.style.display = 'none';
 							transportRow.style.display = 'none';
 							padRow.style.display = 'none';
 							fleetRow.classList.remove('show-top-border');
+							fleetDestCoord.style.display = 'none';
+							fleetDestCoordSelect.style.display = 'inline-block';
 					}
 			};
 	}
@@ -3612,7 +3649,13 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			let fleetPK = row.getAttribute('pk');
 			let fleetName = row.children[0].firstChild.innerText;
 			let fleetAssignment = row.children[1].firstChild.value;
-			let fleetDestCoord = validateCoordInput(row.children[2].firstChild.value);	//fleetDestCoord = fleetDestCoord ? fleetDestCoord.replace('.', ',') : fleetDestCoord;
+			//let fleetDestCoord = validateCoordInput(row.children[2].firstChild.value);	//fleetDestCoord = fleetDestCoord ? fleetDestCoord.replace('.', ',') : fleetDestCoord;
+			let fleetDestCoord = null;
+			if(fleetAssignment == 'Scan') {
+				fleetDestCoord = validateCoordInput(row.children[2].firstChild.value);	//fleetDestCoord = fleetDestCoord ? fleetDestCoord.replace('.', ',') : fleetDestCoord;
+			} else {
+				fleetDestCoord = validateCoordInput(row.children[2].children[1].value);
+			}			
 			let fleetStarbaseCoord = validateCoordInput(row.children[3].firstChild.value);	//fleetStarbaseCoord = fleetStarbaseCoord ? fleetStarbaseCoord.replace('.', ',') : fleetStarbaseCoord;
 			let subwarpPref = row.children[4].firstChild.checked;
 			let userFleetIndex = userFleets.findIndex(item => {return item.publicKey == fleetPK});
@@ -5910,6 +5953,68 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         }
     }
 
+    async function getAllStarbasesForFaction(faction) {
+        return new Promise(async resolve => {
+
+			cLog(1, 'Reading faction starbases');
+			let starbases = await sageProgram.account.starbase.all([
+				{
+					memcmp: {
+						offset: 201,
+						bytes: [faction]
+					}
+				}
+			]);
+			cLog(1, starbases.length, 'read');			
+
+			cLog(1, 'Reading all planets');
+			let planets = await sageProgram.account.planet.all([]);
+			cLog(1, planets.length, 'read');			
+			
+			// first we group all planets of the same sector:
+			let planetSectors = [];
+			planets.forEach((planet) => {
+				let label = (new TextDecoder("utf-8").decode(new Uint8Array(planet.account.name))).replace(/\0/g, '');
+				let x=planet.account.sector[0].toNumber();
+				let y=planet.account.sector[1].toNumber();
+				if(typeof planetSectors[x] == 'undefined') {
+					planetSectors[x] = [];
+				}
+				if(typeof planetSectors[x][y] == 'undefined') {
+					planetSectors[x][y] = [];
+				}
+				planetSectors[x][y].push(planet);					
+			});
+
+			// now we find out the system names by looking at the planet names
+			let validMainTargets = [];
+			let validMRZTargets = [];
+			starbases.forEach((starbase) => {
+				let x=starbase.account.sector[0].toNumber();
+				let y=starbase.account.sector[1].toNumber();
+				let planets=planetSectors[x][y];
+				let name = (new TextDecoder("utf-8").decode(new Uint8Array(planets[0].account.name))).replace(/\0/g, '').split('-');
+				let systemName = name[0] + '-' + name[1];
+				if(name[0] == 'MRZ') {
+					validMRZTargets.push({x, y, name: systemName});
+				} else {
+					validMainTargets.push({x, y, name: systemName});
+				}
+				planetData.push({coords: [x,y], lastUpdated: Date.now(), planets: planets});
+				starbaseData.push({coords: [x,y], lastUpdated: Date.now(), starbase: starbase});
+			});
+			validMainTargets.sort((a, b) => { if (a.name < b.name) { return -1; } if (a.name > b.name) { return 1; } return 0; });
+			//validMainTargets[0].name = (validMainTargets[0].name.includes('-1') ? validMainTargets[0].name.replace('-1','-CSS') : validMainTargets[0].name);
+			validMRZTargets.sort((a, b) => { if (a.name < b.name) { return -1; } if (a.name > b.name) { return 1; } return 0; });
+			validTargets = validMainTargets.concat(validMRZTargets);
+							
+			console.log('validTargets:',validTargets);
+							
+            resolve();
+        });
+    }
+
+
 	function initUser() {
 		return new Promise(async resolve => {
 
@@ -6023,6 +6128,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 							},
 					},
 			]);
+
+            await getAllStarbasesForFaction(userProfileFactionAcct.account.faction);
 
             let redemptionConfigs = await pointsStoreProgram.account.redemptionConfig.all();
             userRedemptionConfigAcct = redemptionConfigs.find(item => item.account.faction === userProfileFactionAcct.account.faction).publicKey;
