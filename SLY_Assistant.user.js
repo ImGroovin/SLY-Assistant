@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.49
+// @version      0.6.50
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -807,7 +807,8 @@
             let yArr = yBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "le", 8);
             let y58 = bs58.encode(yArr);
 
-            let cachedStarbase = starbaseData.find(item => item.coords[0] == x && item.coords[1] == y);
+            let cachedStarbaseIdx = starbaseData.findIndex(item => item.coords[0] == x && item.coords[1] == y);
+            let cachedStarbase = (cachedStarbaseIdx >= 0 ? starbaseData[cachedStarbaseIdx] : null);
             let starbase = cachedStarbase && cachedStarbase.starbase;
             let needUpdate = cachedStarbase && Date.now() - cachedStarbase.lastUpdated > 1000*60*60*24 ? true : false;
 
@@ -826,7 +827,12 @@
                         }
                     },
                 ]);
-                starbaseData.push({coords: [x,y], lastUpdated: Date.now(), starbase: starbase});
+                if(cachedStarbaseIdx >= 0) { 
+                    starbaseData[cachedStarbaseIdx].lastUpdated = Date.now();
+                    starbaseData[cachedStarbaseIdx].starbase = starbase;
+                } else {
+                    starbaseData.push({coords: [x,y], lastUpdated: Date.now(), starbase: starbase});
+		}
             }
 
             resolve(starbase);
@@ -842,7 +848,8 @@
             let yArr = yBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "le", 8);
             let y58 = bs58.encode(yArr);
 
-            let cachedPlanet = planetData.find(item => item.coords[0] == x && item.coords[1] == y);
+            let cachedPlanetIdx = planetData.find(item => item.coords[0] == x && item.coords[1] == y);
+            let cachedPlanet = (cachedPlanetIdx >= 0 ? planetData[cachedPlanetIdx] : null);
             let planets = cachedPlanet && cachedPlanet.planets;
             let needUpdate = cachedPlanet && Date.now() - cachedPlanet.lastUpdated > 1000*60*60*24 ? true : false;
 
@@ -861,7 +868,12 @@
                         }
                     },
                 ]);
-                planetData.push({coords: [x,y], lastUpdated: Date.now(), planets: planets});
+                if(cachedPlanetIdx >= 0) { 
+                    planetData[cachedPlanetIdx].lastUpdated = Date.now();
+                    planetData[cachedPlanetIdx].planets = planets;
+                } else {
+                    planetData.push({coords: [x,y], lastUpdated: Date.now(), planets: planets});
+		}
             }
 
             resolve(planets);
