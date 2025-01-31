@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.50
+// @version      0.6.51
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -3445,6 +3445,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			fleet.startingCoords = fleetCoords;
 			fleet.iterCnt=0;
 			fleet.resupplying=false;
+			fleet.moveTarget = '';
 			//updateFleetState(fleet, fleetState, true);
 			updateFleetState(fleet, 'Starting', true);
 		}
@@ -4880,6 +4881,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					//await wait(2000);
 					//userFleets[i].moveTarget = userFleets[i].destCoord;
 				} else {
+					if(fleet.stopping) return;
 					userFleets[i].moveTarget = userFleets[i].starbaseCoord;
 					await handleMineMovement();
 				}
@@ -4887,6 +4889,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 			//At mining area?
 			else if (fleetCoords[0] == destX && fleetCoords[1] == destY) {
+		if(fleet.stopping) return;
                 fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
                 cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
                 currentFood = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.food.toString());
@@ -4908,6 +4911,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 			//Move to mining area
 			else {
+				if(fleet.stopping) return;
 				userFleets[i].moveTarget = userFleets[i].destCoord;
 				await handleMineMovement();
 			}
@@ -5097,6 +5101,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                 userFleets[i].resupplying = false;
                 cLog(3,`${FleetTimeStamp(userFleets[i].label)} userFleets[i]: `, userFleets[i]);
             }
+
+            if(fleet.stopping) return;
 
             if (userFleets[i].moveTarget !== '') {
                 const targetX = userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[0].trim() : '';
