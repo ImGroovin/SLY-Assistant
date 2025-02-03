@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.51
+// @version      0.6.52
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -3448,6 +3448,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			fleet.moveTarget = '';
 			//updateFleetState(fleet, fleetState, true);
 			updateFleetState(fleet, 'Starting', true);
+			fleet.state = fleetState; // overwrite "starting" with the real state but don't display it - just like in toggleAssistant
 		}
 		else {
 			fleet.stopping = true;
@@ -5865,7 +5866,13 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         for (let i=1; i < globalSettings.craftingJobs+1; i++) {
             let craftSavedData = await GM.getValue('craft' + i, '{}');
             let craftParsedData = JSON.parse(craftSavedData);
-            if (craftParsedData.item && craftParsedData.coordinates) startCraft(craftParsedData);
+            //if (craftParsedData.item && craftParsedData.coordinates) startCraft(craftParsedData);
+            
+            //Stagger craft starts by 2s to avoid overloading the RPC            
+            if (craftParsedData.item && craftParsedData.coordinates) {
+		    updateFleetState(craftParsedData, craftParsedData.state);
+		    setTimeout(() => { startCraft(craftParsedData); }, 2000 * i);
+	    }
         }
 
 		setTimeout(fleetHealthCheck, 5000);
@@ -5950,8 +5957,13 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                 let fleetBusy = false;
                 for (let i=0, n=userFleets.length; i < n; i++) {
                     //if (['Mine Starting','Mining Stop','Unloading','Loading','Refueling','Craft Completing','Upgrade Completing'].includes(userFleets[i].state)) fleetBusy = true;
-                    if(['Mine Starting','Mining Stop','Unloading','Loading','Docking','Undocking','Refueling','Completing','Upgrade Completing'].some(v => userFleets[i].state.startsWith(v))) fleetBusy = true;
+                    if(['Mine Starting','Mining Stop','Unloading','Loading','Docking','Undocking','Refueling'].some(v => userFleets[i].state.startsWith(v))) fleetBusy = true;
                 }
+		for (let i=1; i < globalSettings.craftingJobs+1; i++) {
+			let craftSavedData = await GM.getValue('craft' + i, '{}');
+			let craftParsedData = JSON.parse(craftSavedData);
+			if(['Starting:','Upgrade Starting', 'Completing:', 'Upgrade Completing'].some(v => craftParsedData.state.startsWith(v))) fleetBusy = true;
+		}
                 if (!fleetBusy) waitForSequence = false;
                 await wait(5000);
             }
