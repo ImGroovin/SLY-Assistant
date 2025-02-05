@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.52
+// @version      0.6.53
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -3385,13 +3385,28 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         let craftLabelTd = document.createElement('td');
         craftLabelTd.appendChild(craftLabel);
 
-        let craftStarbaseCoord = document.createElement('input');
+        /*
+	let craftStarbaseCoord = document.createElement('input');
         craftStarbaseCoord.setAttribute('type', 'text');
         craftStarbaseCoord.placeholder = 'x, y';
         craftStarbaseCoord.style.width = '50px';
         craftStarbaseCoord.value = craftParsedData && craftParsedData.coordinates ? craftParsedData.coordinates : '';
         let craftStarbaseCoordTd = document.createElement('td');
         craftStarbaseCoordTd.appendChild(craftStarbaseCoord);
+	*/
+
+	let craftStarbaseCoordSelect = document.createElement('select');
+	craftStarbaseCoordSelect.style.width = '80px';
+	craftStarbaseCoordSelect.appendChild(document.createElement('option'))
+	validTargets.forEach(target => {
+		let craftStarbaseCoordOption = document.createElement('option');
+		craftStarbaseCoordOption.value = target.x + ',' + target.y;
+		craftStarbaseCoordOption.innerHTML = target.name + '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[' + target.x + ',' + target.y + ']';
+		if(craftParsedData && craftStarbaseCoordOption.value == craftParsedData.coordinates) craftStarbaseCoordOption.setAttribute('selected', 'selected');
+		craftStarbaseCoordSelect.appendChild(craftStarbaseCoordOption);
+	});		
+        let craftStarbaseCoordTd = document.createElement('td');
+        craftStarbaseCoordTd.appendChild(craftStarbaseCoordSelect);
 
         let craftCrew = document.createElement('input');
         craftCrew.setAttribute('type', 'text');
@@ -3467,7 +3482,9 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				targetRow[0].children[2].firstChild.innerHTML = fleet.sduCnt || 0;
 				targetRow[0].children[3].firstChild.innerHTML = fleet.state;
 			} else {
-				targetRow[0].children[0].firstChild.innerHTML = fleet.label + " [" + fleet.coordinates + "]";
+				//targetRow[0].children[0].firstChild.innerHTML = fleet.label + " [" + fleet.coordinates + "]";
+				let target = validTargets.find(target => (target.x + ',' + target.y) == fleet.coordinates);
+				targetRow[0].children[0].firstChild.innerHTML = fleet.label + " " + target?.name;
 				targetRow[0].children[1].firstChild.innerHTML = fleet.state;
 			}
 		} else {
@@ -3514,7 +3531,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			} else {
 				fleetStatusTd.setAttribute('colspan', 3);
 				fleetStatusTd.appendChild(fleetStatus);
-				fleetLabel.innerHTML = fleetLabel.innerHTML + " [" + fleet.coordinates + "]";
+				let target = validTargets.find(target => (target.x + ',' + target.y) == fleet.coordinates);
+				fleetLabel.innerHTML = fleetLabel.innerHTML + " " + target?.name;
 				fleetRow.appendChild(fleetLabelTd);
 				fleetRow.appendChild(fleetStatusTd);
 			}
