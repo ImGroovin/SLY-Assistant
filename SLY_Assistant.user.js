@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.53
+// @version      0.6.54
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -70,6 +70,31 @@
 	const scanningPatterns = ['square', 'ring', 'spiral', 'up', 'down', 'left', 'right', 'sly'];
 	await loadGlobalSettings();
 
+	let errorLog = [];
+	let errorLogIndex = 0;
+	let errorLogMaxEntries = 30;
+	async function loadErrorLog() {
+		let savedErrorLog = await GM.getValue('ErrorLog', '{ "index": 0, "messages": [] }');
+		console.log(savedErrorLog);
+		let parsedErrorLog = JSON.parse(savedErrorLog);
+		errorLogIndex = parsedErrorLog.index;
+		errorLog = parsedErrorLog.messages;
+	}
+	await loadErrorLog();
+	async function logError(msg, fleetName) {
+		let timeStamp = "[" + new Date(Date.now()).toLocaleString("en-GB", { hour12: false }) + "]";
+		errorLog[errorLogIndex] = timeStamp + " " + (fleetName ? (fleetName + " ") : '') + msg;
+		errorLogIndex++;
+		if(errorLogIndex >= errorLogMaxEntries) errorLogIndex = 0;
+		let newErrorLog = { "index": errorLogIndex, "messages": errorLog };		
+		await GM.setValue('ErrorLog', JSON.stringify(newErrorLog));
+	}
+	let oldOnUnhandledRejection = window.onunhandledrejection;
+	window.onunhandledrejection = function(errorEvent) {
+		logError("Unhandled exception: " + errorEvent.reason.message + (!!errorEvent.reason.stack ? ("\nStack: " + errorEvent.reason.stack) : '') );
+		if(oldOnUnhandledRejection) oldOnUnhandledRejection(errorEvent);
+	};	
+	
 	function cLog(level, ...args) {	if(level <= globalSettings.debugLogLevel) console.log(...args); }
 	function wait(ms) {	return new Promise(resolve => {	setTimeout(resolve, ms); }); }
 	function TimeToStr(date) { return date.toLocaleTimeString("en-GB", { hour12: false, hour: "2-digit", minute: "2-digit" }); }
@@ -287,6 +312,7 @@
 			cLog(2, `${proxyType} CONNECTION ERROR: `, error1);
             cLog(2, `${proxyType} current RPC: ${target._rpcWsEndpoint}`);
 			if (isConnectivityError(error1)) {
+				logError('Recoverable connection error: ' + error1);
 				let success = false;
 				let rpcIdx = 0;
 				while (!success && rpcIdx < rpcs.length) {
@@ -306,6 +332,7 @@
 					await wait(500);
 				}
 			}
+			else { logError('Unrecoverable connection error: ' + error1); }
 		}
 		return result;
 	}
@@ -1331,6 +1358,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                     cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> ERROR ❌ The instruction resulted in an error.`);
                     let ixError = txResult && txResult.meta && txResult.meta.logMessages ? txResult.meta.logMessages : 'Unknown';
                     console.log(FleetTimeStamp(fleetName), ' txResult.logMessages: ', ixError);
+                    logError('ix error: ' + ixError, fleetName);
                 }
 
 				const confirmationTimeStr = `${Date.now() - microOpStart}ms`;
@@ -3654,6 +3682,18 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		return scanBlock;
 	}
 
+	async function clearErrors() {
+		errorLog = [];
+		errorLogIndex = 0;
+		let newErrorLog = { "index": errorLogIndex, "messages": errorLog };		
+		await GM.setValue('ErrorLog', JSON.stringify(newErrorLog));
+		await reloadErrors();
+	}
+	async function reloadErrors() {
+		await assistErrorToggle();
+		await assistErrorToggle();
+	}
+
 	async function saveAssistInput() {
 		function validateCoordInput(coord) { return coord ? coord.replace('.', ',') : ''; }
 		let fleetRows = document.querySelectorAll('#assistModal .assist-fleet-row');
@@ -3821,6 +3861,25 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			}
 			importText.value += '}';
 			assistModalToggle();
+		} else {
+			targetElem.style.display = 'none';
+		}
+	}
+
+	async function assistErrorToggle() {
+		let targetElem = document.querySelector('#errorModal');
+		if (targetElem.style.display === 'none') {
+			targetElem.style.display = 'block';
+			let importText = document.querySelector('#errorText');
+			let curIdx=errorLogIndex - 1;
+			if(curIdx < 0) curIdx = errorLogMaxEntries - 1;
+			importText.value = '';
+			for(let i=0; i<errorLogMaxEntries; i++) {				
+				if(!errorLog[curIdx]) break;
+				importText.value += errorLog[curIdx] + "\n\n";
+				curIdx--;
+				if(curIdx<0) curIdx = errorLogMaxEntries - 1;
+			}			
 		} else {
 			targetElem.style.display = 'none';
 		}
@@ -6456,6 +6515,16 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			importModalContent.innerHTML = '<div class="assist-modal-header"><span>Config Import/Export</span><div class="assist-modal-header-right"><button id="importTargetsBtn" class="assist-modal-btn assist-modal-save">Import Fleet Targets</button><button id="importConfigBtn" class="assist-modal-btn assist-modal-save">Import Config</button><span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><div></div><div><ul><li>Copy the text below to save your raw Lab Assistant configuration.</li><li>To restore your previous configuration, enter configuration text in the text box below then click the Import Config button.</li><li>To import new Target coordinates for fleets, paste the exported text from EveEye in the text box below then click the Import Fleet Targets button.</li></ul></div><div></div><textarea id="importText" rows="4" cols="80" max-width="100%"></textarea></div>';
 			importModal.append(importModalContent);
 
+			let errorModal = document.createElement('div');
+			errorModal.classList.add('assist-modal');
+			errorModal.id = 'errorModal';
+			errorModal.style.display = 'none';
+			errorModal.style.zIndex = 3;
+			let errorModalContent = document.createElement('div');
+			errorModalContent.classList.add('assist-modal-content');
+			errorModalContent.innerHTML = '<div class="assist-modal-header"><span>Error Log</span><div class="assist-modal-header-right"><button id="reloadLogBtn" class="assist-modal-btn">Reload</button><button id="clearBtn" class="assist-modal-btn">Clear</button> <span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><div>Snapshot of the error log (to see an updated state, close/open this overlay or use the reload button). Logged errors are: ix errors, recoverable network errors, unrecoverable network errors, unhandled exceptions</div><textarea id="errorText" rows="12" cols="80" max-width="100%"></textarea></div><br>';
+			errorModal.append(errorModalContent);
+
 			let profileModal = document.createElement('div');
 			profileModal.classList.add('assist-modal');
 			profileModal.id = 'profileModal';
@@ -6577,6 +6646,15 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			assistStatsButton.appendChild(assistStatsSpan);
 			//statsadd
 
+			let assistErrorButton = document.createElement('button');
+			assistErrorButton.id = 'assistErrorBtn';
+			assistErrorButton.classList.add('assist-btn','assist-btn-alt');
+			assistErrorButton.addEventListener('click', function(e) {assistErrorToggle();});
+			let assistErrorSpan = document.createElement('span');
+			assistErrorSpan.innerText = 'Error log';
+			assistErrorSpan.style.fontSize = '14px';
+			assistErrorButton.appendChild(assistErrorSpan);
+
 			let assistStarbaseStatusButton = document.createElement('button');
 			assistStarbaseStatusButton.id = 'assistStarbaseStatusBtn';
 			assistStarbaseStatusButton.classList.add('assist-btn','assist-btn-alt');
@@ -6597,6 +6675,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			dropdown.appendChild(assistStatsButton); //statsadd
 			dropdown.appendChild(assistConfigButton);
 			dropdown.appendChild(assistSettingsButton);
+			dropdown.appendChild(assistErrorButton);
 
 			let targetElem = document.querySelector('body');
 			if (observer) {
@@ -6636,6 +6715,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			autoContainer.append(assistCheck);
 			autoContainer.append(assistStats); //statsadd
 			autoContainer.append(importModal);
+			autoContainer.append(errorModal);
 			autoContainer.append(profileModal);
 			//autoContainer.append(addAcctModal);
 			let assistModalClose = document.querySelector('#assistModal .assist-modal-close');
@@ -6674,6 +6754,12 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			//removeAcctBtn.addEventListener('click', function(e) {removeKeyFromProfile();});
 			let configImportClose = document.querySelector('#importModal .assist-modal-close');
 			configImportClose.addEventListener('click', function(e) {assistImportToggle();});
+			let assistErrorClose = document.querySelector('#errorModal .assist-modal-close');
+			assistErrorClose.addEventListener('click', function(e) {assistErrorToggle();});
+			let assistErrorClearBtn = document.querySelector('#clearBtn');
+			assistErrorClearBtn.addEventListener('click', function(e) {clearErrors();});
+			let assistErrorReloadBtn = document.querySelector('#reloadLogBtn');
+			assistErrorReloadBtn.addEventListener('click', function(e) {reloadErrors();});
 			let profileModalClose = document.querySelector('#profileModal .assist-modal-close');
 			profileModalClose.addEventListener('click', function(e) {assistProfileToggle(null);});
 			//let addAcctClose = document.querySelector('#addAcctModal .assist-modal-close');
