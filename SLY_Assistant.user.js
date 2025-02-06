@@ -6522,7 +6522,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			errorModal.style.zIndex = 3;
 			let errorModalContent = document.createElement('div');
 			errorModalContent.classList.add('assist-modal-content');
-			errorModalContent.innerHTML = '<div class="assist-modal-header"><span>Error Log</span><div class="assist-modal-header-right"><button id="reloadLogBtn" class="assist-modal-btn">Reload</button><button id="clearBtn" class="assist-modal-btn">Clear</button> <span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><div>Snapshot of the error log (to see an updated state, close/open this overlay or use the reload button). Logged errors are: ix errors, recoverable network errors, unrecoverable network errors, unhandled exceptions</div><textarea id="errorText" rows="12" cols="80" max-width="100%"></textarea></div><br>';
+			errorModalContent.innerHTML = '<div class="assist-modal-header"><span>Error Log</span><div class="assist-modal-header-right"><button id="reloadLogBtn" class="assist-modal-btn">Reload</button><button id="clearBtn" class="assist-modal-btn">Clear</button> <span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><div>Snapshot of the error log (to see an updated state, close/open this overlay or use the reload button). Logged errors: ix errors, recoverable/unrecoverable network errors, unhandled exceptions</div><textarea id="errorText" rows="12" cols="80" max-width="100%"></textarea></div><br>';
 			errorModal.append(errorModalContent);
 
 			let profileModal = document.createElement('div');
