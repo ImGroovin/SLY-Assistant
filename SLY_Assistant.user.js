@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.54
+// @version      0.6.55
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -312,7 +312,6 @@
 			cLog(2, `${proxyType} CONNECTION ERROR: `, error1);
             cLog(2, `${proxyType} current RPC: ${target._rpcWsEndpoint}`);
 			if (isConnectivityError(error1)) {
-				logError('Recoverable connection error: ' + error1);
 				let success = false;
 				let rpcIdx = 0;
 				while (!success && rpcIdx < rpcs.length) {
@@ -324,12 +323,13 @@
 					} catch (error2) {
 						solanaErrorCount++;
 						cLog(2, `${proxyType} INNER ERROR: `, error2);
-						if (!isConnectivityError(error2)) return error2;
+						if (!isConnectivityError(error2)) { logError('Unrecoverable connection error: ' + error2); return error2; }
+						else { logError('Recoverable connection error (still trying): ' + error2); }
 					}
 					rpcIdx = rpcIdx+1 < rpcs.length ? rpcIdx+1 : 0;
 
 					//Prevent spam if errors are occurring immediately (disconnected from internet / unplugged cable)
-					await wait(500);
+					await wait(1000);
 				}
 			}
 			else { logError('Unrecoverable connection error: ' + error1); }
@@ -6522,7 +6522,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			errorModal.style.zIndex = 3;
 			let errorModalContent = document.createElement('div');
 			errorModalContent.classList.add('assist-modal-content');
-			errorModalContent.innerHTML = '<div class="assist-modal-header"><span>Error Log</span><div class="assist-modal-header-right"><button id="reloadLogBtn" class="assist-modal-btn">Reload</button><button id="clearBtn" class="assist-modal-btn">Clear</button> <span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><div>Snapshot of the error log (to see an updated state, close/open this overlay or use the reload button). Logged errors: ix errors, recoverable/unrecoverable network errors, unhandled exceptions</div><textarea id="errorText" rows="12" cols="80" max-width="100%"></textarea></div><br>';
+			errorModalContent.innerHTML = '<div class="assist-modal-header"><span>Error Log</span><div class="assist-modal-header-right"><button id="reloadLogBtn" class="assist-modal-btn">Reload</button><button id="clearBtn" class="assist-modal-btn">Clear</button> <span class="assist-modal-close">x</span></div></div><div class="assist-modal-body"><div>Snapshot of the error log (to see an updated state, close/open this overlay or use the reload button). Logged errors: ix errors, network errors, unhandled exceptions</div><textarea id="errorText" rows="12" cols="80" max-width="100%"></textarea></div><br>';
 			errorModal.append(errorModalContent);
 
 			let profileModal = document.createElement('div');
