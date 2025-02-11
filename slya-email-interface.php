@@ -5,7 +5,7 @@
 // - Choose a random string for the passcode, use only standard (english) letters and numbers, min length 10 chars
 // - Upload the script to your webspace
 // - enter the URL into SLYA, e.g.: https://yourdomain.com/slya-email-interface.php?code=xxx
-// - replace xxx with your choosen passcode
+// - replace xxx with your chosen passcode
 // - if you want to test if your interface is working correctly, download slya-email-interface-test.html, replace "interfaceURL" with your own URL and start the script in your browser. Open the console. You should either see an error message or "The email was sent".
 
 // Config:
