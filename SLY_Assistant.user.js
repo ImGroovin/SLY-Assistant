@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.57
+// @version      0.6.58
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -4373,8 +4373,12 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 							updateFleetState(userFleets[i], `Warp C/D ${warpCDExpireTimeStr}`);
 						}
 
-						await wait(Math.max(1000, warpCooldownExpiresAt - Date.now()));
-					}	await wait(2000); //Extra wait to ensure accuracy
+						//await wait(Math.max(1000, warpCooldownExpiresAt - Date.now()));
+						if(warpCooldownExpiresAt - Date.now() < 5000) await wait(Math.max(1000, warpCooldownExpiresAt - Date.now()));
+						else await wait(5000);						
+						if(userFleets[i].stopping) return;
+					}	
+					await wait(2000); //Extra wait to ensure accuracy
 
 					//Calculate next warp point if more than 1 is needed to arrive at final destination
 					if (moveDist > userFleets[i].maxWarpDistance / 100) {
@@ -4528,6 +4532,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				}
 			}
 		}
+
+		if(userFleets[i].stopping) return;
 
 		if (!moved && Date.now() > userFleets[i].scanEnd) {
 			userFleets[i].lastScanCoord = userFleets[i].destCoord;
@@ -5022,6 +5028,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				await handleMineMovement();
 			}
 		}
+
+		if(userFleets[i].stopping) return;
 
 		//Already mining?
 		if (userFleets[i].state.slice(0, 4) === 'Mine' && fleetMining) {
@@ -5555,6 +5563,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					startupScanBlockCheck(i, fleetCoords);
 					const curentSBI = userFleets[i].scanBlockIdx;
 					await handleScan(i, fleetCoords, userFleets[i].scanBlock[curentSBI]);
+
+					if(userFleets[i].stopping) return;
 
 					//Move instantly if a move is needed as the result of the previous scan
 					if(curentSBI !== userFleets[i].scanBlockIdx)	await handleScan(i, fleetCoords, userFleets[i].scanBlock[userFleets[i].scanBlockIdx]);
