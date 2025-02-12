@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.56
+// @version      0.6.57
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -146,6 +146,11 @@
 			starbaseKeep1: parseBoolDefault(globalSettings.starbaseKeep1, false),
 
 			emailInterface: parseStringDefault(globalSettings.emailInterface,''),
+
+			emailFleetIxErrors: parseBoolDefault(globalSettings.emailFleetIxErrors, true),
+			emailCraftIxErrors: parseBoolDefault(globalSettings.emailCraftIxErrors, true),
+			emailNoCargoLoaded: parseBoolDefault(globalSettings.emailNoCargoLoaded, true),
+			emailNotEnoughFFA: parseBoolDefault(globalSettings.emailNotEnoughFFA, true),
 
 			fleetsPerColumn: parseIntDefault(globalSettings.fleetsPerColumn, 0),
 
@@ -1361,7 +1366,11 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                     let ixError = txResult && txResult.meta && txResult.meta.logMessages ? txResult.meta.logMessages : 'Unknown';
                     console.log(FleetTimeStamp(fleetName), ' txResult.logMessages: ', ixError);
                     logError('ix error: ' + ixError, fleetName);
-                    await sendEMail(fleetName + ' ix error', ixError);
+                    if(fleet.publicKey) {
+                    	if(globalSettings.emailFleetIxErrors) await sendEMail(fleetName + ' ix error', ixError);
+                    } else {
+                    	if(globalSettings.emailCraftIxErrors) await sendEMail(fleetName + ' ix error', ixError);
+                    }
                 }
 
 				const confirmationTimeStr = `${Date.now() - microOpStart}ms`;
@@ -3969,7 +3978,12 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			minerKeep1: document.querySelector('#minerKeep1').checked,
 			starbaseKeep1: document.querySelector('#starbaseKeep1').checked,
 
-			emailInterface: parseStringDefault(document.querySelector('#emailInterface').value,''),			
+			emailInterface: parseStringDefault(document.querySelector('#emailInterface').value,''),
+
+			emailFleetIxErrors: document.querySelector('#emailFleetIxErrors').checked,
+			emailCraftIxErrors: document.querySelector('#emailCraftIxErrors').checked,
+			emailNoCargoLoaded: document.querySelector('#emailNoCargoLoaded').checked,
+			emailNotEnoughFFA: document.querySelector('#emailNotEnoughFFA').checked,
 
 			fleetsPerColumn: parseIntDefault(document.querySelector('#fleetsPerColumn').value, 0),
 
@@ -4028,6 +4042,11 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		document.querySelector('#starbaseKeep1').checked = globalSettings.starbaseKeep1;
 
 		document.querySelector('#emailInterface').value = globalSettings.emailInterface;
+
+		document.querySelector('#emailFleetIxErrors').checked = globalSettings.emailFleetIxErrors;
+		document.querySelector('#emailCraftIxErrors').checked = globalSettings.emailCraftIxErrors;
+		document.querySelector('#emailNoCargoLoaded').checked = globalSettings.emailNoCargoLoaded;
+		document.querySelector('#emailNotEnoughFFA').checked = globalSettings.emailNotEnoughFFA;
 
 		document.querySelector('#fleetsPerColumn').value = globalSettings.fleetsPerColumn;
 
@@ -4382,7 +4401,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				} else {
 					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unable to move, lack of fuel`);
 					updateFleetState(userFleets[i], 'ERROR: Not enough fuel');
-					await sendEMail(userFleets[i].label + ' not enough fuel', '');
+					if(globalSettings.emailNotEnoughFFA) await sendEMail(userFleets[i].label + ' not enough fuel', '');
 				}
 			}
 		}
@@ -4921,7 +4940,6 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 						let fuelResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, fleetFuelAcct, sageGameAcct.account.mints.fuel.toString(), fuelCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].fuelCapacity - currentFuelCnt);
 						if (fuelResp && fuelResp.name == 'NotEnoughResource') {
 							cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough fuel`);
-							await sendEMail(userFleets[i].label + ' not enough fuel', '');
 							errorResource.push('fuel');
 						}
 						//await wait(2000);
@@ -4934,7 +4952,6 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 						let ammoResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].ammoBank, fleetAmmoAcct, sageGameAcct.account.mints.ammo.toString(), ammoCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].ammoCapacity - currentAmmoCnt);
 						if (ammoResp && ammoResp.name == 'NotEnoughResource') {
 							cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough ammo`);
-							await sendEMail(userFleets[i].label + ' not enough ammo', '');
 							errorResource.push('ammo');
 						}
 						//await wait(2000);
@@ -4954,7 +4971,6 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 						let foodResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetFoodAcct, sageGameAcct.account.mints.food.toString(), foodCargoTypeAcct, userFleets[i].starbaseCoord, foodForDuration - currentFoodCnt);
 						if (foodResp && foodResp.name == 'NotEnoughResource') {
 							cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough food`);
-							await sendEMail(userFleets[i].label + ' not enough food', '');
 							errorResource.push('food');
 						}
 						//await wait(2000);
@@ -4964,6 +4980,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 					if (errorResource.length > 0) {
 						updateFleetState(userFleets[i], `ERROR: Not enough ${errorResource.toString()}`);
+						if(globalSettings.emailNotEnoughFFA) await sendEMail(userFleets[i].label + ' not enough ' + errorResource.toString(), '');
 					} else {
 						await execUndock(userFleets[i], userFleets[i].starbaseCoord);
 					}
@@ -5316,7 +5333,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
         if (execResp && execResp.name == 'NotEnoughResource') {
 			cLog(1,`${FleetTimeStamp(fleet.label)} ERROR: Not enough fuel`);
-			await sendEMail(fleet.label + ' not enough fuel', '');
+			if(globalSettings.emailNotEnoughFFA) await sendEMail(fleet.label + ' not enough fuel', '');
             fuelResp.detail = 'ERROR: Not enough fuel';
 		} else {
             fuelResp.status = 1;
@@ -5393,6 +5410,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         let expectedCnt = 0;
         cLog(2,`${FleetTimeStamp(userFleets[i].label)} cargoSpace remaining: ${cargoSpace}`);
 
+		let notEnoughInfo = '';
 		for (const entry of transportManifest) {
 			if (entry.res && entry.amt > 0) {
 				if(cargoSpace < 1) {
@@ -5434,6 +5452,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					if (resp && resp.name == 'NotEnoughResource') {
 						const resShort = cargoItems.find(r => r.token == entry.res).name;
 						cLog(1,`${FleetTimeStamp(userFleets[i].label)} Not enough ${resShort}`);
+						notEnoughInfo += 'Not enough ' + resShort + '\n';
 					}
 				}
 			}
@@ -5448,7 +5467,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         if (startingCargoSpace == cargoSpace && expectedCnt > 0) {
             updateFleetState(userFleets[i], 'ERROR: No cargo loaded');
             cLog(2,`${FleetTimeStamp(userFleets[i].label)} ERROR: No cargo loaded`);
-            await sendEMail(userFleets[i].label + ' no cargo loaded', '');
+            if(globalSettings.emailNoCargoLoaded) await sendEMail(userFleets[i].label + ' no cargo loaded', notEnoughInfo);
         }
 		return !userFleets[i].state.includes('ERROR');
 	}
@@ -6073,11 +6092,12 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         }
     }
 
-    async function sendEMail(subject,text) {
-		if(globalSettings.emailInterface.length > 0) {
+    async function sendEMail(subject, text, overrideURL) {
+		let message = '';
+		if((overrideURL ? overrideURL : globalSettings.emailInterface).length > 0) {
 			try {
 				cLog(1, 'Sending a message via the email interface, subject: ', subject);
-				const response = await fetch(globalSettings.emailInterface, {
+				const response = await fetch((overrideURL ? overrideURL : globalSettings.emailInterface), {
 					method: "POST",
 					body: JSON.stringify({
 						subject: 'SLYA: ' + subject,
@@ -6088,19 +6108,31 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					}
 				});
 				if (!response.ok) {
-					cLog(1, 'Error while sending a request to the email interface:', response.status, response.statusText);
+					message = 'Error while sending a request to the email interface: ' + response.status + ' ' + response.statusText;					
 				} else {
 					const result = await response.json();
 					if(!result.success) {
-						cLog(1, 'Error from email interface:', result.text);
+						message = 'Error from email interface: ' + result.text;
 					} else {
-						cLog(1, 'The email was sent');
+						message = 'The email was sent';
 					}
 				}
 			} catch(error) {
-				cLog(1, 'Error while sending a request to the email interface:', error.message);
+				message = 'Error while sending a request to the email interface: ' + error.message;
 			}
+			cLog(1, message);
 		}
+		return message;
+    }
+
+    async function emailInterfaceTest() {
+		let emailInterfaceURL = document.querySelector('#emailInterface');
+		let url = emailInterfaceURL.value;
+		
+		const result = await sendEMail('Interface-Test', 'Congratulations! Your email interface is working.', url);
+		let emailInterfaceTestResult = document.querySelector('#emailInterfaceTestResult');
+		emailInterfaceTestResult.innerHTML = result;
+		
     }
 
 
@@ -6543,7 +6575,13 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			settingsModalContentString += '<div>Console Logging <input id="debugLogLevel" type="number" min="0" max="9" placeholder="3"></input><br><small>How much console logging you want to see (higher number = more, 0 = none)</small></div>';
 			settingsModalContentString += '<div>Auto Start Script <input id="autoStartScript" type="checkbox"></input><br><small>Should Lab Assistant automatically start after initialization is complete?</small></div>';
 			settingsModalContentString += '<div>Reload On Stuck Fleets <input id="reloadPageOnFailedFleets" type="number" min="0" max="999" placeholder="0"></input><br><small>Automatically refresh the page if this many fleets get stuck (0 = never)</small></div>';
-			settingsModalContentString += '<div>E-Mail-Interface <input id="emailInterface" type="text" size="40"></input><br><small>Send errors via the email interface (see "slya-email-interface.php" on GitHub for instructions).</small></div>';
+			settingsModalContentString += '<div>E-Mail-Interface <input id="emailInterface" type="text" size="40"></input><br><small>Send errors via the email interface (see "slya-email-interface.php" on GitHub for instructions).</small><button id="emailInterfaceTest">Test the interface URL</button> Result: <span id="emailInterfaceTestResult"></span></div>';
+			settingsModalContentString += '<div>'; 
+			settingsModalContentString += 'email fleet ix errors? <input id="emailFleetIxErrors" type="checkbox"></input><br>';
+			settingsModalContentString += 'email craft ix errors? <input id="emailCraftIxErrors" type="checkbox"></input><br>';
+			settingsModalContentString += 'email no cargo loaded? <input id="emailNoCargoLoaded" type="checkbox"></input><br>';
+			settingsModalContentString += 'email not enough fuel/food/ammo? <input id="emailNotEnoughFFA" type="checkbox"></input><br>';
+			settingsModalContentString += '</div>';
 			settingsModalContentString += '</li>';
 			settingsModalContentString += '</menu></div>';
 			//settingsModalContent.innerHTML = '<div class="assist-modal-header"> <img src="' + iconStr + '" /> <span style="padding-left: 15px;">SLY Assistant v' + GM_info.script.version + '</span> <div class="assist-modal-header-right"> <button class=" assist-modal-btn assist-modal-save">Save</button> <span class="assist-modal-close">x</span> </div></div><div class="assist-modal-body"> <span id="settings-modal-error"></span> <div id="settings-modal-header">Global Settings</div> <div>Priority Fee <input id="priorityFee" type="number" min="0" max="100000000" placeholder="1" ></input> <span>Added to each transaction. Set to 0 (zero) to disable (the wallet will then decide the fee!). 1 Lamport = 0.000000001 SOL. Normal transactions will use the full priority fee, smaller transactions will use 10%. Exception: craft transactions are super heavy and will use 250% of the fee.</span> </div> <div>Auto-Fee? <input id="automaticFee" type="checkbox"></input> <span>Enable the auto fee algorithm, works best if at least 1 tx is executed per minute.</span><fieldset id="autoFeeData">FeeMin: <input id="automaticFeeMin" type="number" min="0" max="100000" placeholder="1" size="6"></input> TimeMin: <input id="automaticFeeTimeMin" type="number" min="1" max="120" placeholder="6" size="3"></input><br/>FeeMax: <input id="automaticFeeMax" type="number" min="0" max="100000" placeholder="12000" size="6"></input> TimeMax: <input id="automaticFeeTimeMax" type="number" min="5" max="120" placeholder="40" size="3"></input><br/>Max fee change/tx: <input id="automaticFeeStep" type="number" min="1" max="1000" placeholder="80" size="6"></input><br/><span>Fee starts with the configured priority fee from above. The current fee is then somewhere between FeeMin and FeeMax. This is 1:1 carried over to TimeMin and TimeMax and results in a threshold time. If a new tx is below this time, the fee gets decreased. If a new tx is above this time, the fee gets increased. Both times the amount is limited to "Max fee change/tx". The more the time deviates from the current threshold time, the greater the change.</span></fieldset></div> <div>Save profile selection? <input id="saveProfile" type="checkbox"></input> <span>Should the profile selection be saved (uncheck to select a different profile each time)?</span> </div> <div>Tx Poll Delay <input id="confirmationCheckingDelay" type="number" min="200" max="10000" placeholder="200"></input> <span>How many milliseconds to wait before re-reading the chain for confirmation</span> </div> <div>Console Logging <input id="debugLogLevel" type="number" min="0" max="9" placeholder="3"></input> <span>How much console logging you want to see (higher number = more, 0 = none)</span> </div> <div>Crafting Jobs <input id="craftingJobs" type="number" min="0" max="100" placeholder="4"></input> <span>How many crafting jobs should be enabled?</span> </div> <div>Subwarp for short distances? <input id="subwarpShortDist" type="checkbox"></input> <span>Should fleets subwarp when travel distance is 1 diagonal square or less?</span> </div> <div>Use Ammo Banks for Transport? <input id="transportUseAmmoBank" type="checkbox"></input> <span>Should transports also use their ammo banks to help move ammo?</span> </div> <div>Stop Transports On Error <input id="transportStopOnError" type="checkbox"></input> <span>Should transport fleet stop completely if there is an error (example: not enough resource/fuel/etc.)?</span> </div> <div>Fuel to 100% for transports <input id="transportFuel100" type="checkbox"></input> <span>If a refuel is needed at the source, should transport fleets fill fuel to 100%?</span> </div> <div>Transports keep 1 resource <input id="transportKeep1" type="checkbox"></input> <span>If unloading a resource, should transport fleets keep 1 resource to save a CreatePDA transaction when loading it again?</span> </div> <div>Miners keep 1 resource <input id="minerKeep1" type="checkbox"></input> <span>Same as previous option but for miners. Also load 1 food more, so the food token account is not closed, too.</span> </div> <div>Starbases keep 1 resource <input id="starbaseKeep1" type="checkbox"></input> <span>Same as previous option but for starbases.</span> </div> <div>Moving Scan Pattern <select id="scanBlockPattern"> <option value="square">square</option> <option value="ring">ring</option> <option value="spiral">spiral</option> <option value="up">up</option> <option value="down">down</option> <option value="left">left</option> <option value="right">right</option> <option value="sly">sly</option> </select> <span>Only applies to fleets set to Move While Scanning</span> </div> <div>Scan Block Length <input id="scanBlockLength" type="number" min="2" max="50" placeholder="5"></input> <span>How far fleets should go for the up, down, left and right scanning patterns</span> </div> <div>Scan Block Resets After Resupply? <input id="scanBlockResetAfterResupply" type="checkbox"></input> <span>Start from the beginning of the pattern after resupplying at starbase?</span> </div> <div>Scan Resupply On Low Fuel? <input id="scanResupplyOnLowFuel" type="checkbox"></input> <span>Do scanning fleets set to Move While Scanning return to base to resupply when fuel is too low to move?</span> </div> <div>Scan Sector Regeneration Delay <input id="scanSectorRegenTime" type="number" min="0" placeholder="90"></input> <span>Number of seconds to wait after finding SDU</span> </div> <div>Scan Pause Time <input id="scanPauseTime" type="number" min="240" max="6000" placeholder="600"></input> <span>Number of seconds to wait when sectors probabilities are too low</span> </div> <div>Scan Strike Count <input id="scanStrikeCount" type="number" min="1" max="10" placeholder="3"></input> <span>Number of low % scans before moving on or pausing</span> </div> <div>Status Panel Opacity <input id="statusPanelOpacity" type="range" min="1" max="100" value="75"></input> <span>(requires page refresh)</span> </div> <div>---</div> <div>Advanced Settings</div> <div>Auto Start Script <input id="autoStartScript" type="checkbox"></input> <span>Should Lab Assistant automatically start after initialization is complete?</span> </div> <div>Reload On Stuck Fleets <input id="reloadPageOnFailedFleets" type="number" min="0" max="999" placeholder="0"></input> <span>Automatically refresh the page if this many fleets get stuck (0 = never)</span> </div><div>Exclude fleets:<br><textarea id="excludeFleets" cols="40" rows="6"></textarea><br><span>(one fleet name per line, case sensivity, reload required)</span> </div></div>';
@@ -6805,6 +6843,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			assistErrorClearBtn.addEventListener('click', function(e) {clearErrors();});
 			let assistErrorReloadBtn = document.querySelector('#reloadLogBtn');
 			assistErrorReloadBtn.addEventListener('click', function(e) {reloadErrors();});
+			let emailInterfaceTestButton = document.querySelector('#emailInterfaceTest');
+			emailInterfaceTestButton.addEventListener('click', function(e) {emailInterfaceTest();});
 			let profileModalClose = document.querySelector('#profileModal .assist-modal-close');
 			profileModalClose.addEventListener('click', function(e) {assistProfileToggle(null);});
 			//let addAcctClose = document.querySelector('#addAcctModal .assist-modal-close');
