@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.58
+// @version      0.6.59
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -479,10 +479,16 @@
 					},
 			},
 	]);
-
+    
+    cLog(0,'getResourceTokens()');
     await getResourceTokens();
+
+    cLog(0,'getCraftRecipes()');
     await getCraftRecipes();
+
+    cLog(0,'getALTs()');
     await getALTs();
+
     console.log('craftRecipes: ', craftRecipes);
     console.log('upgradeRecipes: ', upgradeRecipes);
 
@@ -534,7 +540,7 @@
         let solanaClock = await solanaReadConnection.getAccountInfo(new solanaWeb3.PublicKey('SysvarC1ock11111111111111111111111111111111'));
         let solanaTime = solanaClock.data.readBigInt64LE(8 * 4);
     }
-
+/*
     async function getCargoTypeSize(cargoType) {
         let cargoTypeAcct = await solanaReadConnection.getAccountInfo(cargoType.publicKey);
         let cargoTypeDataExtra = cargoTypeAcct.data.subarray(110);
@@ -599,6 +605,100 @@
         upgradeRecipes.sort(function (a, b) { return a.name.toUpperCase().localeCompare(b.name.toUpperCase()); });
         craftRecipes.sort(function (a, b) { return a.name.toUpperCase().localeCompare(b.name.toUpperCase()); });
     }
+*/
+
+    async function getCargoTypeSizes(cargoTypes) {
+	let publicKeys = [];
+	let cargoTypeSizes = [];
+	for(let i=0; i < cargoTypes.length; i++) {
+		publicKeys.push(cargoTypes[i].publicKey);
+	}
+	// 100 is the max data size of getMultipleAccountsInfo
+	for (let i = 0; i < publicKeys.length; i += 100) {
+		let publicKeysSlice = publicKeys.slice(i, i + 100);
+		let cargoTypeAccts = await solanaReadConnection.getMultipleAccountsInfo(publicKeys);
+		for(let j=0; j < cargoTypeAccts.length; j++) {
+			let cargoTypeDataExtra = cargoTypeAccts[j].data.subarray(110);
+			let cargoTypeDataExtraBuff = BrowserBuffer.Buffer.Buffer.from(cargoTypeDataExtra);
+			cargoTypeSizes[i + j] = cargoTypeDataExtraBuff.readUIntLE(0, 8);
+		}
+	}			
+	return cargoTypeSizes;
+    }
+    async function getResourceTokens() {
+        mineItems = await sageProgram.account.mineItem.all();
+        craftableItems = await craftingProgram.account.craftableItem.all();
+		
+	let cargoTypeSizes = await getCargoTypeSizes(cargoTypes);
+        for (let resource of mineItems) {
+            let cargoTypeIndex = cargoTypes.findIndex(item => item.account.mint.toString() === resource.account.mint.toString());
+            let cargoName = (new TextDecoder().decode(new Uint8Array(resource.account.name)).replace(/\0/g, ''));
+            let cargoSize = cargoTypeSizes[cargoTypeIndex];
+            cargoItems.push({'name': cargoName, 'token': resource.account.mint.toString(), 'size': cargoSize});
+        }
+        for (let craftable of craftableItems) {
+            let cargoTypeIndex = cargoTypes.findIndex(item => item.account.mint.toString() === craftable.account.mint.toString());
+            let cargoName = (new TextDecoder().decode(new Uint8Array(craftable.account.namespace)).replace(/\0/g, ''));
+            let cargoSize = cargoTypeSizes[cargoTypeIndex];
+            cargoItems.push({'name': cargoName, 'token': craftable.account.mint.toString(), 'size': cargoSize});
+        }
+        cargoItems.sort(function (a, b) { return a.name.toUpperCase().localeCompare(b.name.toUpperCase()); });
+    }
+
+    async function getCraftRecipes() {
+        const allCraftCategories = await craftingProgram.account.recipeCategory.all();
+        let upgradeCategory = allCraftCategories.find(item => (new TextDecoder().decode(new Uint8Array(item.account.namespace)).replace(/\0/g, '')) === 'Upgrade');
+
+        let statusBN = new BrowserAnchor.anchor.BN(2);
+        let statusArr = statusBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "be", 2);
+        let status58 = bs58.encode(statusArr);
+        const allCraftRecipes = await craftingProgram.account.recipe.all([
+            {
+                memcmp: {
+                    offset: 152,
+                    bytes: status58,
+                },
+            },
+        ]);
+
+	let publicKeys = [];
+	let recipeDatas = [];
+	for(let i=0; i < allCraftRecipes.length; i++) {
+		publicKeys.push(allCraftRecipes[i].publicKey);
+	}
+	// 100 is the max data size of getMultipleAccountsInfo
+	for (let i = 0; i < publicKeys.length; i += 100) {
+		let publicKeysSlice = publicKeys.slice(i, i + 100);
+		let recipeAcctInfos = await solanaReadConnection.getMultipleAccountsInfo(publicKeys);
+		for(let j=0; j < recipeAcctInfos.length; j++) {
+			recipeDatas[i + j] = recipeAcctInfos[j].data.subarray(223);
+		}
+	}			
+
+	let recipeIdx = 0;
+        for (let craftRecipe of allCraftRecipes) {
+            let recipeName = (new TextDecoder().decode(new Uint8Array(craftRecipe.account.namespace)).replace(/\0/g, ''));
+            let recipeInputOutput = [];
+            let recipeData = recipeDatas[recipeIdx];
+            let recipeIter = 0;
+            while (recipeData.length >= 40) {
+                let currIngredient = recipeData.subarray(0, 40);
+                let ingredientDecoded = craftingProgram.coder.types.decode('RecipeInputsOutputs', currIngredient);
+                recipeInputOutput.push({mint: ingredientDecoded.mint, amount: ingredientDecoded.amount.toNumber(), idx: recipeIter});
+                recipeData = recipeData.subarray(40);
+                recipeIter += 1;
+            }
+            if (craftRecipe.account.category.toString() === upgradeCategory.publicKey.toString()) {
+                upgradeRecipes.push({'name': recipeName, 'publicKey': craftRecipe.publicKey, 'category': craftRecipe.account.category, 'domain': craftRecipe.account.domain, 'feeRecipient': craftRecipe.account.feeRecipient.key, 'duration': craftRecipe.account.duration.toNumber(), 'input': recipeInputOutput, 'output': []});
+            } else if (recipeName !== 'SDU') {
+                craftRecipes.push({'name': recipeName, 'publicKey': craftRecipe.publicKey, 'category': craftRecipe.account.category, 'domain': craftRecipe.account.domain, 'feeAmount': craftRecipe.account.feeAmount.toNumber()/100000000, 'feeRecipient': craftRecipe.account.feeRecipient.key, 'duration': craftRecipe.account.duration.toNumber(), 'input': recipeInputOutput.slice(0, -1), 'output': recipeInputOutput.slice(-1)[0]});
+            }
+            recipeIdx++;
+        }
+        upgradeRecipes.sort(function (a, b) { return a.name.toUpperCase().localeCompare(b.name.toUpperCase()); });
+        craftRecipes.sort(function (a, b) { return a.name.toUpperCase().localeCompare(b.name.toUpperCase()); });
+    }
+
 
 	function createPDA(derived, derivedFrom1, derivedFrom2, fleet, send = true) {
 			return new Promise(async resolve => {
