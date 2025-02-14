@@ -3601,6 +3601,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			fleet.iterCnt=0;
 			fleet.resupplying=false;
 			fleet.moveTarget = '';
+			fleet.stopping = false;
 			//updateFleetState(fleet, fleetState, true);
 			updateFleetState(fleet, 'Starting', true);
 			fleet.state = fleetState; // overwrite "starting" with the real state but don't display it - just like in toggleAssistant
