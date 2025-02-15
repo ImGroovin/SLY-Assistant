@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.59
+// @version      0.6.60
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -690,7 +690,7 @@
             }
             if (craftRecipe.account.category.toString() === upgradeCategory.publicKey.toString()) {
                 upgradeRecipes.push({'name': recipeName, 'publicKey': craftRecipe.publicKey, 'category': craftRecipe.account.category, 'domain': craftRecipe.account.domain, 'feeRecipient': craftRecipe.account.feeRecipient.key, 'duration': craftRecipe.account.duration.toNumber(), 'input': recipeInputOutput, 'output': []});
-            } else if (recipeName !== 'SDU') {
+            } else {
                 craftRecipes.push({'name': recipeName, 'publicKey': craftRecipe.publicKey, 'category': craftRecipe.account.category, 'domain': craftRecipe.account.domain, 'feeAmount': craftRecipe.account.feeAmount.toNumber()/100000000, 'feeRecipient': craftRecipe.account.feeRecipient.key, 'duration': craftRecipe.account.duration.toNumber(), 'input': recipeInputOutput.slice(0, -1), 'output': recipeInputOutput.slice(-1)[0]});
             }
             recipeIdx++;
