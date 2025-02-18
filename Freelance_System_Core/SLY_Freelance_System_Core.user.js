@@ -296,7 +296,10 @@
             (input[2][7] ? 1 << 7 : 0)); // scanSurveyDataUnit
         out[3] = new BrowserAnchor.anchor.BN(
             (input[3][0] ? 1 << 0 : 0) | // doStarbaseUpkeep
-            (input[3][1] ? 1 << 1 : 0)); // manageProgression
+            (input[3][1] ? 1 << 1 : 0) | // manageProgression
+            (input[3][2] ? 1 << 2 : 0) | // manageCrewConfig
+            (input[3][3] ? 1 << 3 : 0) | // manageCrew
+            (input[3][4] ? 1 << 4 : 0)); // withdrawCrew
         return out;
     }
 
@@ -338,9 +341,13 @@
 
     async function addKeyToProfile(newKey) {
         document.getElementById("waiting").classList.add('lds-ring');
-        // Waiting on documentation explaining the permissions. Ideally we would request only necessary permissions.
-        //   For now, we're requesting all SAGE permissions except 'manageSagePlayerProfile', 'removeShipEscrow', 'rentFleet'
-        let permissions = buildPermissions([[true,true,true,true,true,false,true,true],[true,false,true,true,true,false,true,true],[true,true,true,true,true,true,true,true],[true,true]]);
+        // Requesting all non-admin SAGE permissions except 'removeShipEscrow', 'addRemoveCargo' and 'rentFleet'
+        let permissions = buildPermissions([
+            [false,false,false,false,false,false,false,false],
+            [false,false,true,true,true,false,true,true],
+            [false,true,true,true,true,true,false,true],
+            [true,false,false,true,false]
+        ]);
 
         // This requests the 'spendPoints' permission from the Points program
         let pointsPermissions = buildPointsPermissions([[false,false,true]]);
@@ -451,7 +458,7 @@
                 permissionNames = [['manageGame','manageSector','manageStar','managePlanet','manageShip','manageSagePlayerProfile','manageStarbase','manageMineItem'],
                                  ['manageResource','removeShipEscrow','moveFleet','transitionFromLoadingBay','transitionFromIdle','rentFleet','doCrafting','manageCargoPod'],
                                  ['addRemoveCargo','doStarbaseUpgrades','manageFleet','manageFleetCargo','doMining','respawn','manageSurveyDataUnit','scanSurveyDataUnit'],
-                                 ['doStarbaseUpkeep','manageProgression']];
+                                 ['doStarbaseUpkeep','manageProgression','manageCrewConfig','manageCrew','withdrawCrew']];
                 break;
             case 'points':
                 permissionNames = [['manageCategory','manageModifier','spendPoints']];
@@ -463,7 +470,7 @@
                 permissionNames = [['manageGame','manageSector','manageStar','managePlanet','manageShip','manageSagePlayerProfile','manageStarbase','manageMineItem'],
                                  ['manageResource','removeShipEscrow','moveFleet','transitionFromLoadingBay','transitionFromIdle','rentFleet','doCrafting','manageCargoPod'],
                                  ['addRemoveCargo','doStarbaseUpgrades','manageFleet','manageFleetCargo','doMining','respawn','manageSurveyDataUnit','scanSurveyDataUnit'],
-                                 ['doStarbaseUpkeep','manageProgression']];
+                                 ['doStarbaseUpkeep','manageProgression','manageCrewConfig','manageCrew','withdrawCrew']];
         };
 
         let permContainer = document.createElement('div');
