@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.62
+// @version      0.6.63
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -5260,36 +5260,48 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		});		
 	}
 	async function handleCrewLoading(fleet, starbaseCoords, amount) {
-	return new Promise(async resolve => {
-	
-	    let starbaseX = starbaseCoords.split(',')[0].trim();
-	    let starbaseY = starbaseCoords.split(',')[1].trim();
-	    let starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
-	    let starbasePlayer = await getStarbasePlayer(userProfileAcct,starbase.publicKey);
-	    starbasePlayer = starbasePlayer ? starbasePlayer.publicKey : await execRegisterStarbasePlayer(fleet, starbaseCoords);
-	
-			let txLoad = { instruction: await sageProgram.methods.loadFleetCrew({count: new BrowserAnchor.anchor.BN(amount), keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx) }).accountsStrict({
-				fleetAndOwner: {
-						key: userPublicKey,
-						owningProfile: userProfileAcct,
-						owningProfileFaction: userProfileFactionAcct.publicKey,
-						fleet: fleet.publicKey
-				},
-				starbaseAndStarbasePlayer: {
-					starbase: starbase.publicKey,
-					starbasePlayer: starbasePlayer
-				},
-				gameId: sageGameAcct.publicKey
-			}).remainingAccounts([{
-					pubkey: starbase.publicKey,
-					isSigner: false,
-					isWritable: false
-			}]).instruction()}
-			cLog(1,`${FleetTimeStamp(fleet.label)} Loading crew`);
-			updateFleetState(fleet, 'Loading crew');
-			let txResult = await txSignAndSend(txLoad, fleet, 'LOAD CREW', 100);		
-	
-			resolve(txResult);
+		return new Promise(async resolve => {
+		
+		    let starbaseX = starbaseCoords.split(',')[0].trim();
+		    let starbaseY = starbaseCoords.split(',')[1].trim();
+		    let starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
+		    let starbasePlayer = await getStarbasePlayer(userProfileAcct,starbase.publicKey);
+		    starbasePlayer = starbasePlayer ? starbasePlayer.publicKey : await execRegisterStarbasePlayer(fleet, starbaseCoords);
+
+		    let starbasePlayerInfo = await sageProgram.account.starbasePlayer.fetch(starbasePlayer);
+		    let availableCrew = starbasePlayerInfo.totalCrew - starbasePlayerInfo.busyCrew.toNumber();
+		    cLog(3,`${FleetTimeStamp(fleet.label)} Available crew at starbase:`, availableCrew);
+		    if(availableCrew < amount) amount = availableCrew;
+
+		    let txResult;
+		    if(amount <= 0) {
+				txResult = {name: "NotEnoughCrew"};			
+		    } else {
+		
+			    let txLoad = { instruction: await sageProgram.methods.loadFleetCrew({count: new BrowserAnchor.anchor.BN(amount), keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx) }).accountsStrict({
+					fleetAndOwner: {
+							key: userPublicKey,
+							owningProfile: userProfileAcct,
+							owningProfileFaction: userProfileFactionAcct.publicKey,
+							fleet: fleet.publicKey
+					},
+					starbaseAndStarbasePlayer: {
+						starbase: starbase.publicKey,
+						starbasePlayer: starbasePlayer
+					},
+					gameId: sageGameAcct.publicKey
+			    }).remainingAccounts([{
+						pubkey: starbase.publicKey,
+						isSigner: false,
+						isWritable: false
+			    }]).instruction()}
+			    cLog(1,`${FleetTimeStamp(fleet.label)} Loading crew`);
+			    updateFleetState(fleet, 'Loading crew');
+			    txResult = await txSignAndSend(txLoad, fleet, 'LOAD CREW', 100);
+
+		    }
+		
+		    resolve(txResult);
 		});		
 	}
 
@@ -5346,7 +5358,16 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			await handleCrewUnloading(userFleets[i], userFleets[i].starbaseCoord, needToUnloadCrew);
                     }
                     if(needToLoadCrew) {
-			await handleCrewLoading(userFleets[i], userFleets[i].starbaseCoord, needToLoadCrew);
+			let crewResp = await handleCrewLoading(userFleets[i], userFleets[i].starbaseCoord, needToLoadCrew);
+			if (crewResp && crewResp.name == 'NotEnoughCrew') {
+				if(globalSettings.transportStopOnError) {
+					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Transporting - ERROR: Not enough crew`);
+					updateFleetState(userFleets[i], 'ERROR: Not enough crew');
+					return;
+				} else {
+					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Not enough crew`);
+				}
+			}						
                     }
 
                     //Refueling at Starbase
@@ -5417,7 +5438,16 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			await handleCrewUnloading(userFleets[i], userFleets[i].destCoord, needToUnloadCrew);
                     }
                     if(needToLoadCrew) {
-			await handleCrewLoading(userFleets[i], userFleets[i].destCoord, needToLoadCrew);
+			let crewResp = await handleCrewLoading(userFleets[i], userFleets[i].destCoord, needToLoadCrew);
+			if (crewResp && crewResp.name == 'NotEnoughCrew') {
+				if(globalSettings.transportStopOnError) {
+					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Transporting - ERROR: Not enough crew`);
+					updateFleetState(userFleets[i], 'ERROR: Not enough crew');
+					return;
+				} else {
+					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Not enough crew`);
+				}
+			}						
                     }					
 
                     //Refueling at Target
