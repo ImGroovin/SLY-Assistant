@@ -75,7 +75,6 @@
 	let errorLogMaxEntries = 30;
 	async function loadErrorLog() {
 		let savedErrorLog = await GM.getValue('ErrorLog', '{ "index": 0, "messages": [] }');
-		console.log(savedErrorLog);
 		let parsedErrorLog = JSON.parse(savedErrorLog);
 		errorLogIndex = parsedErrorLog.index;
 		errorLog = parsedErrorLog.messages;
