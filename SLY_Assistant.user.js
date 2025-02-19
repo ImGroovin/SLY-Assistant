@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.63
+// @version      0.6.64
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -512,6 +512,7 @@
         }
     }
 
+/*
     async function getStarbaseUpkeepStatus() {
         let starbases = await sageProgram.account.starbase.all();
         let factionStarbases = starbases.filter(sb => sb.account.faction == userProfileFactionAcct.account.faction);
@@ -519,6 +520,22 @@
         for (let starbase of factionStarbases) {
             starbasesStatus.push(await upkeepBalance(starbase));
         }
+        return starbasesStatus;
+    }
+*/
+    async function getStarbaseUpkeepStatus() {
+	let factionStarbases = await sageProgram.account.starbase.all([
+		{
+			memcmp: {
+				offset: 201,
+				bytes: [userProfileFactionAcct.account.faction]
+			}
+		}
+	]);
+        let starbasesStatus = [];
+	for(let target of validTargets) {
+		starbasesStatus.push(await upkeepBalance(factionStarbases.find(sb => ((sb.account.sector[0].toNumber() + ',' + sb.account.sector[1].toNumber()) == (target.x + ',' + target.y)))));
+	}
         return starbasesStatus;
     }
 
@@ -529,8 +546,10 @@
         let foodBalanceHr = (upkeepFoodBalance / (sbLevel.foodDepletionRate/100)) / 60 / 60;
         let upkeepToolBalance = Math.max(0, starbase.account.upkeepToolkitBalance.toNumber() - (Math.floor(Date.now() / 1000) - starbase.account.upkeepToolkitGlobalLastUpdate.toNumber()) * (sbLevel.toolkitDepletionRate/100));
         let toolBalanceHr = (upkeepToolBalance / (sbLevel.toolkitDepletionRate/100)) / 60 / 60;
-        let [name] = (new TextDecoder().decode(new Uint8Array(starbase.account.name)).replace(/\0/g, '')).split(' (');
-        name = name === 'ONI Central Space Station' ? 'ONI CSS' : name;
+        //let [name] = (new TextDecoder().decode(new Uint8Array(starbase.account.name)).replace(/\0/g, '')).split(' (');
+        //name = name === 'ONI Central Space Station' ? 'ONI CSS' : name;
+	let target = validTargets.find(target => (target.x + ',' + target.y) == starbase.account.sector[0].toNumber() + ',' + starbase.account.sector[1].toNumber());
+	let name = target?.name;	    
         let coords = starbase.account.sector[0].toNumber() + ', ' + starbase.account.sector[1].toNumber();
         return {name: `${name} [LVL ${starbase.account.level}]`, coords: coords, foodBalanceHr: foodBalanceHr.toFixed(2), foodBalancePerc: (upkeepFoodBalance / sbLevel.foodReserve).toFixed(2), toolBalanceHr: toolBalanceHr.toFixed(2) || 'N/A', toolBalancePerc: (upkeepToolBalance / sbLevel.toolkitReserve).toFixed(2) || 'N/A'}
     }
@@ -6807,7 +6826,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			observer && observer.disconnect();
 			let assistCSS = document.createElement('style');
 			const statusPanelOpacity = globalSettings.statusPanelOpacity / 100;
-			let assistCSSString = `.assist-modal {display: none; position: fixed; z-index: 2; padding-top: 100px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);} .assist-modal-content {position: relative; display: flex; flex-direction: column; background-color: rgb(41, 41, 48); margin: auto; padding: 0; border: 1px solid #888; width: 785px; min-width: 450px; max-width: 95%; height: auto; min-height: 50px; max-height: 85%; overflow-y: auto; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19); -webkit-animation-name: animatetop; -webkit-animation-duration: 0.4s; animation-name: animatetop; animation-duration: 0.4s;} #assist-modal-error {color: red; margin-left: 5px; margin-right: 5px; font-size: 16px;} .assist-modal-header-right {color: rgb(255, 190, 77); margin-left: auto !important; font-size: 20px;} .assist-btn {background-color: rgb(41, 41, 48); color: rgb(255, 190, 77); margin-left: 2px; margin-right: 2px;} .assist-btn:hover {background-color: rgba(255, 190, 77, 0.2);} .assist-modal-close:hover, .assist-modal-close:focus {font-weight: bold; text-decoration: none; cursor: pointer;} .assist-modal-btn {color: rgb(255, 190, 77); padding: 5px 5px; margin-right: 5px; text-decoration: none; background-color: rgb(41, 41, 48); border: none; cursor: pointer;} .assist-modal-save:hover { background-color: rgba(255, 190, 77, 0.2); } .assist-modal-header {display: flex; align-items: center; padding: 2px 16px; background-color: rgba(255, 190, 77, 0.2); border-bottom: 2px solid rgb(255, 190, 77); color: rgb(255, 190, 77);} .assist-modal-body {padding: 2px 16px; font-size: 12px;} .assist-modal-body > table, .assist-modal-body table.main table {width: 100%;border-collapse: collapse;} .assist-modal-body th, .assist-modal-body td {padding:0 7px 0 0; line-height:136%;} #assistStatus {background-color: rgba(0,0,0,${statusPanelOpacity}); opacity: ${statusPanelOpacity}; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1;} #assistStarbaseStatus {background-color: rgba(0,0,0,${statusPanelOpacity}); opacity: ${statusPanelOpacity}; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1;} #assistCheck {background-color: rgba(0,0,0,0.75); backdrop-filter: blur(10px); position: absolute; margin: auto; left: 0; right: 0; top: 100px; width: 650px; min-width: 450px; max-width: 75%; z-index: 1;} .dropdown { position: absolute; display: none; margin-top: 25px; margin-left: 152px; background-color: rgb(41, 41, 48); min-width: 120px; box-shadow: 0 8px 16px 0 rgba(0, 0, 0, 0.2); z-index: 2; } .dropdown.show { display: block; } .assist-btn-alt { color: rgb(255, 190, 77); padding: 12px 16px; text-decoration: none; display: block; background-color: rgb(41, 41, 48); border: none; cursor: pointer; } .assist-btn-alt:hover { background-color: rgba(255, 190, 77, 0.2); } #checkresults { padding: 5px; margin-top: 20px; border: 1px solid grey; border-radius: 8px;} .dropdown button {width: 100%; text-align: left;} #assistModal table {border-collapse: collapse;} .assist-scan-row, .assist-mine-row, .assist-transport-row {background-color: rgba(255, 190, 77, 0.1); border-left: 1px solid white; border-right: 1px solid white; border-bottom: 1px solid white} .show-top-border {background-color: rgba(255, 190, 77, 0.1); border-left: 1px solid white; border-right: 1px solid white; border-top: 1px solid white;}`;
+			let assistCSSString = `.assist-modal {display: none; position: fixed; z-index: 2; padding-top: 100px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);} .assist-modal-content {position: relative; display: flex; flex-direction: column; background-color: rgb(41, 41, 48); margin: auto; padding: 0; border: 1px solid #888; width: 785px; min-width: 450px; max-width: 95%; height: auto; min-height: 50px; max-height: 85%; overflow-y: auto; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19); -webkit-animation-name: animatetop; -webkit-animation-duration: 0.4s; animation-name: animatetop; animation-duration: 0.4s;} #assist-modal-error {color: red; margin-left: 5px; margin-right: 5px; font-size: 16px;} .assist-modal-header-right {color: rgb(255, 190, 77); margin-left: auto !important; font-size: 20px;} .assist-btn {background-color: rgb(41, 41, 48); color: rgb(255, 190, 77); margin-left: 2px; margin-right: 2px;} .assist-btn:hover {background-color: rgba(255, 190, 77, 0.2);} .assist-modal-close:hover, .assist-modal-close:focus {font-weight: bold; text-decoration: none; cursor: pointer;} .assist-modal-btn {color: rgb(255, 190, 77); padding: 5px 5px; margin-right: 5px; text-decoration: none; background-color: rgb(41, 41, 48); border: none; cursor: pointer;} .assist-modal-save:hover { background-color: rgba(255, 190, 77, 0.2); } .assist-modal-header {display: flex; position:sticky; z-index:1000; top:0; align-items: center; padding: 2px 16px; background-color: #544735; border-bottom: 2px solid rgb(255, 190, 77); color: rgb(255, 190, 77);} .assist-modal-body {padding: 2px 16px; font-size: 12px;} .assist-modal-body > table, .assist-modal-body table.main table {width: 100%;border-collapse: collapse;} .assist-modal-body th, .assist-modal-body td {padding:0 7px 0 0; line-height:136%;} #assistStatus {background-color: rgba(0,0,0,${statusPanelOpacity}); opacity: ${statusPanelOpacity}; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1;} #assistStarbaseStatus {background-color: rgba(0,0,0,${statusPanelOpacity}); opacity: ${statusPanelOpacity}; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1;} #assistCheck {background-color: rgba(0,0,0,0.75); backdrop-filter: blur(10px); position: absolute; margin: auto; left: 0; right: 0; top: 100px; width: 650px; min-width: 450px; max-width: 75%; z-index: 1;} .dropdown { position: absolute; display: none; margin-top: 25px; margin-left: 152px; background-color: rgb(41, 41, 48); min-width: 120px; box-shadow: 0 8px 16px 0 rgba(0, 0, 0, 0.2); z-index: 2; } .dropdown.show { display: block; } .assist-btn-alt { color: rgb(255, 190, 77); padding: 12px 16px; text-decoration: none; display: block; background-color: rgb(41, 41, 48); border: none; cursor: pointer; } .assist-btn-alt:hover { background-color: rgba(255, 190, 77, 0.2); } #checkresults { padding: 5px; margin-top: 20px; border: 1px solid grey; border-radius: 8px;} .dropdown button {width: 100%; text-align: left;} #assistModal table {border-collapse: collapse;} .assist-scan-row, .assist-mine-row, .assist-transport-row {background-color: rgba(255, 190, 77, 0.1); border-left: 1px solid white; border-right: 1px solid white; border-bottom: 1px solid white} .show-top-border {background-color: rgba(255, 190, 77, 0.1); border-left: 1px solid white; border-right: 1px solid white; border-top: 1px solid white;}`;
 			assistCSSString += ` #assistStats {background-color: rgba(0,0,0,${statusPanelOpacity}); opacity: ${statusPanelOpacity}; backdrop-filter: blur(10px); position: absolute; top: 80px; right: 20px; z-index: 1; } #assistStats table { border-collapse: collapse; border-spacing:1px; } #assistStats td, #assistStats th { padding:0 7px 0 0; }`; // statsadd
 			assistCSSString += ` #autoFeeData { display:none; } #automaticFee:checked ~ #autoFeeData { display:block; }`;
 			assistCSSString += ` #settingsModal nav label { width:100px; display:block; padding: 15px 15px; border-top: 1px solid silver; border-right: 1px solid silver; background-color: #888; color: #ddd; } #settingsModal nav label:nth-child(1) { border-left: 1px solid silver; } #settingsModal .tabbed > input, #settingsModal .tabbed menu li { display: none;} #settingsModal nav label:hover { background: hsl(210,50%,40%); } #settingsModal nav label:active { background: #ffffff; } #settingsModal .tabbed menu>li { padding: 20px; width: 100%; border: 1px solid silver; background-color: #f4f4f4; line-height: 1.5em; letter-spacing: 0.3px; color: #444; } #settingsModal .tabbed menu { padding-left:100px } #settingsModal nav { float:left } #settingsModal .tabbed menu li div { margin-bottom: 10px; } #settingsModal .tabbed menu li small { display:block; line-height:130%; } `;
@@ -6938,7 +6957,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			assistStats.style.display = 'none';
 			let assistStatsContent = document.createElement('div');
 			assistStatsContent.classList.add('assist-status-content');
-			assistStatsContent.innerHTML = '<div class="assist-modal-header" style="cursor: move;">Statistics &nbsp;<small id="assist-modal-time" style="font-size:75%;"></small>&nbsp;&nbsp;<a href="javascript:;" id="assist-stats-reset" style="color:inherit;font-size:70%;">Reset</a>&nbsp;&nbsp;<div class="assist-modal-header-right"><span class="assist-modal-close">x</span></div></div><div id="assistStatsContent" class="assist-modal-body"></div>'
+			assistStatsContent.innerHTML = '<div class="assist-modal-header" style="cursor: move;">Statistics &nbsp;<small id="assist-modal-time" style="font-size:75%;"></small>&nbsp;&nbsp;<a href="javascript:;" id="assist-stats-reset" style="color:inherit;font-size:70%;">Reset stats</a>&nbsp;&nbsp;<div class="assist-modal-header-right"><span class="assist-modal-close">x</span></div></div><div id="assistStatsContent" class="assist-modal-body"></div>'
 			assistStats.append(assistStatsContent);
 			//statsadd end
 
