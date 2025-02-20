@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.65
+// @version      0.6.66
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -7130,6 +7130,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					if (accountManagerContainer && accountManagerBtn) {
 							autoContainer = accountManagerContainer;
 							accountManagerContainer.insertBefore(autoButton, accountManagerBtn);
+							accountManagerContainer.insertBefore(assistConfigButton, accountManagerBtn);
 							accountManagerContainer.insertBefore(dropdownBtn, accountManagerBtn);
 							accountManagerContainer.insertBefore(dropdown, accountManagerBtn);
 					} else {
@@ -7142,6 +7143,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					if (accountManagerContainer && accountManagerBtn) {
 							autoContainer = accountManagerContainer;
 							accountManagerContainer.insertBefore(autoButton, accountManagerBtn);
+							accountManagerContainer.insertBefore(assistConfigButton, accountManagerBtn);
 							accountManagerContainer.insertBefore(dropdownBtn, accountManagerBtn);
 							accountManagerContainer.insertBefore(dropdown, accountManagerBtn);
 					} else {
