@@ -652,7 +652,7 @@
             accountModal.append(accountModalContent);
 
             let accountManagerTitle = document.createElement('span');
-            accountManagerTitle.innerHTML = 'SLY Assistant';
+            accountManagerTitle.innerHTML = 'SLYA';
             accountManagerTitle.style.fontSize = '14px';
 
             let accountManagerBtn = document.createElement('button');
