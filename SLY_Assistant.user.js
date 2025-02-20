@@ -7016,6 +7016,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			let autoButton = document.createElement('button');
 			autoButton.id = 'autoScanBtn';
 			autoButton.classList.add('assist-btn');
+			autoButton.style.marginRight = '5px';
 			//autoButton.style.position = 'absolute';
 			//autoButton.style.left = '50%';
 			//autoButton.style.transform = 'translate(-50%, 0)';
@@ -7028,6 +7029,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			let dropdown = document.createElement('div');
 			dropdown.classList.add('dropdown');
 			let dropdownBtn = document.createElement('button');
+			dropdownBtn.style.marginRight = '5px';
 			dropdownBtn.classList.add('assist-btn');
 			dropdownBtn.innerText = 'Tools';
 			dropdownBtn.addEventListener('click', function () {
@@ -7049,6 +7051,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			let assistConfigButton = document.createElement('button');
 			assistConfigButton.id = 'assistConfigBtn';
 			assistConfigButton.classList.add('assist-btn');
+			assistConfigButton.style.marginRight = '5px';
 			assistConfigButton.addEventListener('click', function(e) {assistModalToggle();});
 			let assistConfigSpan = document.createElement('span');
 			assistConfigSpan.innerText = 'Wait...';
