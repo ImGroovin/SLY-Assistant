@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.66
+// @version      0.6.67
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -3272,13 +3272,23 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			scanMinLabel.innerHTML = 'Minimum Probability:';
 			let scanMin = document.createElement('input');
 			scanMin.setAttribute('type', 'text');
-			scanMin.placeholder = '10';
+			scanMin.placeholder = '15';
 			scanMin.style.width = '30px';
 			scanMin.style.marginRight = '10px';
 			scanMin.value = fleetParsedData && fleetParsedData.scanMin ? fleetParsedData.scanMin : '';
 			let scanMinDiv = document.createElement('div');
 			scanMinDiv.appendChild(scanMinLabel);
 			scanMinDiv.appendChild(scanMin);
+			let scanMin2Label = document.createElement('span');
+			scanMin2Label.innerHTML = 'Instant stricke out below:';
+			let scanMin2 = document.createElement('input');
+			scanMin2.setAttribute('type', 'text');
+			scanMin2.placeholder = '5';
+			scanMin2.style.width = '30px';
+			scanMin2.style.marginRight = '10px';
+			scanMin2.value = fleetParsedData && fleetParsedData.scanMin2 ? fleetParsedData.scanMin2 : '';
+			scanMinDiv.appendChild(scanMin2Label);
+			scanMinDiv.appendChild(scanMin2);
 			let scanMinTd = document.createElement('td');
 			scanMinTd.setAttribute('colspan', '3');
 			scanMinTd.appendChild(scanMinDiv);
@@ -3948,6 +3958,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			}
 
 			let scanMin = parseInt(scanRows[i].children[1].children[0].children[1].value) || 0;
+			let scanMin2 = parseInt(scanRows[i].children[1].children[0].children[3].value) || 0;
 			let scanMove = scanRows[i].children[2].children[0].children[1].checked;
 
 			let fleetMineResource = mineRows[i].children[1].children[1].value;
@@ -3991,13 +4002,14 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 				let fleetScanEnd = fleetParsedData && fleetParsedData.scanEnd ? fleetParsedData.scanEnd : 0;
 
-				await GM.setValue(fleetPK, `{\"name\": \"${fleetName}\", \"assignment\": \"${fleetAssignment}\", \"mineResource\": \"${fleetMineResource}\", \"dest\": \"${fleetDestCoord}\", \"starbase\": \"${fleetStarbaseCoord}\", \"moveType\": \"${moveType}\", \"subwarpPref\": \"${subwarpPref}\", \"moveTarget\": \"${fleetMoveTarget}\", \"transportResource1\": \"${transportResource1}\", \"transportResource1Perc\": ${transportResource1Perc}, \"transportResource1Crew\": ${transportResource1Crew}, \"transportResource2\": \"${transportResource2}\", \"transportResource2Perc\": ${transportResource2Perc}, \"transportResource3\": \"${transportResource3}\", \"transportResource3Perc\": ${transportResource3Perc}, \"transportResource4\": \"${transportResource4}\", \"transportResource4Perc\": ${transportResource4Perc}, \"transportSBResource1\": \"${transportSBResource1}\", \"transportSBResource1Perc\": ${transportSBResource1Perc}, \"transportSBResource1Crew\": ${transportSBResource1Crew}, \"transportSBResource2\": \"${transportSBResource2}\", \"transportSBResource2Perc\": ${transportSBResource2Perc}, \"transportSBResource3\": \"${transportSBResource3}\", \"transportSBResource3Perc\": ${transportSBResource3Perc}, \"transportSBResource4\": \"${transportSBResource4}\", \"transportSBResource4Perc\": ${transportSBResource4Perc}, \"scanBlock\": ${JSON.stringify(scanBlock)}, \"scanMin\": ${scanMin}, \"scanMove\": \"${scanMove}\", \"scanEnd\": ${fleetScanEnd} }`);
+				await GM.setValue(fleetPK, `{\"name\": \"${fleetName}\", \"assignment\": \"${fleetAssignment}\", \"mineResource\": \"${fleetMineResource}\", \"dest\": \"${fleetDestCoord}\", \"starbase\": \"${fleetStarbaseCoord}\", \"moveType\": \"${moveType}\", \"subwarpPref\": \"${subwarpPref}\", \"moveTarget\": \"${fleetMoveTarget}\", \"transportResource1\": \"${transportResource1}\", \"transportResource1Perc\": ${transportResource1Perc}, \"transportResource1Crew\": ${transportResource1Crew}, \"transportResource2\": \"${transportResource2}\", \"transportResource2Perc\": ${transportResource2Perc}, \"transportResource3\": \"${transportResource3}\", \"transportResource3Perc\": ${transportResource3Perc}, \"transportResource4\": \"${transportResource4}\", \"transportResource4Perc\": ${transportResource4Perc}, \"transportSBResource1\": \"${transportSBResource1}\", \"transportSBResource1Perc\": ${transportSBResource1Perc}, \"transportSBResource1Crew\": ${transportSBResource1Crew}, \"transportSBResource2\": \"${transportSBResource2}\", \"transportSBResource2Perc\": ${transportSBResource2Perc}, \"transportSBResource3\": \"${transportSBResource3}\", \"transportSBResource3Perc\": ${transportSBResource3Perc}, \"transportSBResource4\": \"${transportSBResource4}\", \"transportSBResource4Perc\": ${transportSBResource4Perc}, \"scanBlock\": ${JSON.stringify(scanBlock)}, \"scanMin\": ${scanMin}, \"scanMin2\": ${scanMin2}, \"scanMove\": \"${scanMove}\", \"scanEnd\": ${fleetScanEnd} }`);
 				userFleets[userFleetIndex].mineResource = fleetMineResource;
 				userFleets[userFleetIndex].destCoord = fleetDestCoord;
 				userFleets[userFleetIndex].starbaseCoord = fleetStarbaseCoord;
 				userFleets[userFleetIndex].moveType = moveType;
 				userFleets[userFleetIndex].scanBlock = scanBlock;
 				userFleets[userFleetIndex].scanMin = scanMin;
+				userFleets[userFleetIndex].scanMin2 = scanMin2;
 				userFleets[userFleetIndex].scanMove = scanMove;
 				userFleets[userFleetIndex].scanBlockIdx = scanMove ? userFleets[userFleetIndex].scanBlockIdx : 0;
 			}
@@ -4740,7 +4752,10 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			await alterStats('SDUs found',undefined,sduFound,'SDU',0);
 
 			cLog(1,`${FleetTimeStamp(userFleets[i].label)} 📡 ${Math.round(scanCondition)}%${sduFound > 0 ? ` | 💰 FOUND: ${sduFound}` : ''}`);
-			if(!sduFound && scanCondition < userFleets[i].scanMin) {
+			if(scanCondition < userFleets[i].scanMin2) {
+				userFleets[i].scanStrikes = globalSettings.scanStrikeCount;
+				cLog(3,`${FleetTimeStamp(userFleets[i].label)} ⚡⚡️ Instant strike out`);
+			} else if(scanCondition < userFleets[i].scanMin) {
 				userFleets[i].scanStrikes++;
 				cLog(3,`${FleetTimeStamp(userFleets[i].label)} ⚡️ Strike ${userFleets[i].scanStrikes} / ${globalSettings.scanStrikeCount}`);
 			} else {
@@ -6701,7 +6716,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				let fleetParsedData = JSON.parse(fleetSavedData);
 				let fleetDest = fleetParsedData && fleetParsedData.dest ? fleetParsedData.dest : '';
 				let fleetScanBlock = fleetParsedData && fleetParsedData.scanBlock ? fleetParsedData.scanBlock : [];
-				let fleetScanMin = fleetParsedData && fleetParsedData.scanMin ? fleetParsedData.scanMin : 10;
+				let fleetScanMin = fleetParsedData && fleetParsedData.scanMin ? fleetParsedData.scanMin : 15;
+				let fleetScanMin2 = fleetParsedData && fleetParsedData.scanMin2 ? fleetParsedData.scanMin2 : 5;
 				let fleetScanMove = fleetParsedData && fleetParsedData.scanMove == 'false' || false ? false : true;
 				let fleetMineResource = fleetParsedData && fleetParsedData.mineResource ? fleetParsedData.mineResource : '';
 				let fleetStarbase = fleetParsedData && fleetParsedData.starbase ? fleetParsedData.starbase : '';
@@ -6794,6 +6810,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					scanSkipCnt: 0,
 					scanStrikes: 0,
 					scanMin: fleetScanMin,
+					scanMin2: fleetScanMin2,
 					scanMove: fleetScanMove,
 					foodCnt: currentFoodCnt ? currentFoodCnt.account.data.parsed.info.tokenAmount.uiAmount : 0,
 					sduCnt: currentSduCnt ? currentSduCnt.account.data.parsed.info.tokenAmount.uiAmount : 0,
