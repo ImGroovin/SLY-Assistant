@@ -3727,7 +3727,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			} else {
 				//targetRow[0].children[0].firstChild.innerHTML = fleet.label + " [" + fleet.coordinates + "]";
 				let target = validTargets.find(target => (target.x + ',' + target.y) == fleet.coordinates);
-				targetRow[0].children[0].firstChild.innerHTML = fleet.label + " " + target?.name;
+				targetRow[0].children[0].firstChild.innerHTML = fleet.label + " " + (target ? target.name : '');
 				targetRow[0].children[1].firstChild.innerHTML = fleet.state;
 			}
 		} else {
@@ -3775,7 +3775,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				fleetStatusTd.setAttribute('colspan', 3);
 				fleetStatusTd.appendChild(fleetStatus);
 				let target = validTargets.find(target => (target.x + ',' + target.y) == fleet.coordinates);
-				fleetLabel.innerHTML = fleetLabel.innerHTML + " " + target?.name;
+				fleetLabel.innerHTML = fleetLabel.innerHTML + " " + (target ? target.name : '');
 				fleetRow.appendChild(fleetLabelTd);
 				fleetRow.appendChild(fleetStatusTd);
 			}
@@ -3819,7 +3819,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 	}
 
 	function updateFleetState(fleet, newState, overrideError) {
-        if (!fleet.state.includes('ERROR') || overrideError) {
+        if ((typeof fleet.state == 'undefined') || !fleet.state.includes('ERROR') || overrideError) {
             fleet.state = newState;
             updateAssistStatus(fleet);
         }
