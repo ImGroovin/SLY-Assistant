@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.69
+// @version      0.6.70
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -6321,7 +6321,9 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				}
 			}
                     }
-                    if(!enoughAtlas) {
+                    if(activityType == 'Upgrading' && starbase.account.level >= 5) {
+			updateFleetState(userCraft, 'Starbase has max level');
+                    } else if(!enoughAtlas) {
                         updateFleetState(userCraft, 'Not enough Atlas: ' + targetRecipe.craftRecipe.name + (userCraft.item!=targetRecipe.craftRecipe.name?' ('+userCraft.item+')':''));
                     } else if(!craftThresholdReached) {
                         updateFleetState(userCraft, 'Stock not less than ' + parseInt(userCraft.belowAmount) + ': ' + userCraft.item);
@@ -6387,9 +6389,16 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         for (let i=1; i < globalSettings.craftingJobs+1; i++) {
             let craftSavedData = await GM.getValue('craft' + i, '{}');
             let craftParsedData = JSON.parse(craftSavedData);
+            // if we just extended the number of crafting jobs, properly initialize the data
+            if(!craftParsedData.label && !craftParsedData.state) {
+		craftParsedData.label = 'craft' + i;
+		craftParsedData.state = 'Idle';
+		await GM.setValue('craft'+i, JSON.stringify(craftParsedData));
+            }
             //if (craftParsedData.item && craftParsedData.coordinates) startCraft(craftParsedData);
             
-            //Stagger craft starts by 2s to avoid overloading the RPC            
+            //Stagger craft starts by 2s to avoid overloading the RPC
+            //also we start crafting jobs always, so they are ready to use when we need them (without reloading SLYA)
             //if (craftParsedData.item && craftParsedData.coordinates) {
 		    updateFleetState(craftParsedData, craftParsedData.state);
 		    setTimeout(() => { startCraft(craftParsedData); }, 2000 * i);
