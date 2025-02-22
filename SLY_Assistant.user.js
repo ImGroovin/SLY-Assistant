@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.70
+// @version      0.6.71
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -971,8 +971,7 @@
             let yArr = yBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "le", 8);
             let y58 = bs58.encode(yArr);
 
-            let cachedStarbaseIdx = starbaseData.findIndex(item => item.coords[0] == x && item.coords[1] == y);
-            let cachedStarbase = (cachedStarbaseIdx >= 0 ? starbaseData[cachedStarbaseIdx] : null);
+            let cachedStarbase = starbaseData.find(item => item.coords[0] == x && item.coords[1] == y);
             let starbase = cachedStarbase && cachedStarbase.starbase;
             let needUpdate = cachedStarbase && Date.now() - cachedStarbase.lastUpdated > 1000*60*60*24 ? true : false;
 
@@ -991,6 +990,9 @@
                         }
                     },
                 ]);
+		//race-condition fixed: because of the previous "await", it is possible that we end up with two concurrent reads and two identical cache entries. So we need to make sure that an existing entry is always overwritten
+		//also when expired entry is read again and just pushed to the array, find() will still find the expired first entry and not the updated one. This would lead to a broken cache. So again we need to overwrite the existing entry.
+		let cachedStarbaseIdx = starbaseData.findIndex(item => item.coords[0] == x && item.coords[1] == y);
                 if(cachedStarbaseIdx >= 0) { 
                     starbaseData[cachedStarbaseIdx].lastUpdated = Date.now();
                     starbaseData[cachedStarbaseIdx].starbase = starbase;
@@ -1012,8 +1014,7 @@
             let yArr = yBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "le", 8);
             let y58 = bs58.encode(yArr);
 
-            let cachedPlanetIdx = planetData.find(item => item.coords[0] == x && item.coords[1] == y);
-            let cachedPlanet = (cachedPlanetIdx >= 0 ? planetData[cachedPlanetIdx] : null);
+            let cachedPlanet = planetData.find(item => item.coords[0] == x && item.coords[1] == y);
             let planets = cachedPlanet && cachedPlanet.planets;
             let needUpdate = cachedPlanet && Date.now() - cachedPlanet.lastUpdated > 1000*60*60*24 ? true : false;
 
@@ -1032,6 +1033,9 @@
                         }
                     },
                 ]);
+		//race-condition fixed: because of the previous "await", it is possible that we end up with two concurrent reads and two identical cache entries. So we need to make sure that an existing entry is always overwritten
+		//also when expired entry is read again and just pushed to the array, find() will still find the expired first entry and not the updated one. This would lead to a broken cache. So again we need to overwrite the existing entry.
+		let cachedPlanetIdx = planetData.findIndex(item => item.coords[0] == x && item.coords[1] == y);
                 if(cachedPlanetIdx >= 0) { 
                     planetData[cachedPlanetIdx].lastUpdated = Date.now();
                     planetData[cachedPlanetIdx].planets = planets;
@@ -1079,7 +1083,15 @@
                         }
                     },
                 ]);
-                starbasePlayerData.push({userProfile: userProfile.toBase58(), starbase: starbase.toBase58(), lastUpdated: Date.now(), starbasePlayer: starbasePlayer});
+		//race-condition fixed: because of the previous "await", it is possible that we end up with two concurrent reads and two identical cache entries. So we need to make sure that an existing entry is always overwritten
+		//also when expired entry is read again and just pushed to the array, find() will still find the expired first entry and not the updated one. This would lead to a broken cache. So again we need to overwrite the existing entry.
+		let cachedStarbasePlayerDataIdx = starbasePlayerData.findIndex(item => item.userProfile == userProfile.toBase58() && item.starbase == starbase.toBase58());
+		if(cachedStarbasePlayerDataIdx >= 0) { 
+			starbasePlayerData[cachedStarbasePlayerDataIdx].lastUpdated = Date.now();
+			starbasePlayerData[cachedStarbasePlayerDataIdx].starbasePlayer = starbasePlayer;
+		} else {
+                	starbasePlayerData.push({userProfile: userProfile.toBase58(), starbase: starbase.toBase58(), lastUpdated: Date.now(), starbasePlayer: starbasePlayer});
+		}
             }
 
             resolve(starbasePlayer);
