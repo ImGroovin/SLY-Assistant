@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.71
+// @version      0.6.72
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -6983,6 +6983,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			settingsModalContentString += '<div>Save profile selection? <input id="saveProfile" type="checkbox"></input><br><small>Should the profile selection be saved (uncheck to select a different profile each time)?</small></div>';
 			settingsModalContentString += '<div>Status Panel Opacity <input id="statusPanelOpacity" type="range" min="1" max="100" value="75"></input><br><small>(requires page refresh)</small></div>';
 			settingsModalContentString += '<div>Fleets per Column <input id="fleetsPerColumn" type="number" min="0" max="100" placeholder="0"></input><br><small>How many fleets should be displayed per column (0 = all fleets in one column)</small></div>';
+			settingsModalContentString += '<div><button id="disableLoadOtherFleets">Disable "Load other fleets"</button><br><small>Pressing this button will modify the Sage settings and will disable the option "load other fleets", which has a massive CPU/GPU impact when enabled. A reload is needed after you have clicked the button.</small></div>';
 			settingsModalContentString += '</li>';
 			settingsModalContentString += '<li class="tab_fees">';
 			settingsModalContentString += '<div>Priority Fee <input id="priorityFee" type="number" min="0" max="100000000" placeholder="1" ></input><br><small>Added to each transaction. Set to 0 (zero) to disable (the wallet will then decide the fee!). 1 Lamport = 0.000000001 SOL. Normal transactions will use the full priority fee, smaller transactions will use 10%. Exception: craft transactions are heavy and will use the configured multiplier below.</small> </div>';
@@ -7289,6 +7290,17 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			assistErrorReloadBtn.addEventListener('click', function(e) {reloadErrors();});
 			let emailInterfaceTestButton = document.querySelector('#emailInterfaceTest');
 			emailInterfaceTestButton.addEventListener('click', function(e) {emailInterfaceTest();});
+
+			let disableLoadOtherFleetsButton = document.querySelector('#disableLoadOtherFleets');
+			disableLoadOtherFleetsButton.addEventListener('click', function(e) {
+				const sageConfig = localStorage.getItem('sage-labs-settings');
+				let sageConfigParsed = JSON.parse(sageConfig);
+				sageConfigParsed.loadOtherFleets = false;
+				localStorage.setItem('sage-labs-settings', JSON.stringify(sageConfigParsed));
+				disableLoadOtherFleetsButton.innerHTML = 'Settings updated!';
+				setTimeout(() => { disableLoadOtherFleetsButton.innerHTML = 'Disable "Load other fleets"'; }, 2000);
+			});
+
 			let profileModalClose = document.querySelector('#profileModal .assist-modal-close');
 			profileModalClose.addEventListener('click', function(e) {assistProfileToggle(null);});
 			//let addAcctClose = document.querySelector('#addAcctModal .assist-modal-close');
