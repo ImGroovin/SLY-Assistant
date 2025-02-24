@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.73
+// @version      0.6.74
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -153,6 +153,7 @@
 			craftingTxAffectsAutoFee: parseBoolDefault(globalSettings.craftingTxAffectsAutoFee, true),
 
 			transportKeep1: parseBoolDefault(globalSettings.transportKeep1, false),
+			transportUnloadsUnknownRSS: parseBoolDefault(globalSettings.transportUnloadsUnknownRSS, false),
 			minerKeep1: parseBoolDefault(globalSettings.minerKeep1, false),
 			starbaseKeep1: parseBoolDefault(globalSettings.starbaseKeep1, false),
 
@@ -4201,6 +4202,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			craftingTxAffectsAutoFee: document.querySelector('#craftingTxAffectsAutoFee').checked,
 			
 			transportKeep1: document.querySelector('#transportKeep1').checked,
+			transportUnloadsUnknownRSS: document.querySelector('#transportUnloadsUnknownRSS').checked,
 			minerKeep1: document.querySelector('#minerKeep1').checked,
 			starbaseKeep1: document.querySelector('#starbaseKeep1').checked,
 
@@ -4264,6 +4266,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		document.querySelector('#craftingTxAffectsAutoFee').checked = globalSettings.craftingTxAffectsAutoFee;
 		
 		document.querySelector('#transportKeep1').checked = globalSettings.transportKeep1;
+		document.querySelector('#transportUnloadsUnknownRSS').checked = globalSettings.transportUnloadsUnknownRSS;
 		document.querySelector('#minerKeep1').checked = globalSettings.minerKeep1;
 		document.querySelector('#starbaseKeep1').checked = globalSettings.starbaseKeep1;
 
@@ -5311,9 +5314,24 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
             if (entry.res && entry.amt > 0) {
                 let currentCargoObj = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === entry.res);
                 let currentCargoResAmt = currentCargoObj ? currentCargoObj.account.data.parsed.info.tokenAmount.uiAmount : 0;
-                if (currentCargoResAmt > 0) needToUnload = true;
+                if (currentCargoResAmt > (globalSettings.transportKeep1 ? 1 : 0)) needToUnload = true;
             }
         }
+
+	//we check if the fleet has any cargo which isn't part of the current or destination manifest - to unload it
+	if(globalSettings.transportUnloadsUnknownRSS) {
+		for(let currentRes of fleetCurrentCargo.value) {
+			if(currentManifest.findIndex(item => item.res == currentRes.account.data.parsed.info.mint) < 0 && destinationManifest.findIndex(item => item.res == currentRes.account.data.parsed.info.mint) < 0) {
+				let amountToUnload = currentRes.account.data.parsed.info.tokenAmount.uiAmount;
+				if(globalSettings.transportKeep1 && amountToUnload > 0) { amountToUnload -= 1; }
+				if(amountToUnload > 0) {
+					needToUnload = true;
+					cLog(3,`${FleetTimeStamp(fleet.label)} Found rss that is not part of any transport manifest, unloading`, amountToUnload, 'of', currentRes.account.data.parsed.info.mint);
+					currentManifest.push({res: currentRes.account.data.parsed.info.mint, amt: amountToUnload });
+				}
+			}				
+		}
+	}
 
         return {currentManifest, destinationManifest, needToLoad, needToUnload};
     }
@@ -5438,8 +5456,15 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		if(starbaseCargoManifest[0].crew > 0 || targetCargoManifest[0].crew > 0) cLog(3, `${FleetTimeStamp(userFleets[i].label)} crew:`, userFleets[i].crewCount, 'passengerCapacity:', userFleets[i].passengerCapacity, 'required crew:', userFleets[i].requiredCrew, 'load:', needToLoadCrew, 'unload:', needToUnloadCrew);
 
                 const fuelData = await getFleetFuelData(userFleets[i], [starbaseX, starbaseY], [destX, destY], true);
+		//previously we only checked for "fuelData.fuelNeeded > 0" below, but fuelNeeded is always greater than 0 - it is just the fuel needed for the warp/subwarp.
+		//this broke the check if the fleet needs to do the dock/undock sequence and the sequence was always executed
+		//We need to explicitly calculate the needed fuel minus the available fuel, just like in handleTransportRefueling()
+		const fuelEntry = targetCargoManifest.find(e => e.res === sageGameAcct.account.mints.fuel.toString()) || {amt: 0};
+		const totalFuel = fuelData.fuelNeeded + fuelEntry.amt;
+		let fuelToAdd = Math.min(fuelData.capacity, totalFuel) - fuelData.amount;
 
-                if (checkCargoResult.needToLoad || checkCargoResult.needToUnload || fuelData.fuelNeeded > 0 || needToLoadCrew || needToUnloadCrew) {
+                //if (checkCargoResult.needToLoad || checkCargoResult.needToUnload || fuelData.fuelNeeded > 0 || needToLoadCrew || needToUnloadCrew) {
+                if (checkCargoResult.needToLoad || checkCargoResult.needToUnload || fuelToAdd > 0 || needToLoadCrew > 0 || needToUnloadCrew > 0) {
                     await execDock(userFleets[i], userFleets[i].starbaseCoord);
 
                     if (hasStarbaseManifest || checkCargoResult.needToUnload) {
@@ -5515,8 +5540,13 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		if(starbaseCargoManifest[0].crew > 0 || targetCargoManifest[0].crew > 0) cLog(3, `${FleetTimeStamp(userFleets[i].label)} crew:`, userFleets[i].crewCount, 'passengerCapacity:', userFleets[i].passengerCapacity, 'required crew:', userFleets[i].requiredCrew, 'load:', needToLoadCrew, 'unload:', needToUnloadCrew);
 
                 const fuelData = await getFleetFuelData(userFleets[i], [destX, destY], [starbaseX, starbaseY], false);
+		//previously we only checked for "fuelData.fuelNeeded > 0" below, but fuelNeeded is always greater than 0 - it is just the fuel needed for the warp/subwarp.
+		//We need to explicitly calculate the needed fuel minus the available fuel, just like in handleTransportRefueling()
+		const fuelEntry = starbaseCargoManifest.find(e => e.res === sageGameAcct.account.mints.fuel.toString()) || {amt: 0};
+		const totalFuel = fuelData.fuelNeeded + fuelEntry.amt;
+		let fuelToAdd = Math.min(fuelData.capacity, totalFuel) - fuelData.amount;				
 
-                if (checkCargoResult.needToLoad || checkCargoResult.needToUnload || fuelData.fuelNeeded > 0 || needToLoadCrew || needToUnloadCrew) {
+                if (checkCargoResult.needToLoad || checkCargoResult.needToUnload || fuelToAdd > 0 || needToLoadCrew > 0 || needToUnloadCrew > 0) {
                     await execDock(userFleets[i], userFleets[i].destCoord);
 
                     //Unloading at Target
@@ -5797,12 +5827,13 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				const currentRes = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === entry.res);
 				const fleetResAcct = currentRes ? currentRes.pubkey : fleetResourceToken;
 				const resCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == entry.res);
-                const currentResAmt = currentRes ? currentRes.account.data.parsed.info.tokenAmount.uiAmount : 0;
+				const currentResAmt = currentRes ? currentRes.account.data.parsed.info.tokenAmount.uiAmount : 0;
 
 				//Deduct ammo already loaded into ammobank if applicable
 				const isAmmo = entry.res === sageGameAcct.account.mints.ammo.toString();
-				const resMax = Math.floor(Math.min(cargoSpace / cargoItems.find(r => r.token == entry.res).size, isAmmo ? entry.amt - ammoLoadingIntoAmmoBank : entry.amt - currentResAmt));
-                expectedCnt += resMax;
+				//For ammo SLYA didn't check the ammo in the cargo room, added
+				const resMax = Math.floor(Math.min(cargoSpace / cargoItems.find(r => r.token == entry.res).size, isAmmo ? entry.amt - ammoLoadingIntoAmmoBank - currentResAmt : entry.amt - currentResAmt));
+				expectedCnt += resMax;
 				if (resMax > 0) {
 					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Attempting to load ${resMax} ${entry.res} from ${starbaseCoords}`);
 					const resp = await execCargoFromStarbaseToFleet(
@@ -7043,6 +7074,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			settingsModalContentString += '<div>Use Ammo Banks for Transport? <input id="transportUseAmmoBank" type="checkbox"></input><br><small>Should transports also use their ammo banks to help move ammo?</small></div>';
 			settingsModalContentString += '<div>Stop Transports On Error <input id="transportStopOnError" type="checkbox"></input><br><small>Should transport fleet stop completely if there is an error (example: not enough resource/fuel/etc.)?</small></div>';
 			settingsModalContentString += '<div>Fuel to 100% for transports <input id="transportFuel100" type="checkbox"></input><br><small>If a refuel is needed at the source, should transport fleets fill fuel to 100%?</small></div>';
+			settingsModalContentString += '<div>Transports unload unknown RSS <input id="transportUnloadsUnknownRSS" type="checkbox"></input><br><small>If a transport has unknown cargo (not part of the starbase or destination transport orders), unload it at the current starbase.</small></div>';
 			settingsModalContentString += '<div>Transports keep 1 resource <input id="transportKeep1" type="checkbox"></input><br><small>If unloading a resource, should transport fleets keep 1 resource to save a CreatePDA transaction when loading it again?</small></div>';
 			settingsModalContentString += '<div>Miners keep 1 resource <input id="minerKeep1" type="checkbox"></input><br><small>Same as previous option but for miners. Also load 1 food more, so the food token account is not closed, too.</small></div>';
 			settingsModalContentString += '<div>Fleets leave 1 resource in starbases <input id="starbaseKeep1" type="checkbox"></input><br><small>Same as previous option but for starbases.</small></div>';
