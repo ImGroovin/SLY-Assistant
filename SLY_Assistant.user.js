@@ -6308,7 +6308,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
             userCraft = craftParsedData;
 
 	    //only continue if the job is in a idle state and if we need something to craft, otherwise we save a cargo hold request
-	    if(userCraft.state === 'Idle' && userCraft.item && userCraft.coordinates && userCraft.amount > 0)
+	    if(userCraft.state === 'Idle' && userCraft.item && userCraft.coordinates && userCraft.amount > 0 && userCraft.crew > 0)
 	    {
 
 		if(starbase && targetX == userCraft.coordinates.split(',')[0].trim() && targetY == userCraft.coordinates.split(',')[1].trim()) {
