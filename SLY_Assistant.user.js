@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.72
+// @version      0.6.73
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -3738,7 +3738,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				targetRow[0].children[3].firstChild.innerHTML = fleet.state;
 			} else {
 				//targetRow[0].children[0].firstChild.innerHTML = fleet.label + " [" + fleet.coordinates + "]";
-				let target = validTargets.find(target => (target.x + ',' + target.y) == fleet.coordinates);
+				let target = fleet.craftingId ? validTargets.find(target => (target.x + ',' + target.y) == fleet.craftingCoords) : validTargets.find(target => (target.x + ',' + target.y) == fleet.coordinates);
 				targetRow[0].children[0].firstChild.innerHTML = fleet.label + " " + (target ? target.name : '');
 				targetRow[0].children[1].firstChild.innerHTML = fleet.state;
 			}
@@ -3786,7 +3786,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			} else {
 				fleetStatusTd.setAttribute('colspan', 3);
 				fleetStatusTd.appendChild(fleetStatus);
-				let target = validTargets.find(target => (target.x + ',' + target.y) == fleet.coordinates);
+				let target = fleet.craftingId && fleet.craftingCoords ? validTargets.find(target => (target.x + ',' + target.y) == fleet.craftingCoords) : validTargets.find(target => (target.x + ',' + target.y) == fleet.coordinates);
 				fleetLabel.innerHTML = fleetLabel.innerHTML + " " + (target ? target.name : '');
 				fleetRow.appendChild(fleetLabelTd);
 				fleetRow.appendChild(fleetStatusTd);
@@ -4056,6 +4056,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
             let craftParsedData = craftSavedData && JSON.parse(craftSavedData);
             let craftState = craftParsedData && craftParsedData.state || 'Idle';
             let craftingId = craftParsedData && craftParsedData.craftingId || 0;
+            let craftingCoords = craftParsedData && craftParsedData.craftingCoords || '';
             let craftBelowAmount = parseIntKMG(row.children[4].firstChild.value) || '';
             let craftSpecial = row.children[5].firstChild.value;
 
@@ -4068,6 +4069,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                 belowAmount: craftBelowAmount,
 		special: craftSpecial,
                 state: craftState,
+                craftingCoords: craftingCoords,
                 craftingId: craftingId
             }
             console.log('craft: ', craft);
@@ -6125,6 +6127,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         let craftParsedData = JSON.parse(craftSavedData);
         craftParsedData.state = userCraft.state;
         craftParsedData.craftingId = userCraft.craftingId;
+        craftParsedData.craftingCoords = userCraft.craftingCoords;
         await GM.setValue(userCraft.label, JSON.stringify(craftParsedData));
     }
 
@@ -6144,151 +6147,186 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		return; 
             }
 
-            let targetX = userCraft.coordinates.split(',')[0].trim();
-            let targetY = userCraft.coordinates.split(',')[1].trim();
-            let starbase = await getStarbaseFromCoords(targetX, targetY, true);
-            cLog(2, FleetTimeStamp(userCraft.label), 'starbase: ', starbase);
-            let craftTime = await getStarbaseTime(starbase, 'Craft');
-            let upgradeTime = await getStarbaseTime(starbase, 'Upgrade');
-            cLog(2, FleetTimeStamp(userCraft.label), 'craftTime: ', craftTime);
-            cLog(2, FleetTimeStamp(userCraft.label), 'upgradeTime: ', upgradeTime);
+            let targetX;
+            let targetY;
+            let starbase;
+            let craftTime;
+            let upgradeTime;
+            let starbasePlayer;
+            if(userCraft.craftingId) {
 
-            let starbasePlayer = await getStarbasePlayer(userProfileAcct, starbase.publicKey);
-            starbasePlayer = starbasePlayer ? starbasePlayer.publicKey : await execRegisterStarbasePlayer('Craft', userCraft.coordinates);
-
-            // Get all crafting instances at designated Starbase
-            let craftingInstances = await sageProgram.account.craftingInstance.all([
-                {
-                    memcmp: {
-                        offset: 11,
-                        bytes: starbasePlayer.toBase58(),
-                    },
-                },
-            ]);
-
-            //let completeBN = new BrowserAnchor.anchor.BN(2);
-            //let completeArr = completeBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "be", 2);
-            //let complete58 = bs58.encode(completeArr);
-
-            if (craftingInstances.length < 1) {
-                updateFleetState(userCraft, 'Idle');
-                userCraft.craftingId = 0;
-                await updateCraft(userCraft);
-                //await GM.setValue(userCraft.label, JSON.stringify(userCraft));
-            }
-
-            // Get all completed crafting processes at the designated Starbase
-            let completedCraftingProcesses = [];
-            let completedUpgradeProcesses = [];
-            let craftingProcessRunning = false;
-            for (let craftingInstance of craftingInstances) {
-                let craftingProcesses = await craftingProgram.account.craftingProcess.all([
-                    {
-                        memcmp: {
-                            offset: 17,
-                            bytes: craftingInstance.publicKey.toBase58(),
-                        },
-                    },
-                    /*{
-                        memcmp: {
-                            offset: 152,
-                            bytes: complete58,
-                        },
-                    },*/
-                ]);
-
-                for (let craftingProcess of craftingProcesses) {
-                    if (userCraft.craftingId && craftingProcess.account.craftingId.toNumber() == userCraft.craftingId) craftingProcessRunning = true;
-                    if (craftRecipes.some(item => item.publicKey.toString() === craftingProcess.account.recipe.toString())) {
-			//fix: if we found ANY other completed process in this starbase, the time for this crafting process wasn't updated, because the first if statement was true
-			//therefore we now only select the corresponding completed crafting process
-			//this also fixes: we only execute the main code block below when the condition ...
-			//if((!craftingProcessRunning) || completedCraftingProcesses.length || completedUpgradeProcesses.length)
-			//...is true. But when there was ANY completed craft at this starbase (even a manual one) the block was always unnecessarily executed
-			//todo: the later loop through completedCraftingProcesses isn't needed anymore, because we should only have exactly one completed process (this job)
-                        if (craftingProcess.account.endTime.toNumber() < craftTime.starbaseTime && [2,3].includes(craftingProcess.account.status) && userCraft.craftingId && craftingProcess.account.craftingId.toNumber() == userCraft.craftingId) {
-                            completedCraftingProcesses.push({craftingProcess: craftingProcess.publicKey, craftingInstance: craftingInstance.publicKey, recipe: craftingProcess.account.recipe, status: craftingProcess.account.status, craftingId: craftingProcess.account.craftingId.toNumber()});
-                        } else if (userCraft.craftingId && craftingProcess.account.craftingId.toNumber() == userCraft.craftingId) {
-                            let craftRecipe = craftRecipes.find(item => item.publicKey.toString() === craftingProcess.account.recipe.toString());
-                            let calcEndTime = Math.max(craftingProcess.account.endTime.toNumber() - craftTime.starbaseTime, 0);
-                            let adjustedEndTime = craftTime.resRemaining > 0 ? calcEndTime : (calcEndTime) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level];
-                            //let craftTimeStr = 'Crafting [' + TimeToStr(new Date(Date.now() + adjustedEndTime * 1000)) + ']';
-                            let craftTimeStr = "&#9874; " + craftRecipe.name + (userCraft.item!=craftRecipe.name?' ('+userCraft.item+')':'') + ' [' + TimeToStr(new Date(Date.now() + adjustedEndTime * 1000)) + ']';
-                            updateFleetState(userCraft, craftTimeStr);
-                            await updateCraft(userCraft);
-                            //update less frequently if we have a long-running crafting task (3 minutes if remaining time >12 minutes, 2 minutes if remaining time >8 minutes), update faster if <60 seconds left
-                            if(adjustedEndTime > 720) localTimeout = 180000;
-                            else if(adjustedEndTime > 480) localTimeout = 120000;
-                            else if(adjustedEndTime < 60) localTimeout = 30000;
-                        }
-                    } else {
-			//same fix here
-                        if (craftingProcess.account.endTime.toNumber() < upgradeTime.starbaseTime && [2,3].includes(craftingProcess.account.status) && userCraft.craftingId && craftingProcess.account.craftingId.toNumber() == userCraft.craftingId) {
-                            completedUpgradeProcesses.push({craftingProcess: craftingProcess.publicKey, craftingInstance: craftingInstance.publicKey, recipe: craftingProcess.account.recipe, status: craftingProcess.account.status, craftingId: craftingProcess.account.craftingId.toNumber()});
-                        } else if (userCraft.craftingId && craftingProcess.account.craftingId.toNumber() == userCraft.craftingId) {
-                            let upgradeTimeDiff = Math.max(craftingProcess.account.endTime.toNumber() - upgradeTime.starbaseTime, 0);
-                            let upgradeTimeStr = upgradeTime.resRemaining > 0 ? 'Upgrading [' + TimeToStr(new Date(Date.now() + upgradeTimeDiff * 1000)) + ']' : 'Paused [' + parseInt(upgradeTimeDiff/60) + 'm remaining]';
-                            updateFleetState(userCraft, upgradeTimeStr);
-                            await updateCraft(userCraft);
-                        }
-                    }
-                }
-            }
-
-            if (!craftingProcessRunning) {
-                cLog(1,`${FleetTimeStamp(userCraft.label)} Crafting process not found. Setting state to Idle.`);
-                updateFleetState(userCraft, 'Idle');
-                userCraft.craftingId = 0;
-                await updateCraft(userCraft);
-            }
-
-            let starbasePlayerCargoHoldsAndTokens;
-            // only get current cargo holds if something needs to be completed
-            if(completedCraftingProcesses.length || completedUpgradeProcesses.length)
-            {
-                starbasePlayerCargoHoldsAndTokens = await getStarbasePlayerCargoHolds(starbasePlayer);
-
-                for (let craftingProcess of completedCraftingProcesses) {
-                    let craftRecipe = craftRecipes.find(item => item.publicKey.toString() === craftingProcess.recipe.toString());
-                    if (userCraft.craftingId && craftingProcess.craftingId == userCraft.craftingId) {
-                        cLog(1,`${FleetTimeStamp(userCraft.label)} Completing craft at [${targetX}, ${targetY}] for  ${craftRecipe.output.mint.toString()}`);
-                        //updateFleetState(userCraft, 'Craft Completing');
-                        updateFleetState(userCraft, 'Completing: ' + craftRecipe.name + (userCraft.item!=craftRecipe.name?' ('+userCraft.item+')':''));
-                        await execCompleteCrafting(starbase, starbasePlayer, starbasePlayerCargoHoldsAndTokens, craftingProcess, userCraft);
-                        if (!userCraft.state.includes('ERROR')) {
-                            if (userCraft.craftingId && craftingProcess.craftingId == userCraft.craftingId) {
-                                updateFleetState(userCraft, 'Idle');
-                                userCraft.craftingId = 0;
-                                await updateCraft(userCraft);
-                            }
-                        }
-                    }
-                }
-
-                for (let upgradeProcess of completedUpgradeProcesses) {
-                    let craftingRecipe = upgradeRecipes.find(item => item.publicKey.toString() === upgradeProcess.recipe.toString());
-                    if (userCraft.craftingId && upgradeProcess.craftingId == userCraft.craftingId) {
-                        cLog(1,`${FleetTimeStamp(userCraft.label)} Completing upgrade at [${targetX}, ${targetY}] for  ${craftingRecipe.input[0].mint.toString()}`);
-                        updateFleetState(userCraft, 'Upgrade Completing');
-                        await execCompleteUpgrade(starbase, starbasePlayer, starbasePlayerCargoHoldsAndTokens, upgradeProcess, userCraft);
-                        if (!userCraft.state.includes('ERROR')) {
-                            if (userCraft.craftingId && upgradeProcess.craftingId == userCraft.craftingId) {
-                                updateFleetState(userCraft, 'Idle');
-                                userCraft.craftingId = 0;
-                                await updateCraft(userCraft);
-                                //await GM.setValue(userCraft.label, JSON.stringify(userCraft));
-                            }
-                        }
-                    }
-                }
+	            // temporary, when updating SLYA there is no craftingCoords first, so we need a fallback. Can be removed later.				
+	            if(!userCraft.craftingCoords) {
+			userCraft.craftingCoords = userCraft.coordinates;
+	            }
+		    targetX = userCraft.craftingCoords.split(',')[0].trim();
+		    targetY = userCraft.craftingCoords.split(',')[1].trim();
+	            starbase = await getStarbaseFromCoords(targetX, targetY, true);
+	            cLog(2, FleetTimeStamp(userCraft.label), 'starbase: ', starbase);
+	            craftTime = await getStarbaseTime(starbase, 'Craft');
+	            upgradeTime = await getStarbaseTime(starbase, 'Upgrade');
+	            cLog(2, FleetTimeStamp(userCraft.label), 'craftTime: ', craftTime);
+	            cLog(2, FleetTimeStamp(userCraft.label), 'upgradeTime: ', upgradeTime);
+	
+	            starbasePlayer = await getStarbasePlayer(userProfileAcct, starbase.publicKey);
+	            starbasePlayer = starbasePlayer ? starbasePlayer.publicKey : await execRegisterStarbasePlayer('Craft', userCraft.craftingCoords);
+	
+	            // Get all crafting instances at designated Starbase
+	            let craftingInstances = await sageProgram.account.craftingInstance.all([
+	                {
+	                    memcmp: {
+	                        offset: 11,
+	                        bytes: starbasePlayer.toBase58(),
+	                    },
+	                },
+	            ]);
+	
+	            //let completeBN = new BrowserAnchor.anchor.BN(2);
+	            //let completeArr = completeBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "be", 2);
+	            //let complete58 = bs58.encode(completeArr);
+	
+	            if (craftingInstances.length < 1) {
+	                userCraft.craftingId = 0;
+	                updateFleetState(userCraft, 'Idle');
+	                await updateCraft(userCraft);
+	                //await GM.setValue(userCraft.label, JSON.stringify(userCraft));
+	            }
+	
+	            // Get all completed crafting processes at the designated Starbase
+	            let completedCraftingProcesses = [];
+	            let completedUpgradeProcesses = [];
+	            let craftingProcessRunning = false;
+	            for (let craftingInstance of craftingInstances) {
+	                let craftingProcesses = await craftingProgram.account.craftingProcess.all([
+	                    {
+	                        memcmp: {
+	                            offset: 17,
+	                            bytes: craftingInstance.publicKey.toBase58(),
+	                        },
+	                    },
+	                    /*{
+	                        memcmp: {
+	                            offset: 152,
+	                            bytes: complete58,
+	                        },
+	                    },*/
+	                ]);
+	
+	                for (let craftingProcess of craftingProcesses) {
+	                    if (userCraft.craftingId && craftingProcess.account.craftingId.toNumber() == userCraft.craftingId) craftingProcessRunning = true;
+	                    if (craftRecipes.some(item => item.publicKey.toString() === craftingProcess.account.recipe.toString())) {
+				//fix: if we found ANY other completed process in this starbase, the time for this crafting process wasn't updated, because the first if statement was true
+				//therefore we now only select the corresponding completed crafting process
+				//this also fixes: we only execute the main code block below when the condition ...
+				//if((!craftingProcessRunning) || completedCraftingProcesses.length || completedUpgradeProcesses.length)
+				//...is true. But when there was ANY completed craft at this starbase (even a manual one) the block was always unnecessarily executed
+				//todo: the later loop through completedCraftingProcesses isn't needed anymore, because we should only have exactly one completed process (this job)
+	                        if (craftingProcess.account.endTime.toNumber() < craftTime.starbaseTime && [2,3].includes(craftingProcess.account.status) && userCraft.craftingId && craftingProcess.account.craftingId.toNumber() == userCraft.craftingId) {
+	                            completedCraftingProcesses.push({craftingProcess: craftingProcess.publicKey, craftingInstance: craftingInstance.publicKey, recipe: craftingProcess.account.recipe, status: craftingProcess.account.status, craftingId: craftingProcess.account.craftingId.toNumber()});
+	                        } else if (userCraft.craftingId && craftingProcess.account.craftingId.toNumber() == userCraft.craftingId) {
+	                            let craftRecipe = craftRecipes.find(item => item.publicKey.toString() === craftingProcess.account.recipe.toString());
+	                            let calcEndTime = Math.max(craftingProcess.account.endTime.toNumber() - craftTime.starbaseTime, 0);
+	                            let adjustedEndTime = craftTime.resRemaining > 0 ? calcEndTime : (calcEndTime) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level];
+	                            //let craftTimeStr = 'Crafting [' + TimeToStr(new Date(Date.now() + adjustedEndTime * 1000)) + ']';
+	                            let craftTimeStr = "&#9874; " + craftRecipe.name + (userCraft.item!=craftRecipe.name?' ('+userCraft.item+')':'') + ' [' + TimeToStr(new Date(Date.now() + adjustedEndTime * 1000)) + ']';
+	                            updateFleetState(userCraft, craftTimeStr);
+	                            await updateCraft(userCraft);
+	                            //update less frequently if we have a long-running crafting task (3 minutes if remaining time >12 minutes, 2 minutes if remaining time >8 minutes), update faster if <60 seconds left
+	                            if(adjustedEndTime > 720) localTimeout = 180000;
+	                            else if(adjustedEndTime > 480) localTimeout = 120000;
+	                            else if(adjustedEndTime < 60) localTimeout = 30000;
+	                        }
+	                    } else {
+				//same fix here
+	                        if (craftingProcess.account.endTime.toNumber() < upgradeTime.starbaseTime && [2,3].includes(craftingProcess.account.status) && userCraft.craftingId && craftingProcess.account.craftingId.toNumber() == userCraft.craftingId) {
+	                            completedUpgradeProcesses.push({craftingProcess: craftingProcess.publicKey, craftingInstance: craftingInstance.publicKey, recipe: craftingProcess.account.recipe, status: craftingProcess.account.status, craftingId: craftingProcess.account.craftingId.toNumber()});
+	                        } else if (userCraft.craftingId && craftingProcess.account.craftingId.toNumber() == userCraft.craftingId) {
+	                            let upgradeTimeDiff = Math.max(craftingProcess.account.endTime.toNumber() - upgradeTime.starbaseTime, 0);
+	                            let upgradeTimeStr = upgradeTime.resRemaining > 0 ? 'Upgrading [' + TimeToStr(new Date(Date.now() + upgradeTimeDiff * 1000)) + ']' : 'Paused [' + parseInt(upgradeTimeDiff/60) + 'm remaining]';
+	                            updateFleetState(userCraft, upgradeTimeStr);
+	                            await updateCraft(userCraft);
+	                        }
+	                    }
+	                }
+	            }
+	
+	            if (!craftingProcessRunning) {
+	                cLog(1,`${FleetTimeStamp(userCraft.label)} Crafting process not found. Setting state to Idle.`);
+	                userCraft.craftingId = 0;
+	                updateFleetState(userCraft, 'Idle');
+	                await updateCraft(userCraft);
+	            }
+	
+	            // only get current cargo holds if something needs to be completed
+	            if(completedCraftingProcesses.length || completedUpgradeProcesses.length)
+	            {
+	                let starbasePlayerCargoHoldsAndTokens = await getStarbasePlayerCargoHolds(starbasePlayer);
+	
+	                for (let craftingProcess of completedCraftingProcesses) {
+	                    let craftRecipe = craftRecipes.find(item => item.publicKey.toString() === craftingProcess.recipe.toString());
+	                    if (userCraft.craftingId && craftingProcess.craftingId == userCraft.craftingId) {
+	                        cLog(1,`${FleetTimeStamp(userCraft.label)} Completing craft at [${targetX}, ${targetY}] for  ${craftRecipe.output.mint.toString()}`);
+	                        //updateFleetState(userCraft, 'Craft Completing');
+	                        updateFleetState(userCraft, 'Completing: ' + craftRecipe.name + (userCraft.item!=craftRecipe.name?' ('+userCraft.item+')':''));
+	                        await execCompleteCrafting(starbase, starbasePlayer, starbasePlayerCargoHoldsAndTokens, craftingProcess, userCraft);
+	                        if (!userCraft.state.includes('ERROR')) {
+	                            if (userCraft.craftingId && craftingProcess.craftingId == userCraft.craftingId) {
+	                                userCraft.craftingId = 0;
+	                                updateFleetState(userCraft, 'Idle');
+	                                await updateCraft(userCraft);
+	                            }
+	                        }
+	                    }
+	                }
+	
+	                for (let upgradeProcess of completedUpgradeProcesses) {
+	                    let craftingRecipe = upgradeRecipes.find(item => item.publicKey.toString() === upgradeProcess.recipe.toString());
+	                    if (userCraft.craftingId && upgradeProcess.craftingId == userCraft.craftingId) {
+	                        cLog(1,`${FleetTimeStamp(userCraft.label)} Completing upgrade at [${targetX}, ${targetY}] for  ${craftingRecipe.input[0].mint.toString()}`);
+	                        updateFleetState(userCraft, 'Upgrade Completing');
+	                        await execCompleteUpgrade(starbase, starbasePlayer, starbasePlayerCargoHoldsAndTokens, upgradeProcess, userCraft);
+	                        if (!userCraft.state.includes('ERROR')) {
+	                            if (userCraft.craftingId && upgradeProcess.craftingId == userCraft.craftingId) {
+	                                userCraft.craftingId = 0;
+	                                updateFleetState(userCraft, 'Idle');
+	                                await updateCraft(userCraft);
+	                                //await GM.setValue(userCraft.label, JSON.stringify(userCraft));
+	                            }
+	                        }
+	                    }
+	                }
+		    }
+	    } else {
+		userCraft.craftingId = 0; //set first, so the coords are not taken from the last crafting job
+		updateFleetState(userCraft, 'Idle');
+		await updateCraft(userCraft);			
 	    }
 
+            //we read the current data, as it may have changed by the user in the meantime
+            craftSavedData = await GM.getValue(userCraft.label, '{}');
+            craftParsedData = JSON.parse(craftSavedData);
+            userCraft = craftParsedData;
+
 	    //only continue if the job is in a idle state and if we need something to craft, otherwise we save a cargo hold request
-	    if(userCraft.state === 'Idle' && userCraft.item && userCraft.coordinates && userCraft.amount)
+	    if(userCraft.state === 'Idle' && userCraft.item && userCraft.coordinates && userCraft.amount > 0)
 	    {
+
+		if(starbase && targetX == userCraft.coordinates.split(',')[0].trim() && targetY == userCraft.coordinates.split(',')[1].trim()) {
+			// we use the existing data from the craft completion, obviously the starbase wasn't changed by the user
+		} else {
+			// fresh job with no previous completion or starbase was changed
+			targetX = userCraft.coordinates.split(',')[0].trim();
+			targetY = userCraft.coordinates.split(',')[1].trim();				
+			starbase = await getStarbaseFromCoords(targetX, targetY, true);
+			craftTime = await getStarbaseTime(starbase, 'Craft');
+			upgradeTime = await getStarbaseTime(starbase, 'Upgrade');
+			starbasePlayer = await getStarbasePlayer(userProfileAcct, starbase.publicKey);
+			starbasePlayer = starbasePlayer ? starbasePlayer.publicKey : await execRegisterStarbasePlayer('Craft', userCraft.coordinates);
+		}
+
                 let starbasePlayerInfo = await sageProgram.account.starbasePlayer.fetch(starbasePlayer);
                 let availableCrew = starbasePlayerInfo.totalCrew - starbasePlayerInfo.busyCrew.toNumber();
-                starbasePlayerCargoHoldsAndTokens = await getStarbasePlayerCargoHolds(starbasePlayer);
+                let starbasePlayerCargoHoldsAndTokens = await getStarbasePlayerCargoHolds(starbasePlayer);
 
                 let targetRecipe = getTargetRecipe(starbasePlayerCargoHoldsAndTokens, userCraft, Number(userCraft.amount), (userCraft.special ? userCraft.special : ''));
 
@@ -6353,6 +6391,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                             //updateFleetState(userCraft, activityType + ' [' + activityTimeStr + ']');
                             updateFleetState(userCraft, activityInfo + ' [' + activityTimeStr + ']');
                             userCraft.craftingId = result.craftingId;
+                            userCraft.craftingCoords = userCraft.coordinates;
                             await updateCraft(userCraft);
                             //await GM.setValue(userCraft.label, JSON.stringify(userCraft));
 		        }
