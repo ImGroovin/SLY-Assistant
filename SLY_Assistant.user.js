@@ -5463,6 +5463,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		const totalFuel = fuelData.fuelNeeded + fuelEntry.amt;
 		let fuelToAdd = Math.min(fuelData.capacity, totalFuel) - fuelData.amount;
 
+		cLog(3,`${FleetTimeStamp(userFleets[i].label)} Fuel needed`, fuelData.fuelNeeded, '/ fuel found', fuelData.amount, '/ fuel to add', fuelToAdd, '/ needToLoad', checkCargoResult.needToLoad, '/ needToUnload', checkCargoResult.needToUnload, '/ needToLoadCrew', needToLoadCrew, '/ needToUnloadCrew', needToUnloadCrew);
+
                 //if (checkCargoResult.needToLoad || checkCargoResult.needToUnload || fuelData.fuelNeeded > 0 || needToLoadCrew || needToUnloadCrew) {
                 if (checkCargoResult.needToLoad || checkCargoResult.needToUnload || fuelToAdd > 0 || needToLoadCrew > 0 || needToUnloadCrew > 0) {
                     await execDock(userFleets[i], userFleets[i].starbaseCoord);
@@ -5545,6 +5547,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		const fuelEntry = starbaseCargoManifest.find(e => e.res === sageGameAcct.account.mints.fuel.toString()) || {amt: 0};
 		const totalFuel = fuelData.fuelNeeded + fuelEntry.amt;
 		let fuelToAdd = Math.min(fuelData.capacity, totalFuel) - fuelData.amount;				
+
+		cLog(3,`${FleetTimeStamp(userFleets[i].label)} Fuel needed`, fuelData.fuelNeeded, '/ fuel found', fuelData.amount, '/ fuel to add', fuelToAdd, '/ needToLoad', checkCargoResult.needToLoad, '/ needToUnload', checkCargoResult.needToUnload, '/ needToLoadCrew', needToLoadCrew, '/ needToUnloadCrew', needToUnloadCrew);
 
                 if (checkCargoResult.needToLoad || checkCargoResult.needToUnload || fuelToAdd > 0 || needToLoadCrew > 0 || needToUnloadCrew > 0) {
                     await execDock(userFleets[i], userFleets[i].destCoord);
