@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.75
+// @version      0.6.76
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -140,6 +140,7 @@
 		globalSettings = {
 			// Priority Fee added to each transaction in Lamports. Set to 0 (zero) to disable priority fees. 1 Lamport = 0.000000001 SOL
 			priorityFee: parseIntDefault(globalSettings.priorityFee, 1),
+			minPriorityFeeForMultiIx: parseIntDefault(globalSettings.minPriorityFeeForMultiIx, 0),
 
 			//autofee
 			automaticFee: parseBoolDefault(globalSettings.automaticFee, false),
@@ -153,6 +154,7 @@
 			craftingTxAffectsAutoFee: parseBoolDefault(globalSettings.craftingTxAffectsAutoFee, true),
 
 			transportKeep1: parseBoolDefault(globalSettings.transportKeep1, false),
+			transportLoadUnloadSingleTx: parseBoolDefault(globalSettings.transportLoadUnloadSingleTx, false),
 			transportUnloadsUnknownRSS: parseBoolDefault(globalSettings.transportUnloadsUnknownRSS, false),
 			minerKeep1: parseBoolDefault(globalSettings.minerKeep1, false),
 			starbaseKeep1: parseBoolDefault(globalSettings.starbaseKeep1, false),
@@ -1421,13 +1423,17 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			if(!priorityFeeMultiplier) priorityFeeMultiplier = 10; // globalSettings.lowPriorityFeeMultiplier;
 			priorityFeeMultiplier = priorityFeeMultiplier / 100;
 
+			let priorityFeeMin = 1;
+			if(ix.constructor === Array) priorityFeeMin = Math.max(1, Math.min(globalSettings.minPriorityFeeForMultiIx, 50000) * 5);
+			
 			let confirmed = false;
 			while (!confirmed) {
 				//let tx = new solanaWeb3.Transaction();
 
-				//const priorityFee = globalSettings.priorityFee ? Math.max(1, Math.ceil(priorityFeeMultiplier * globalSettings.priorityFee * 5)) : 0; //Convert Lamports to microLamports ?
-				//autofee
-				const priorityFee = currentFee ? Math.max(1, Math.ceil(priorityFeeMultiplier * currentFee * 5)) : 0; //Convert Lamports to microLamports ?
+				//the fee is applied to the default compute limit and it is in microLamports. The default compute limit is 200k and microLamports to Lamports is 1M, therefore: 1M / 200k = we need to multiply by 5
+				//const priorityFee = currentFee ? Math.max(1, Math.ceil(priorityFeeMultiplier * currentFee * 5)) : 0;
+				const priorityFee = currentFee ? Math.max(priorityFeeMin, Math.ceil(priorityFeeMultiplier * currentFee * 5)) : 0;
+				
 				cLog(4,`${FleetTimeStamp(fleetName)} <${opName}> 💳 Fee ${Math.ceil(priorityFee / 5)} lamp`);
                 /*
 				if (priorityFee > 0) tx.add(solanaWeb3.ComputeBudgetProgram.setComputeUnitPrice({microLamports: priorityFee}));
@@ -2085,7 +2091,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		return cargoPod;
 	}
 
-	async function execCargoFromFleetToStarbase(fleet, fleetCargoPod, tokenMint, dockCoords, amount) {
+	async function execCargoFromFleetToStarbase(fleet, fleetCargoPod, tokenMint, dockCoords, amount, returnTx) {
 			return new Promise(async resolve => {
 					let starbaseX = dockCoords.split(',')[0].trim();
 					let starbaseY = dockCoords.split(',')[1].trim();
@@ -2156,7 +2162,13 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 							isSigner: false,
 							isWritable: false
 					}]).instruction()}
-					let txResult = await txSignAndSend(tx, fleet, 'UNLOAD', 100);
+					//let txResult = await txSignAndSend(tx, fleet, 'UNLOAD', 100);
+					let txResult;
+					if(returnTx) {
+						txResult = tx;
+					} else {
+						txResult = await txSignAndSend(tx, fleet, 'UNLOAD', 100);
+					}					
 					resolve(txResult);
 			});
 	}
@@ -2168,7 +2180,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		await getAccountInfo(fleet.label, 'fleet fuel token', fleet.fuelToken) || await createPDA(fleet.fuelToken, fleet.fuelTank, new solanaWeb3.PublicKey(fuelItem.token), fleet);
 	}
 
-	async function execCargoFromStarbaseToFleet(fleet, cargoPodTo, tokenTo, tokenMint, cargoType, dockCoords, amount) {
+	async function execCargoFromStarbaseToFleet(fleet, cargoPodTo, tokenTo, tokenMint, cargoType, dockCoords, amount, returnTx) {
 		return new Promise(async resolve => {
 			let txResult = {};
 			let starbaseX = dockCoords.split(',')[0].trim();
@@ -2262,7 +2274,12 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				}]).instruction()}
 
 				//Send tx
-				txResult = {amount: amount, result: await txSignAndSend(tx, fleet, 'LOAD', 100)};
+				//txResult = {amount: amount, result: await txSignAndSend(tx, fleet, 'LOAD', 100)};
+				if(returnTx) {
+					txResult = {amount: amount, tx: tx };
+				} else {
+					txResult = {amount: amount, result: await txSignAndSend(tx, fleet, 'LOAD', 100)};
+				}
 			}
 			else txResult = {name: "NotEnoughResource"};
 
@@ -4193,6 +4210,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 		globalSettings = {
 			priorityFee: parseIntDefault(document.querySelector('#priorityFee').value, 1),
+			minPriorityFeeForMultiIx: parseIntDefault(document.querySelector('#minPriorityFeeForMultiIx').value, 0),
 
 			//autofee
 			automaticFee: document.querySelector('#automaticFee').checked,
@@ -4206,6 +4224,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			craftingTxAffectsAutoFee: document.querySelector('#craftingTxAffectsAutoFee').checked,
 			
 			transportKeep1: document.querySelector('#transportKeep1').checked,
+			transportLoadUnloadSingleTx: document.querySelector('#transportLoadUnloadSingleTx').checked,
 			transportUnloadsUnknownRSS: document.querySelector('#transportUnloadsUnknownRSS').checked,
 			minerKeep1: document.querySelector('#minerKeep1').checked,
 			starbaseKeep1: document.querySelector('#starbaseKeep1').checked,
@@ -4257,6 +4276,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 	async function addSettingsInput() {
 		document.querySelector('#priorityFee').value = globalSettings.priorityFee;
+		document.querySelector('#minPriorityFeeForMultiIx').value = globalSettings.minPriorityFeeForMultiIx;
 
 		//autofee
 		document.querySelector('#automaticFee').checked = globalSettings.automaticFee;
@@ -4270,6 +4290,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		document.querySelector('#craftingTxAffectsAutoFee').checked = globalSettings.craftingTxAffectsAutoFee;
 		
 		document.querySelector('#transportKeep1').checked = globalSettings.transportKeep1;
+		document.querySelector('#transportLoadUnloadSingleTx').checked = globalSettings.transportLoadUnloadSingleTx;
 		document.querySelector('#transportUnloadsUnknownRSS').checked = globalSettings.transportUnloadsUnknownRSS;
 		document.querySelector('#minerKeep1').checked = globalSettings.minerKeep1;
 		document.querySelector('#starbaseKeep1').checked = globalSettings.starbaseKeep1;
@@ -5749,6 +5770,16 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		return fuelResp
 	}
 
+	async function txSliceAndSend(transactions, fleet, opName, priorityFeeMultiplier, maxInstructionsPerTx) {
+		for (let chunk = 0; chunk < transactions.length; chunk += maxInstructionsPerTx) {
+			let transactionsSlice = transactions.slice(chunk, chunk + maxInstructionsPerTx);
+			if(transactionsSlice.length == 1)
+				await txSignAndSend(transactionsSlice[0], fleet, opName, priorityFeeMultiplier );
+			else
+				await txSignAndSend(transactionsSlice, fleet, opName, priorityFeeMultiplier );
+		}
+	}
+
 	async function handleTransportUnloading(fleet, starbaseCoord, transportManifest) {
 		cLog(1,`${FleetTimeStamp(fleet.label)} 🚚 Unloading Transport`);
 		updateFleetState(fleet, 'Unloading');
@@ -5756,25 +5787,31 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		const ammoMint = sageGameAcct.account.mints.ammo.toString();
 		const fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(fleet.cargoHold, {programId: tokenProgramPK});
 
+		let transactions = [];		
+		const transportLoadUnloadSingleTx = globalSettings.transportLoadUnloadSingleTx; //we read the setting once to prevent a race condition
+
 		//Unloading resources from manifest
 		let fuelUnloadDeficit = 0;
-        let ammoUnloadDeficit = 0;
+		let ammoUnloadDeficit = 0;
 		for (const entry of transportManifest) {
 			if (entry.res !== '' && entry.amt > 0) {
 				const isFuel = entry.res === sageGameAcct.account.mints.fuel.toString();
-                const isAmmo = entry.res === ammoMint;
+				const isAmmo = entry.res === ammoMint;
 				const currentRes = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === entry.res);
 				const currentResCnt = currentRes ? currentRes.account.data.parsed.info.tokenAmount.uiAmount : 0;
 
 				if(isFuel) fuelUnloadDeficit = entry.amt;
-                if(isAmmo) ammoUnloadDeficit = entry.amt;
+				if(isAmmo) ammoUnloadDeficit = entry.amt;
 				let amountToUnload = entry.extra ? Math.min(currentResCnt, entry.amt) : currentResCnt;
 				if(globalSettings.transportKeep1 && amountToUnload > 0) { amountToUnload -= 1; }
 				if (amountToUnload > 0) {
 					cLog(1,`${FleetTimeStamp(fleet.label)} Unloading ${amountToUnload} ${entry.res}`);
-					await execCargoFromFleetToStarbase(fleet, fleet.cargoHold, entry.res, starbaseCoord, amountToUnload);
+					let resp = await execCargoFromFleetToStarbase(fleet, fleet.cargoHold, entry.res, starbaseCoord, amountToUnload);
+					if(transportLoadUnloadSingleTx && resp) {
+						transactions.push(resp);
+					}															
 					if(isFuel) fuelUnloadDeficit -= amountToUnload;
-                    if(isAmmo) ammoUnloadDeficit -= amountToUnload;
+					if(isAmmo) ammoUnloadDeficit -= amountToUnload;
 				} else {
 					cLog(1,`${FleetTimeStamp(fleet.label)} Unload ${entry.res} skipped - none found in ship's cargo hold`);
 				}
@@ -5783,13 +5820,18 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			}
 		}
 
+		if(transactions.length > 0) {
+			//when "transportUnloadsUnknownRSS is enabled, it is possible that we need to unload more than 4 rss, so we need to split the instructions
+			await txSliceAndSend(transactions, fleet, 'UNLOAD', 100, 4);
+		}				
+
 		//Ammo bank unloading
 		const ammoEntry = globalSettings.transportUseAmmoBank ? transportManifest.find(e => e.res === ammoMint) : undefined;
 		if (ammoEntry) {
 			let fleetCurrentAmmoBank = await solanaReadConnection.getParsedTokenAccountsByOwner(fleet.ammoBank, {programId: tokenProgramPK});
 			let currentAmmo = fleetCurrentAmmoBank.value.find(item => item.account.data.parsed.info.mint === ammoMint);
 			let currentAmmoCnt = currentAmmo ? currentAmmo.account.data.parsed.info.tokenAmount.uiAmount : 0;
-            let ammoToUnload = Math.min(currentAmmoCnt, ammoUnloadDeficit);
+			let ammoToUnload = Math.min(currentAmmoCnt, ammoUnloadDeficit);
 			if (ammoToUnload > 0) {
 				cLog(1,`${FleetTimeStamp(fleet.label)} Unloading Ammobanks: ${ammoToUnload}`);
 				await execCargoFromFleetToStarbase(fleet, fleet.ammoBank, ammoMint, starbaseCoord, ammoToUnload);
@@ -5817,6 +5859,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         cLog(2,`${FleetTimeStamp(userFleets[i].label)} cargoSpace remaining: ${cargoSpace}`);
 
 		let notEnoughInfo = '';
+		let transactions = [];
+		const transportLoadUnloadSingleTx = globalSettings.transportLoadUnloadSingleTx; //we read the setting once to prevent a race condition
 		for (const entry of transportManifest) {
 			if (entry.res && entry.amt > 0) {
 				if(cargoSpace < 1) {
@@ -5851,7 +5895,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 						entry.res,
 						resCargoTypeAcct,
 						starbaseCoords,
-						resMax
+						resMax,
+						transportLoadUnloadSingleTx
 					);
                     cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loaded ${resp.amount} ${entry.res}: `, resp);
                     cargoSpace -= resp && resp.amount ? cargoItems.find(r => r.token == entry.res).size * resp.amount : 0;
@@ -5860,6 +5905,9 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 						const resShort = cargoItems.find(r => r.token == entry.res).name;
 						cLog(1,`${FleetTimeStamp(userFleets[i].label)} Not enough ${resShort}`);
 						notEnoughInfo += 'Not enough ' + resShort + '\n';
+					}
+					else if(transportLoadUnloadSingleTx && resp && resp.tx) {
+						transactions.push(resp.tx);
 					}
 				}
 			}
@@ -5871,11 +5919,14 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 		//cLog(3,`${FleetTimeStamp(userFleets[i].label)} Loading finished with ${cargoCnt} total cargo loaded`);
 
-        if (startingCargoSpace == cargoSpace && expectedCnt > 0) {
-            updateFleetState(userFleets[i], 'ERROR: No cargo loaded');
-            cLog(2,`${FleetTimeStamp(userFleets[i].label)} ERROR: No cargo loaded`);
-            if(globalSettings.emailNoCargoLoaded) await sendEMail(userFleets[i].label + ' no cargo loaded', notEnoughInfo);
-        }
+	        if (startingCargoSpace == cargoSpace && expectedCnt > 0) {
+	            updateFleetState(userFleets[i], 'ERROR: No cargo loaded');
+	            cLog(2,`${FleetTimeStamp(userFleets[i].label)} ERROR: No cargo loaded`);
+	            if(globalSettings.emailNoCargoLoaded) await sendEMail(userFleets[i].label + ' no cargo loaded', notEnoughInfo);
+	        }
+		else if(transactions.length > 0) {
+			await txSliceAndSend(transactions, userFleets[i], 'LOAD', 100, 4);
+		}
 		return !userFleets[i].state.includes('ERROR');
 	}
 
@@ -7065,6 +7116,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			settingsModalContentString += '</li>';
 			settingsModalContentString += '<li class="tab_fees">';
 			settingsModalContentString += '<div>Priority Fee <input id="priorityFee" type="number" min="0" max="100000000" placeholder="1" ></input><br><small>Added to each transaction. Set to 0 (zero) to disable (the wallet will then decide the fee!). 1 Lamport = 0.000000001 SOL. Normal transactions will use the full priority fee, smaller transactions will use 10%. Exception: craft transactions are heavy and will use the configured multiplier below.</small> </div>';
+			settingsModalContentString += '<div>Minimum priority fee for multi-ix transactions <input id="minPriorityFeeForMultiIx" type="number" min="0" max="100000000" placeholder="0" ></input><br><small>When Solana isn\'t congested and you use no or only a very small fee (e.g. less than 200), transactions with multiple instructions (e.g. crafting instructions) are unattractive for validators, because these TXs have the same 5000 lamports (the base fee) as simple transactions. So they prefer simple transactions over complex transactions. You can make your multi-ix transaction more attractive by defining a minimum priority fee here. A value of 250 to 300 works good - it is applied to each instruction.</small> </div>';
 			settingsModalContentString += '<div>Fee multiplier for crafting transactions <input id="craftingTxMultiplier" type="number" min="10" max="500" placeholder="200" ></input>%<br><small>How much of the current fee should be used for crafting transactions? (max: 500%)</small> </div>';
 			settingsModalContentString += '<div>Auto-Fee? <input id="automaticFee" type="checkbox"></input> <span>Enable the auto fee algorithm, works best if at least 1 tx is executed per minute.</span><fieldset id="autoFeeData">FeeMin: <input id="automaticFeeMin" type="number" min="0" max="100000" placeholder="1" size="6"></input> TimeMin: <input id="automaticFeeTimeMin" type="number" min="1" max="120" placeholder="10" size="3"></input><br/>FeeMax: <input id="automaticFeeMax" type="number" min="0" max="100000" placeholder="10000" size="6"></input> TimeMax: <input id="automaticFeeTimeMax" type="number" min="5" max="120" placeholder="70" size="3"></input><br/>Max fee change/tx: <input id="automaticFeeStep" type="number" min="1" max="1000" placeholder="80" size="6"></input><br/>Crafting transactions are included when calculating the auto fee. <input id="craftingTxAffectsAutoFee" type="checkbox"></input><br><small>Fee starts with the configured priority fee from above. The current fee is then somewhere between FeeMin and FeeMax. This is 1:1 carried over to TimeMin and TimeMax and results in a threshold time. If a new tx is below this time, the fee gets decreased. If a new tx is above this time, the fee gets increased. Both times the amount is limited to "Max fee change/tx". The more the time deviates from the current threshold time, the greater the change.<br>If you choose a small fee multiplier for crafting transactions, it may be useful to exclude the crafting transaction from the adaptive fee calculation.</small></fieldset></div>';
 			settingsModalContentString += '</li>';
@@ -7093,6 +7145,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			settingsModalContentString += '<div>Console Logging <input id="debugLogLevel" type="number" min="0" max="9" placeholder="3"></input><br><small>How much console logging you want to see (higher number = more, 0 = none)</small></div>';
 			settingsModalContentString += '<div>Auto Start Script <input id="autoStartScript" type="checkbox"></input><br><small>Should Lab Assistant automatically start after initialization is complete?</small></div>';
 			settingsModalContentString += '<div>Reload On Stuck Fleets <input id="reloadPageOnFailedFleets" type="number" min="0" max="999" placeholder="0"></input><br><small>Automatically refresh the page if this many fleets get stuck (0 = never)</small></div>';
+			settingsModalContentString += '<div>Transports load/unload in a single Tx <input id="transportLoadUnloadSingleTx" type="checkbox"></input><br><small>EXPERIMENTAL: Transports load/unload all resources (up to 4) in a single transaction</small></div>';
 			settingsModalContentString += '<div>E-Mail-Interface <input id="emailInterface" type="text" size="40"></input><br><small>Send errors via the email interface (see "slya-email-interface.php" on GitHub for instructions).</small><button id="emailInterfaceTest">Test the interface URL</button> Result: <span id="emailInterfaceTestResult"></span></div>';
 			settingsModalContentString += '<div>'; 
 			settingsModalContentString += 'email fleet ix errors? <input id="emailFleetIxErrors" type="checkbox"></input><br>';
