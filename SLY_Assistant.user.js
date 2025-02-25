@@ -5806,7 +5806,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				if(globalSettings.transportKeep1 && amountToUnload > 0) { amountToUnload -= 1; }
 				if (amountToUnload > 0) {
 					cLog(1,`${FleetTimeStamp(fleet.label)} Unloading ${amountToUnload} ${entry.res}`);
-					let resp = await execCargoFromFleetToStarbase(fleet, fleet.cargoHold, entry.res, starbaseCoord, amountToUnload);
+					let resp = await execCargoFromFleetToStarbase(fleet, fleet.cargoHold, entry.res, starbaseCoord, amountToUnload, transportLoadUnloadSingleTx);
 					if(transportLoadUnloadSingleTx && resp) {
 						transactions.push(resp);
 					}															
