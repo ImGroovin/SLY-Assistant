@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.76
+// @version      0.6.77
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -2483,7 +2483,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                 },
             ]).instruction()}
             updateFleetState(fleet, `Mining Stop`);
-            let tx1Result = await txSignAndSend(tx1, fleet, 'STOP MINING (fleetStateHandler)', 100);
+            //let tx1Result = await txSignAndSend(tx1, fleet, 'STOP MINING (fleetStateHandler)', 100);
 
             let fuelCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.fuel);
             let tx2 = { instruction: await sageProgram.methods.stopMiningAsteroid({keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx)}).accountsStrict({
@@ -2519,7 +2519,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
             cLog(1,`${FleetTimeStamp(fleet.label)} Mining Stop`);
             updateFleetState(fleet, 'Mining Stop')
 
-            let txResult = await txSignAndSend(tx2, fleet, 'STOP MINING', 100);
+            //let txResult = await txSignAndSend(tx2, fleet, 'STOP MINING', 100);
+            let txResult = await txSignAndSend([tx1,tx2], fleet, 'STOP MINING', 100);
 
             //await wait(2000);
             cLog(1,`${FleetTimeStamp(fleet.label)} Idle 💤`);
