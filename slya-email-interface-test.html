@@ -1,0 +1,40 @@
+<html>
+<body>
+<script>
+
+	let interfaceURL = 'https://yourdomain.com/slya-email-interface.php?code=xxx';
+
+	async function sendEMail(subject,text) {
+			try {
+				console.log('Sending a message via the email interface, subject: ', subject);
+				const response = await fetch(interfaceURL, {
+					method: "POST",
+					body: JSON.stringify({
+						subject: 'SLYA: ' + subject,
+						text: text
+					}),
+					headers: {
+						"Content-type": "application/json; charset=UTF-8"
+					}
+				});
+				if (!response.ok) {
+					console.log('Error while sending a request to the email interface:', response.status, response.statusText);
+				} else {
+					const result = await response.json();
+					if(!result.success) {
+						console.log('Error from email interace:', result.text);
+					} else {
+						console.log('The email was sent');
+					}
+				}
+			} catch(error) {
+				console.log('Error while sending a request to the email interface:', error.message);
+			}
+	}
+
+	sendEMail('Test subject','Mail body');
+
+</script>
+
+</body>
+</html>

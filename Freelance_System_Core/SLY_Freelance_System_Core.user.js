@@ -5,10 +5,10 @@
 // @description  try to take over the world!
 // @author       SLY
 // @match        https://based.staratlas.com/
-// @require      https://unpkg.com/@solana/web3.js@1.95.8/lib/index.iife.min.js
-// @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/anchor-browserified.js
-// @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/buffer-browserified.js
-// @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/bs58-browserified.js
+// @require      https://unpkg.com/@solana/web3.js@1.95.8/lib/index.iife.min.js#sha256=a759deca1b65df140e8dda5ad8645c19579536bf822e5c0c7e4adb7793a5bd08
+// @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/anchor-browserified.js#sha256=f29ef75915bcf59221279f809eefc55074dbebf94cf16c968e783558e7ae3f0a
+// @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/buffer-browserified.js#sha256=4fa88e735f9f1fdbff85f4f92520e8874f2fec4e882b15633fad28a200693392
+// @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/bs58-browserified.js#sha256=87095371ec192e5a0e50c6576f327eb02532a7c29f1ed86700a2f8fb5018d947
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=staratlas.com
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -18,7 +18,7 @@
 (async function() {
     'use strict';
 
-    const solanaConnection = new solanaWeb3.Connection('https://rpc.ironforge.network/mainnet?apiKey=01HZFVRZ4A5WVX2NDA4PCPHJ7N', 'confirmed');
+    const solanaConnection = new solanaWeb3.Connection('https://rpc.ironforge.network/mainnet?apiKey=01JEEEQP3FTZJFCP5RCCKB2NSQ', 'confirmed');
     const anchorProvider = new BrowserAnchor.anchor.AnchorProvider(solanaConnection, null, null);
 
     const sageProgramId = new solanaWeb3.PublicKey('SAGE2HAwep459SNq61LHvjxPk4pLPEJLoMETef7f7EE');
@@ -296,7 +296,10 @@
             (input[2][7] ? 1 << 7 : 0)); // scanSurveyDataUnit
         out[3] = new BrowserAnchor.anchor.BN(
             (input[3][0] ? 1 << 0 : 0) | // doStarbaseUpkeep
-            (input[3][1] ? 1 << 1 : 0)); // manageProgression
+            (input[3][1] ? 1 << 1 : 0) | // manageProgression
+            (input[3][2] ? 1 << 2 : 0) | // manageCrewConfig
+            (input[3][3] ? 1 << 3 : 0) | // manageCrew
+            (input[3][4] ? 1 << 4 : 0)); // withdrawCrew
         return out;
     }
 
@@ -338,9 +341,13 @@
 
     async function addKeyToProfile(newKey) {
         document.getElementById("waiting").classList.add('lds-ring');
-        // Waiting on documentation explaining the permissions. Ideally we would request only necessary permissions.
-        //   For now, we're requesting all SAGE permissions except 'manageSagePlayerProfile', 'removeShipEscrow', 'rentFleet'
-        let permissions = buildPermissions([[true,true,true,true,true,false,true,true],[true,false,true,true,true,false,true,true],[true,true,true,true,true,true,true,true],[true,true]]);
+        // Requesting all non-admin SAGE permissions except 'removeShipEscrow', 'addRemoveCargo' and 'rentFleet'
+        let permissions = buildPermissions([
+            [false,false,false,false,false,false,false,false],
+            [false,false,true,true,true,false,true,true],
+            [false,true,true,true,true,true,false,true],
+            [true,false,false,true,false]
+        ]);
 
         // This requests the 'spendPoints' permission from the Points program
         let pointsPermissions = buildPointsPermissions([[false,false,true]]);
@@ -451,7 +458,7 @@
                 permissionNames = [['manageGame','manageSector','manageStar','managePlanet','manageShip','manageSagePlayerProfile','manageStarbase','manageMineItem'],
                                  ['manageResource','removeShipEscrow','moveFleet','transitionFromLoadingBay','transitionFromIdle','rentFleet','doCrafting','manageCargoPod'],
                                  ['addRemoveCargo','doStarbaseUpgrades','manageFleet','manageFleetCargo','doMining','respawn','manageSurveyDataUnit','scanSurveyDataUnit'],
-                                 ['doStarbaseUpkeep','manageProgression']];
+                                 ['doStarbaseUpkeep','manageProgression','manageCrewConfig','manageCrew','withdrawCrew']];
                 break;
             case 'points':
                 permissionNames = [['manageCategory','manageModifier','spendPoints']];
@@ -463,7 +470,7 @@
                 permissionNames = [['manageGame','manageSector','manageStar','managePlanet','manageShip','manageSagePlayerProfile','manageStarbase','manageMineItem'],
                                  ['manageResource','removeShipEscrow','moveFleet','transitionFromLoadingBay','transitionFromIdle','rentFleet','doCrafting','manageCargoPod'],
                                  ['addRemoveCargo','doStarbaseUpgrades','manageFleet','manageFleetCargo','doMining','respawn','manageSurveyDataUnit','scanSurveyDataUnit'],
-                                 ['doStarbaseUpkeep','manageProgression']];
+                                 ['doStarbaseUpkeep','manageProgression','manageCrewConfig','manageCrew','withdrawCrew']];
         };
 
         let permContainer = document.createElement('div');
@@ -645,7 +652,7 @@
             accountModal.append(accountModalContent);
 
             let accountManagerTitle = document.createElement('span');
-            accountManagerTitle.innerHTML = 'SLY Assistant';
+            accountManagerTitle.innerHTML = 'SLYA';
             accountManagerTitle.style.fontSize = '14px';
 
             let accountManagerBtn = document.createElement('button');
