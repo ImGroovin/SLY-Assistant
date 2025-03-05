@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.6.78
+// @version      0.7.0
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -85,15 +85,15 @@
 		errorLog[errorLogIndex] = timeStamp + " " + (fleetName ? (fleetName + " ") : '') + msg;
 		errorLogIndex++;
 		if(errorLogIndex >= errorLogMaxEntries) errorLogIndex = 0;
-		let newErrorLog = { "index": errorLogIndex, "messages": errorLog };		
+		let newErrorLog = { "index": errorLogIndex, "messages": errorLog };
 		await GM.setValue('ErrorLog', JSON.stringify(newErrorLog));
 	}
 	let oldOnUnhandledRejection = window.onunhandledrejection;
 	window.onunhandledrejection = function(errorEvent) {
 		logError("Unhandled exception: " + errorEvent.reason.message + (!!errorEvent.reason.stack ? ("\nStack: " + errorEvent.reason.stack) : '') );
 		if(oldOnUnhandledRejection) oldOnUnhandledRejection(errorEvent);
-	};	
-	
+	};
+
 	function cLog(level, ...args) {	if(level <= globalSettings.debugLogLevel) console.log(...args); }
 	function wait(ms) {	return new Promise(resolve => {	setTimeout(resolve, ms); }); }
 	function TimeToStr(date) { return date.toLocaleTimeString("en-GB", { hour12: false, hour: "2-digit", minute: "2-digit" }); }
@@ -391,7 +391,7 @@
 	let solanaWriteCount = 0;
 	let tokenCheckCounter = 0;
 	let fleetStatusCount=0;
-	let fleetStatusCurColumn=0;	
+	let fleetStatusCurColumn=0;
     let globalErrorTracker = {'firstErrorTime': 0, 'errorCount': 0};
     cLog(1, `Read RPC: ${readRPCs[readIdx]}`);
     cLog(1, `Write RPC: ${writeRPCs[writeIdx]}`);
@@ -493,7 +493,7 @@
 					},
 			},
 	]);
-    
+
     cLog(0,'getResourceTokens()');
     await getResourceTokens();
 
@@ -564,7 +564,7 @@
         //let [name] = (new TextDecoder().decode(new Uint8Array(starbase.account.name)).replace(/\0/g, '')).split(' (');
         //name = name === 'ONI Central Space Station' ? 'ONI CSS' : name;
 	let target = validTargets.find(target => (target.x + ',' + target.y) == starbase.account.sector[0].toNumber() + ',' + starbase.account.sector[1].toNumber());
-	let name = target?.name;	    
+	let name = target?.name;
         let coords = starbase.account.sector[0].toNumber() + ', ' + starbase.account.sector[1].toNumber();
         return {name: `${name} [LVL ${starbase.account.level}]`, coords: coords, foodBalanceHr: foodBalanceHr.toFixed(2), foodBalancePerc: (upkeepFoodBalance / sbLevel.foodReserve).toFixed(2), toolBalanceHr: toolBalanceHr.toFixed(2) || 'N/A', toolBalancePerc: (upkeepToolBalance / sbLevel.toolkitReserve).toFixed(2) || 'N/A'}
     }
@@ -655,13 +655,13 @@
 			let cargoTypeDataExtraBuff = BrowserBuffer.Buffer.Buffer.from(cargoTypeDataExtra);
 			cargoTypeSizes[i + j] = cargoTypeDataExtraBuff.readUIntLE(0, 8);
 		}
-	}			
+	}
 	return cargoTypeSizes;
     }
     async function getResourceTokens() {
         mineItems = await sageProgram.account.mineItem.all();
         craftableItems = await craftingProgram.account.craftableItem.all();
-		
+
 	let cargoTypeSizes = await getCargoTypeSizes(cargoTypes);
         for (let resource of mineItems) {
             let cargoTypeIndex = cargoTypes.findIndex(item => item.account.mint.toString() === resource.account.mint.toString());
@@ -706,7 +706,7 @@
 		for(let j=0; j < recipeAcctInfos.length; j++) {
 			recipeDatas[i + j] = recipeAcctInfos[j].data.subarray(223);
 		}
-	}			
+	}
 
 	let recipeIdx = 0;
         for (let craftRecipe of allCraftRecipes) {
@@ -996,7 +996,7 @@
 		//race-condition fixed: because of the previous "await", it is possible that we end up with two concurrent reads and two identical cache entries. So we need to make sure that an existing entry is always overwritten
 		//also when expired entry is read again and just pushed to the array, find() will still find the expired first entry and not the updated one. This would lead to a broken cache. So again we need to overwrite the existing entry.
 		let cachedStarbaseIdx = starbaseData.findIndex(item => item.coords[0] == x && item.coords[1] == y);
-                if(cachedStarbaseIdx >= 0) { 
+                if(cachedStarbaseIdx >= 0) {
                     starbaseData[cachedStarbaseIdx].lastUpdated = Date.now();
                     starbaseData[cachedStarbaseIdx].starbase = starbase;
                 } else {
@@ -1039,7 +1039,7 @@
 		//race-condition fixed: because of the previous "await", it is possible that we end up with two concurrent reads and two identical cache entries. So we need to make sure that an existing entry is always overwritten
 		//also when expired entry is read again and just pushed to the array, find() will still find the expired first entry and not the updated one. This would lead to a broken cache. So again we need to overwrite the existing entry.
 		let cachedPlanetIdx = planetData.findIndex(item => item.coords[0] == x && item.coords[1] == y);
-                if(cachedPlanetIdx >= 0) { 
+                if(cachedPlanetIdx >= 0) {
                     planetData[cachedPlanetIdx].lastUpdated = Date.now();
                     planetData[cachedPlanetIdx].planets = planets;
                 } else {
@@ -1089,7 +1089,7 @@
 		//race-condition fixed: because of the previous "await", it is possible that we end up with two concurrent reads and two identical cache entries. So we need to make sure that an existing entry is always overwritten
 		//also when expired entry is read again and just pushed to the array, find() will still find the expired first entry and not the updated one. This would lead to a broken cache. So again we need to overwrite the existing entry.
 		let cachedStarbasePlayerDataIdx = starbasePlayerData.findIndex(item => item.userProfile == userProfile.toBase58() && item.starbase == starbase.toBase58());
-		if(cachedStarbasePlayerDataIdx >= 0) { 
+		if(cachedStarbasePlayerDataIdx >= 0) {
 			starbasePlayerData[cachedStarbasePlayerDataIdx].lastUpdated = Date.now();
 			starbasePlayerData[cachedStarbasePlayerDataIdx].starbasePlayer = starbasePlayer;
 		} else {
@@ -1324,7 +1324,7 @@
     }
 
 let signatureStatusQueue = [];
-	
+
 function requestSignatureStatus(txHash) {
   return new Promise((resolve, reject) => {
 	signatureStatusQueue.push({ txHash, resolve, reject });
@@ -1335,10 +1335,10 @@ function requestSignatureStatus(txHash) {
 async function signatureStatusHandler() {
 	const currentHashes = signatureStatusQueue.splice(0, signatureStatusQueue.length);
 	if (currentHashes.length > 0) {
-			
+
 		const txHashes = currentHashes.map(req => req.txHash);
 		cLog(3,`Requesting`, currentHashes.length, `signature statuses at once`);
-			
+
 		try {
 			const signatureStatuses = await solanaReadConnection.getSignatureStatuses(txHashes);
 			//cLog(3,`Got signature results:`, signatureStatuses);
@@ -1355,12 +1355,12 @@ async function signatureStatusHandler() {
 		}
 	}
 	setTimeout(() => { signatureStatusHandler(); }, Math.max(2000, globalSettings.confirmationCheckingDelay));
-}	
+}
 setTimeout(() => { signatureStatusHandler(); }, Math.max(2000, globalSettings.confirmationCheckingDelay));
 
 async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, fleet, opName) {
 	let curBlockHeight = await localGetEpochInfo(fleet);
-	let retryCount = 0;		
+	let retryCount = 0;
 	// loop until block height exceeded and give the RPC a little more time (20 blocks = ~8 seconds) to prevent race conditions (and take into account that the estimated block time can be slightly off). The loop doesn't need a wait time, because it is enforced by the signature queue (2 seconds)
         while (curBlockHeight <= lastValidBlockHeight + 20) {
 		// we initially send the tx. Also we resend the tx every fourth loop (=~8 seconds), because: "With many transactions in the network queue, our initial send might get stuck behind a large backlog. While the blockhash is still valid, the transaction must still be seen and processed by validators. Continuously resending it can increase the chance that our transaction “bubbles up” to the front of processing queues.
@@ -1378,9 +1378,9 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			return {txHash, confirmation: signatureStatus}
 		}
 		curBlockHeight = await localGetEpochInfo(fleet); // todo: if for some reason the request of the block height takes a very long time (e.g. 20 seconds) and the block height is near the block limit, it is possible that the loop will exit without doing a final signature check.
-		retryCount++;			
+		retryCount++;
 	}
-        return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};		
+        return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
 }
 
 
@@ -1425,7 +1425,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 			let priorityFeeMin = 1;
 			if(ix.constructor === Array) priorityFeeMin = Math.max(1, Math.min(globalSettings.minPriorityFeeForMultiIx, 50000) * 5);
-			
+
 			let confirmed = false;
 			while (!confirmed) {
 				//let tx = new solanaWeb3.Transaction();
@@ -1433,7 +1433,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				//the fee is applied to the default compute limit and it is in microLamports. The default compute limit is 200k and microLamports to Lamports is 1M, therefore: 1M / 200k = we need to multiply by 5
 				//const priorityFee = currentFee ? Math.max(1, Math.ceil(priorityFeeMultiplier * currentFee * 5)) : 0;
 				const priorityFee = currentFee ? Math.max(priorityFeeMin, Math.ceil(priorityFeeMultiplier * currentFee * 5)) : 0;
-				
+
 				cLog(4,`${FleetTimeStamp(fleetName)} <${opName}> 💳 Fee ${Math.ceil(priorityFee / 5)} lamp`);
                 /*
 				if (priorityFee > 0) tx.add(solanaWeb3.ComputeBudgetProgram.setComputeUnitPrice({microLamports: priorityFee}));
@@ -2168,7 +2168,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 						txResult = tx;
 					} else {
 						txResult = await txSignAndSend(tx, fleet, 'UNLOAD', 100);
-					}					
+					}
 					resolve(txResult);
 			});
 	}
@@ -3574,7 +3574,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			padRow.appendChild(padRowTd);
 			targetElem.appendChild(padRow);
 
-			transportResource1.onchange = transportResource2.onchange = transportResource3.onchange = transportResource4.onchange = transportSBResource1.onchange = transportSBResource2.onchange = transportSBResource3.onchange = transportSBResource4.onchange = 
+			transportResource1.onchange = transportResource2.onchange = transportResource3.onchange = transportResource4.onchange = transportSBResource1.onchange = transportSBResource2.onchange = transportSBResource3.onchange = transportSBResource4.onchange =
 			function() {
 				if(this.value=='') this.style.backgroundColor='white';
 				else this.style.backgroundColor='#fff0d0';
@@ -3656,7 +3656,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		craftStarbaseCoordOption.innerHTML = target.name + '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[' + target.x + ',' + target.y + ']';
 		if(craftParsedData && craftStarbaseCoordOption.value == craftParsedData.coordinates) craftStarbaseCoordOption.setAttribute('selected', 'selected');
 		craftStarbaseCoordSelect.appendChild(craftStarbaseCoordOption);
-	});		
+	});
         let craftStarbaseCoordTd = document.createElement('td');
         craftStarbaseCoordTd.appendChild(craftStarbaseCoordSelect);
 
@@ -3742,7 +3742,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		else {
 			fleet.stopping = true;
 			updateFleetState(fleet, 'Stopping ...');
-		}		
+		}
 	}
 
 
@@ -3764,19 +3764,19 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		} else {
 			if((globalSettings.fleetsPerColumn <= 0 && fleetStatusCount == 0) || (globalSettings.fleetsPerColumn > 0 && (fleetStatusCount % globalSettings.fleetsPerColumn) == 0)) {
 				fleetStatusCurColumn++;
-								
+
 				let fleetColumn = document.createElement('td');
 				fleetColumn.setAttribute('valign', 'top');
 				if(fleetStatusCurColumn > 1) fleetColumn.setAttribute('style','padding-left:10px; border-left:1px solid rgb(255, 190, 77)');
 
 				fleetColumn.classList.add('assist-fleet-column-'+fleetStatusCurColumn);
 				fleetColumn.innerHTML = '<table><tr><td>Fleet</td><td>Food</td><td>SDUs</td><td>State' + (fleetStatusCurColumn <= 1 ? ' (<span class="tooltip">Info<div class="tooltiptext">You can click on a fleet state to stop this particular fleet (after some time "STOPPED" will be displayed).<br>Clicking on the fleet state again will reset the fleet and it will try to pick up the loop again (this also works for fleets that are in an ERROR state).</div></span>)' : '') + '</td></tr></table>';
-				
+
 				let targetTableElem = document.querySelector('#assistStatus .assist-modal-body table.main tr');
 				targetTableElem.appendChild(fleetColumn);
 			}
 			fleetStatusCount++;
-			
+
 			let fleetRow = document.createElement('tr');
 			fleetRow.classList.add('assist-fleet-row');
 			fleetRow.setAttribute('pk', rowPK);
@@ -3931,7 +3931,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 	async function clearErrors() {
 		errorLog = [];
 		errorLogIndex = 0;
-		let newErrorLog = { "index": errorLogIndex, "messages": errorLog };		
+		let newErrorLog = { "index": errorLogIndex, "messages": errorLog };
 		await GM.setValue('ErrorLog', JSON.stringify(newErrorLog));
 		await reloadErrors();
 	}
@@ -3974,7 +3974,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				fleetDestCoord = validateCoordInput(row.children[2].firstChild.value);	//fleetDestCoord = fleetDestCoord ? fleetDestCoord.replace('.', ',') : fleetDestCoord;
 			} else {
 				fleetDestCoord = validateCoordInput(row.children[2].children[1].value);
-			}			
+			}
 			let fleetStarbaseCoord = validateCoordInput(row.children[3].firstChild.value);	//fleetStarbaseCoord = fleetStarbaseCoord ? fleetStarbaseCoord.replace('.', ',') : fleetStarbaseCoord;
 			let subwarpPref = row.children[4].firstChild.checked;
 			let userFleetIndex = userFleets.findIndex(item => {return item.publicKey == fleetPK});
@@ -4113,7 +4113,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			importText.value += '"' + fleetKeys[i] + '":' + fleetSavedData;
 			if (i < fleetKeys.length - 1) importText.value += ',';
 		}
-		importText.value += '}';	
+		importText.value += '}';
 	}
 
 	async function assistImportToggle() {
@@ -4135,12 +4135,12 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			let curIdx=errorLogIndex - 1;
 			if(curIdx < 0) curIdx = errorLogMaxEntries - 1;
 			importText.value = '';
-			for(let i=0; i<errorLogMaxEntries; i++) {				
+			for(let i=0; i<errorLogMaxEntries; i++) {
 				if(!errorLog[curIdx]) break;
 				importText.value += errorLog[curIdx] + "\n\n";
 				curIdx--;
 				if(curIdx<0) curIdx = errorLogMaxEntries - 1;
-			}			
+			}
 		} else {
 			targetElem.style.display = 'none';
 		}
@@ -4223,7 +4223,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 			craftingTxMultiplier: parseIntDefault(document.querySelector('#craftingTxMultiplier').value, 200),
 			craftingTxAffectsAutoFee: document.querySelector('#craftingTxAffectsAutoFee').checked,
-			
+
 			transportKeep1: document.querySelector('#transportKeep1').checked,
 			transportLoadUnloadSingleTx: document.querySelector('#transportLoadUnloadSingleTx').checked,
 			transportUnloadsUnknownRSS: document.querySelector('#transportUnloadsUnknownRSS').checked,
@@ -4289,7 +4289,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 		document.querySelector('#craftingTxMultiplier').value = globalSettings.craftingTxMultiplier;
 		document.querySelector('#craftingTxAffectsAutoFee').checked = globalSettings.craftingTxAffectsAutoFee;
-		
+
 		document.querySelector('#transportKeep1').checked = globalSettings.transportKeep1;
 		document.querySelector('#transportLoadUnloadSingleTx').checked = globalSettings.transportLoadUnloadSingleTx;
 		document.querySelector('#transportUnloadsUnknownRSS').checked = globalSettings.transportUnloadsUnknownRSS;
@@ -4630,9 +4630,9 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 						//await wait(Math.max(1000, warpCooldownExpiresAt - Date.now()));
 						if(warpCooldownExpiresAt - Date.now() < 5000) await wait(Math.max(1000, warpCooldownExpiresAt - Date.now()));
-						else await wait(5000);						
+						else await wait(5000);
 						if(userFleets[i].stopping) return;
-					}	
+					}
 					await wait(2000); //Extra wait to ensure accuracy
 
 					//Calculate next warp point if more than 1 is needed to arrive at final destination
@@ -5355,7 +5355,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					cLog(3,`${FleetTimeStamp(fleet.label)} Found rss that is not part of any transport manifest, unloading`, amountToUnload, 'of', currentRes.account.data.parsed.info.mint);
 					currentManifest.push({res: currentRes.account.data.parsed.info.mint, amt: amountToUnload });
 				}
-			}				
+			}
 		}
 	}
 
@@ -5364,13 +5364,13 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 	async function handleCrewUnloading(fleet, starbaseCoords, amount) {
 	return new Promise(async resolve => {
-	
+
 	    let starbaseX = starbaseCoords.split(',')[0].trim();
 	    let starbaseY = starbaseCoords.split(',')[1].trim();
 	    let starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
 	    let starbasePlayer = await getStarbasePlayer(userProfileAcct,starbase.publicKey);
 	    starbasePlayer = starbasePlayer ? starbasePlayer.publicKey : await execRegisterStarbasePlayer(fleet, starbaseCoords);
-	
+
 			let txUnload = { instruction: await sageProgram.methods.unloadFleetCrew({count: new BrowserAnchor.anchor.BN(amount), keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx) }).accountsStrict({
 				fleetAndOwner: {
 						key: userPublicKey,
@@ -5390,14 +5390,14 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			}]).instruction()}
 			cLog(1,`${FleetTimeStamp(fleet.label)} Unloading crew`);
 			updateFleetState(fleet, 'Unloading crew');
-			let txResult = await txSignAndSend(txUnload, fleet, 'UNLOAD CREW', 100);		
-	
+			let txResult = await txSignAndSend(txUnload, fleet, 'UNLOAD CREW', 100);
+
 			resolve(txResult);
-		});		
+		});
 	}
 	async function handleCrewLoading(fleet, starbaseCoords, amount) {
 		return new Promise(async resolve => {
-		
+
 		    let starbaseX = starbaseCoords.split(',')[0].trim();
 		    let starbaseY = starbaseCoords.split(',')[1].trim();
 		    let starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
@@ -5411,9 +5411,9 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 		    let txResult;
 		    if(amount <= 0) {
-				txResult = {name: "NotEnoughCrew"};			
+				txResult = {name: "NotEnoughCrew"};
 		    } else {
-		
+
 			    let txLoad = { instruction: await sageProgram.methods.loadFleetCrew({count: new BrowserAnchor.anchor.BN(amount), keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx) }).accountsStrict({
 					fleetAndOwner: {
 							key: userPublicKey,
@@ -5436,9 +5436,9 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			    txResult = await txSignAndSend(txLoad, fleet, 'LOAD CREW', 100);
 
 		    }
-		
+
 		    resolve(txResult);
-		});		
+		});
 	}
 
     async function handleTransport(i, fleetState, fleetCoords) {
@@ -5512,7 +5512,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				} else {
 					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Not enough crew`);
 				}
-			}						
+			}
                     }
 
                     //Refueling at Starbase
@@ -5572,7 +5572,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		//We need to explicitly calculate the needed fuel minus the available fuel, just like in handleTransportRefueling()
 		const fuelEntry = starbaseCargoManifest.find(e => e.res === sageGameAcct.account.mints.fuel.toString()) || {amt: 0};
 		const totalFuel = fuelData.fuelNeeded + fuelEntry.amt;
-		let fuelToAdd = Math.min(fuelData.capacity, totalFuel) - fuelData.amount;				
+		let fuelToAdd = Math.min(fuelData.capacity, totalFuel) - fuelData.amount;
 
 		cLog(3,`${FleetTimeStamp(userFleets[i].label)} Fuel needed`, fuelData.fuelNeeded, '/ fuel found', fuelData.amount, '/ fuel to add', fuelToAdd, '/ needToLoad', checkCargoResult.needToLoad, '/ needToUnload', checkCargoResult.needToUnload, '/ needToLoadCrew', needToLoadCrew, '/ needToUnloadCrew', needToUnloadCrew);
 
@@ -5599,8 +5599,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				} else {
 					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Not enough crew`);
 				}
-			}						
-                    }					
+			}
+                    }
 
                     //Refueling at Target
                     let refuelResp = await handleTransportRefueling(userFleets[i], userFleets[i].destCoord, [destX, destY], [starbaseX, starbaseY], false, fuelUnloadDeficit, starbaseCargoManifest);
@@ -5788,7 +5788,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		const ammoMint = sageGameAcct.account.mints.ammo.toString();
 		const fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(fleet.cargoHold, {programId: tokenProgramPK});
 
-		let transactions = [];		
+		let transactions = [];
 		const transportLoadUnloadSingleTx = globalSettings.transportLoadUnloadSingleTx; //we read the setting once to prevent a race condition
 
 		//Unloading resources from manifest
@@ -5810,7 +5810,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					let resp = await execCargoFromFleetToStarbase(fleet, fleet.cargoHold, entry.res, starbaseCoord, amountToUnload, transportLoadUnloadSingleTx);
 					if(transportLoadUnloadSingleTx && resp) {
 						transactions.push(resp);
-					}															
+					}
 					if(isFuel) fuelUnloadDeficit -= amountToUnload;
 					if(isAmmo) ammoUnloadDeficit -= amountToUnload;
 				} else {
@@ -5824,7 +5824,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		if(transactions.length > 0) {
 			//when "transportUnloadsUnknownRSS is enabled, it is possible that we need to unload more than 4 rss, so we need to split the instructions
 			await txSliceAndSend(transactions, fleet, 'UNLOAD', 100, 4);
-		}				
+		}
 
 		//Ammo bank unloading
 		const ammoEntry = globalSettings.transportUseAmmoBank ? transportManifest.find(e => e.res === ammoMint) : undefined;
@@ -5954,7 +5954,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 	}
 
 	function updateFleetMiscStats(fleet, fleetAcctInfo) {
-		let fleetAcctData = sageProgram.coder.accounts.decode('fleet', fleetAcctInfo.data);	
+		let fleetAcctData = sageProgram.coder.accounts.decode('fleet', fleetAcctInfo.data);
 		fleet.requiredCrew = fleetAcctData.stats.miscStats.requiredCrew;
 		fleet.passengerCapacity = fleetAcctData.stats.miscStats.passengerCapacity;
 		fleet.crewCount = fleetAcctData.stats.miscStats.crewCount;
@@ -5972,7 +5972,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			userFleets[i].stopping = false;
 			updateFleetState(userFleets[i], 'STOPPED');
 			return;
-		}		
+		}
 
 		const moving =
 			userFleets[i].state.includes('Move [') ||
@@ -6168,7 +6168,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                     let filterData = ['SDU'];
                     if(special.includes('f2')) filterData.push('Framework','Framework 3');
                     else if(special.includes('f3')) filterData.push('Framework','Framework 2');
-                    else filterData.push('Framework 2','Framework 3');		
+                    else filterData.push('Framework 2','Framework 3');
                     if(special.includes('t2')) filterData.push('Toolkit','Toolkit 3');
                     else if(special.includes('t3')) filterData.push('Toolkit','Toolkit 2');
                     else filterData.push('Toolkit 2','Toolkit 3');
@@ -6238,9 +6238,9 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
             updateFleetState(userCraft, userCraft.state);
 
             //if this job isn't active, we exit immediately and check every 10 seconds for an update, this saves at least 2 RPC requests. Also it prevents a error in getRecipe
-            if(userCraft.state === 'Idle' && (!userCraft.item || !userCraft.coordinates || !userCraft.amount)) { 
-		setTimeout(() => { startCraft(userCraft); }, 10000); 
-		return; 
+            if(userCraft.state === 'Idle' && (!userCraft.item || !userCraft.coordinates || !userCraft.amount)) {
+		setTimeout(() => { startCraft(userCraft); }, 10000);
+		return;
             }
 
             let targetX;
@@ -6251,7 +6251,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
             let starbasePlayer;
             if(userCraft.craftingId) {
 
-	            // temporary, when updating SLYA there is no craftingCoords first, so we need a fallback. Can be removed later.				
+	            // temporary, when updating SLYA there is no craftingCoords first, so we need a fallback. Can be removed later.
 	            if(!userCraft.craftingCoords) {
 			userCraft.craftingCoords = userCraft.coordinates;
 	            }
@@ -6263,10 +6263,10 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 	            upgradeTime = await getStarbaseTime(starbase, 'Upgrade');
 	            cLog(2, FleetTimeStamp(userCraft.label), 'craftTime: ', craftTime);
 	            cLog(2, FleetTimeStamp(userCraft.label), 'upgradeTime: ', upgradeTime);
-	
+
 	            starbasePlayer = await getStarbasePlayer(userProfileAcct, starbase.publicKey);
 	            starbasePlayer = starbasePlayer ? starbasePlayer.publicKey : await execRegisterStarbasePlayer('Craft', userCraft.craftingCoords);
-	
+
 	            // Get all crafting instances at designated Starbase
 	            let craftingInstances = await sageProgram.account.craftingInstance.all([
 	                {
@@ -6276,18 +6276,18 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 	                    },
 	                },
 	            ]);
-	
+
 	            //let completeBN = new BrowserAnchor.anchor.BN(2);
 	            //let completeArr = completeBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "be", 2);
 	            //let complete58 = bs58.encode(completeArr);
-	
+
 	            if (craftingInstances.length < 1) {
 	                userCraft.craftingId = 0;
 	                updateFleetState(userCraft, 'Idle');
 	                await updateCraft(userCraft);
 	                //await GM.setValue(userCraft.label, JSON.stringify(userCraft));
 	            }
-	
+
 	            // Get all completed crafting processes at the designated Starbase
 	            let completedCraftingProcesses = [];
 	            let completedUpgradeProcesses = [];
@@ -6307,7 +6307,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 	                        },
 	                    },*/
 	                ]);
-	
+
 	                for (let craftingProcess of craftingProcesses) {
 	                    if (userCraft.craftingId && craftingProcess.account.craftingId.toNumber() == userCraft.craftingId) craftingProcessRunning = true;
 	                    if (craftRecipes.some(item => item.publicKey.toString() === craftingProcess.account.recipe.toString())) {
@@ -6345,19 +6345,19 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 	                    }
 	                }
 	            }
-	
+
 	            if (!craftingProcessRunning) {
 	                cLog(1,`${FleetTimeStamp(userCraft.label)} Crafting process not found. Setting state to Idle.`);
 	                userCraft.craftingId = 0;
 	                updateFleetState(userCraft, 'Idle');
 	                await updateCraft(userCraft);
 	            }
-	
+
 	            // only get current cargo holds if something needs to be completed
 	            if(completedCraftingProcesses.length || completedUpgradeProcesses.length)
 	            {
 	                let starbasePlayerCargoHoldsAndTokens = await getStarbasePlayerCargoHolds(starbasePlayer);
-	
+
 	                for (let craftingProcess of completedCraftingProcesses) {
 	                    let craftRecipe = craftRecipes.find(item => item.publicKey.toString() === craftingProcess.recipe.toString());
 	                    if (userCraft.craftingId && craftingProcess.craftingId == userCraft.craftingId) {
@@ -6374,7 +6374,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 	                        }
 	                    }
 	                }
-	
+
 	                for (let upgradeProcess of completedUpgradeProcesses) {
 	                    let craftingRecipe = upgradeRecipes.find(item => item.publicKey.toString() === upgradeProcess.recipe.toString());
 	                    if (userCraft.craftingId && upgradeProcess.craftingId == userCraft.craftingId) {
@@ -6395,7 +6395,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 	    } else {
 		userCraft.craftingId = 0; //set first, so the coords are not taken from the last crafting job
 		updateFleetState(userCraft, 'Idle');
-		await updateCraft(userCraft);			
+		await updateCraft(userCraft);
 	    }
 
             //we read the current data, as it may have changed by the user in the meantime
@@ -6412,7 +6412,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		} else {
 			// fresh job with no previous completion or starbase was changed
 			targetX = userCraft.coordinates.split(',')[0].trim();
-			targetY = userCraft.coordinates.split(',')[1].trim();				
+			targetY = userCraft.coordinates.split(',')[1].trim();
 			starbase = await getStarbaseFromCoords(targetX, targetY, true);
 			craftTime = await getStarbaseTime(starbase, 'Craft');
 			upgradeTime = await getStarbaseTime(starbase, 'Upgrade');
@@ -6459,7 +6459,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				let amountAvailable = 0;
 				if (starbasePlayerCargoHold && starbasePlayerCargoHold.cargoHoldTokens) {
 					let cargoHoldToken = starbasePlayerCargoHold.cargoHoldTokens.find(item => item.mint === craftRecipe.output.mint.toString());
-					amountAvailable = (cargoHoldToken && cargoHoldToken.amount) ? cargoHoldToken.amount : 0;							
+					amountAvailable = (cargoHoldToken && cargoHoldToken.amount) ? cargoHoldToken.amount : 0;
 				}
 				if(amountAvailable >= parseInt(userCraft.belowAmount)) {
 					craftThresholdReached = false;
@@ -6543,7 +6543,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		await GM.setValue('craft'+i, JSON.stringify(craftParsedData));
             }
             //if (craftParsedData.item && craftParsedData.coordinates) startCraft(craftParsedData);
-            
+
             //Stagger craft starts by 2s to avoid overloading the RPC
             //also we start crafting jobs always, so they are ready to use when we need them (without reloading SLYA)
             //if (craftParsedData.item && craftParsedData.coordinates) {
@@ -6619,7 +6619,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
     let globalWaitForStopSequence = false;
     async function toggleAssistant(newState=null) {
         let autoSpanRef = document.querySelector('#autoScanBtn > span');
-	// Race condition prevented: user presses STOP, waitForSequence is done, enableAssistant is false, but SLYA still executes dock->load/unload->undock sequences, then an error occurs which hits the error threshold and SLYA switches to ERROR state, which would call toogleAssistant. But enableAssistant is false in this moment, which would enable SLYA again. So we need to make sure that an error state always stops SLYA. 
+	// Race condition prevented: user presses STOP, waitForSequence is done, enableAssistant is false, but SLYA still executes dock->load/unload->undock sequences, then an error occurs which hits the error threshold and SLYA switches to ERROR state, which would call toogleAssistant. But enableAssistant is false in this moment, which would enable SLYA again. So we need to make sure that an error state always stops SLYA.
 	// Also we set enableAssistant to FALSE before the loop, so SLYA stops immediately (which is better/faster when you have a lot of fleets, because otherwise: as long as at least 1 fleet is in a special state, enableAssistant would never be switched to FALSE).
 	// To prevent that the user enables SLYA again while SLYA waits for the stop sequence, we make an additional global variable.
 	// And we ignore the start/stop button as long as the init sequence isn't done yet.
@@ -6676,7 +6676,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					}
 				});
 				if (!response.ok) {
-					message = 'Error while sending a request to the email interface: ' + response.status + ' ' + response.statusText;					
+					message = 'Error while sending a request to the email interface: ' + response.status + ' ' + response.statusText;
 				} else {
 					const result = await response.json();
 					if(!result.success) {
@@ -6696,11 +6696,11 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
     async function emailInterfaceTest() {
 		let emailInterfaceURL = document.querySelector('#emailInterface');
 		let url = emailInterfaceURL.value;
-		
+
 		const result = await sendEMail('Interface-Test', 'Congratulations! Your email interface is working.', url);
 		let emailInterfaceTestResult = document.querySelector('#emailInterfaceTestResult');
 		emailInterfaceTestResult.innerHTML = result;
-		
+
     }
 
 
@@ -6716,12 +6716,12 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					}
 				}
 			]);
-			cLog(1, starbases.length, 'read');			
+			cLog(1, starbases.length, 'read');
 
 			cLog(1, 'Reading all planets');
 			let planets = await sageProgram.account.planet.all([]);
-			cLog(1, planets.length, 'read');			
-			
+			cLog(1, planets.length, 'read');
+
 			// first we group all planets of the same sector:
 			let planetSectors = [];
 			planets.forEach((planet) => {
@@ -6734,7 +6734,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				if(typeof planetSectors[x][y] == 'undefined') {
 					planetSectors[x][y] = [];
 				}
-				planetSectors[x][y].push(planet);					
+				planetSectors[x][y].push(planet);
 			});
 
 			// now we find out the system names by looking at the planet names
@@ -6758,9 +6758,9 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			//validMainTargets[0].name = (validMainTargets[0].name.includes('-1') ? validMainTargets[0].name.replace('-1','-CSS') : validMainTargets[0].name);
 			validMRZTargets.sort((a, b) => { if (a.name < b.name) { return -1; } if (a.name > b.name) { return 1; } return 0; });
 			validTargets = validMainTargets.concat(validMRZTargets);
-							
+
 			console.log('validTargets:',validTargets);
-							
+
             resolve();
         });
     }
@@ -6892,7 +6892,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
             buildXpAccounts(craftingXpCategory, userXpAccounts, "userCraftingXpAccounts")
             buildXpAccounts(LPCategory, userXpAccounts, "userLPAccounts")
 
-			userFleetAccts = await sageProgram.account.fleet.all([
+			let userOwnedFleetAccts = await sageProgram.account.fleet.all([
 					{
 							memcmp: {
 									offset: 41,
@@ -6900,7 +6900,20 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 							},
 					},
 			]);
-			cLog(1, 'initUser: userFleetAccts', userFleetAccts);
+			cLog(1, 'initUser: userOwnedFleetAccts', userOwnedFleetAccts);
+
+            let userBorrowedFleetAccts = await sageProgram.account.fleet.all([
+                {
+                    memcmp: {
+                        offset: 105,
+                        bytes: userProfileAcct.toBase58(),
+                    },
+                },
+            ]);
+            cLog(1, 'initUser: userBorrowedFleetAccts', userBorrowedFleetAccts);
+
+            let userFleetAccts = userOwnedFleetAccts.concat(userBorrowedFleetAccts);
+            cLog(1, 'initUser: userFleetAccts', userFleetAccts);
 
 			let excludeFleets=[];
 			if (globalSettings.excludeFleets && globalSettings.excludeFleets.length > 0) {
@@ -7154,7 +7167,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			settingsModalContentString += '<div>Reload On Stuck Fleets <input id="reloadPageOnFailedFleets" type="number" min="0" max="999" placeholder="0"></input><br><small>Automatically refresh the page if this many fleets get stuck (0 = never)</small></div>';
 			settingsModalContentString += '<div>Transports load/unload in a single Tx <input id="transportLoadUnloadSingleTx" type="checkbox"></input><br><small>EXPERIMENTAL: Transports load/unload all resources (up to 4) in a single transaction</small></div>';
 			settingsModalContentString += '<div>E-Mail-Interface <input id="emailInterface" type="text" size="40"></input><br><small>Send errors via the email interface (see "slya-email-interface.php" on GitHub for instructions).</small><button id="emailInterfaceTest">Test the interface URL</button> Result: <span id="emailInterfaceTestResult"></span></div>';
-			settingsModalContentString += '<div>'; 
+			settingsModalContentString += '<div>';
 			settingsModalContentString += 'email fleet ix errors? <input id="emailFleetIxErrors" type="checkbox"></input><br>';
 			settingsModalContentString += 'email craft ix errors? <input id="emailCraftIxErrors" type="checkbox"></input><br>';
 			settingsModalContentString += 'email no cargo loaded? <input id="emailNoCargoLoaded" type="checkbox"></input><br>';
