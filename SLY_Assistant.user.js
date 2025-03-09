@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.0
+// @version      0.7.1
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -156,6 +156,7 @@
 			transportKeep1: parseBoolDefault(globalSettings.transportKeep1, false),
 			transportLoadUnloadSingleTx: parseBoolDefault(globalSettings.transportLoadUnloadSingleTx, false),
 			transportUnloadsUnknownRSS: parseBoolDefault(globalSettings.transportUnloadsUnknownRSS, false),
+			minerSupplySingleTx: parseBoolDefault(globalSettings.minerSupplySingleTx, false),
 			minerKeep1: parseBoolDefault(globalSettings.minerKeep1, false),
 			starbaseKeep1: parseBoolDefault(globalSettings.starbaseKeep1, false),
 
@@ -1941,7 +1942,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         return starbasePlayer;
     }
 
-    async function execDock(fleet, dockCoords) {
+    async function execDock(fleet, dockCoords, returnTx) {
         return new Promise(async resolve => {
             let starbaseX = dockCoords.split(',')[0].trim();
             let starbaseY = dockCoords.split(',')[1].trim();
@@ -1970,7 +1971,13 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
             cLog(1,`${FleetTimeStamp(fleet.label)} Docking`);
             updateFleetState(fleet, 'Docking');
 
-            let txResult = await txSignAndSend(tx, fleet, 'DOCK', 10);
+            let txResult;
+            if(returnTx) {
+	        txResult = tx;
+            } else {
+                txResult = await txSignAndSend(tx, fleet, 'DOCK', 10);
+            }							
+            //let txResult = await txSignAndSend(tx, fleet, 'DOCK', 10);
 
             cLog(1,`${FleetTimeStamp(fleet.label)} Docked`);
             updateFleetState(fleet, 'Docked');
@@ -1979,7 +1986,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         });
     }
 
-	async function execUndock(fleet, dockCoords) {
+	async function execUndock(fleet, dockCoords, returnTx) {
 			return new Promise(async resolve => {
 					let starbaseX = dockCoords.split(',')[0].trim();
 					let starbaseY = dockCoords.split(',')[1].trim();
@@ -2011,7 +2018,13 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					cLog(1,`${FleetTimeStamp(fleet.label)} Undocking`);
 					updateFleetState(fleet, 'Undocking');
 
-					let txResult = await txSignAndSend(tx, fleet, 'UNDOCK', 10);
+					let txResult;
+					if(returnTx) {
+						txResult = tx;
+					} else {
+						txResult = await txSignAndSend(tx, fleet, 'UNDOCK', 10);
+					}												
+					//let txResult = await txSignAndSend(tx, fleet, 'UNDOCK', 10);
 
 					//await wait(2000);
 					updateFleetState(fleet, 'Idle');
@@ -4227,6 +4240,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			transportKeep1: document.querySelector('#transportKeep1').checked,
 			transportLoadUnloadSingleTx: document.querySelector('#transportLoadUnloadSingleTx').checked,
 			transportUnloadsUnknownRSS: document.querySelector('#transportUnloadsUnknownRSS').checked,
+			minerSupplySingleTx: document.querySelector('#minerSupplySingleTx').checked,			
 			minerKeep1: document.querySelector('#minerKeep1').checked,
 			starbaseKeep1: document.querySelector('#starbaseKeep1').checked,
 
@@ -4293,6 +4307,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		document.querySelector('#transportKeep1').checked = globalSettings.transportKeep1;
 		document.querySelector('#transportLoadUnloadSingleTx').checked = globalSettings.transportLoadUnloadSingleTx;
 		document.querySelector('#transportUnloadsUnknownRSS').checked = globalSettings.transportUnloadsUnknownRSS;
+		document.querySelector('#minerSupplySingleTx').checked = globalSettings.minerSupplySingleTx;
 		document.querySelector('#minerKeep1').checked = globalSettings.minerKeep1;
 		document.querySelector('#starbaseKeep1').checked = globalSettings.starbaseKeep1;
 
@@ -5168,6 +5183,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				needSupplies = true;
 			}
 
+			let minerSupplySingleTx=globalSettings.minerSupplySingleTx;
+
 			//Needs Resupply?
 			if (needSupplies) {
 				cLog(1,`${FleetTimeStamp(userFleets[i].label)} Need resupply`);
@@ -5185,14 +5202,22 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				cLog(2, `${FleetTimeStamp(userFleets[i].label)} food: ${currentFoodCnt}/${foodForDuration}`);
 
 				if (fleetCoords[0] == starbaseX && fleetCoords[1] == starbaseY) {
-					await execDock(userFleets[i], userFleets[i].starbaseCoord);
+					let transactions = [];
+					let resp = await execDock(userFleets[i], userFleets[i].starbaseCoord, minerSupplySingleTx);
+					if(minerSupplySingleTx && resp) {
+						transactions.push(resp);
+					}
+					//await execDock(userFleets[i], userFleets[i].starbaseCoord);
 					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading resource`);
 					updateFleetState(userFleets[i], `Unloading`);
 					//if (currentResourceCnt > 0) {
 					let unloadAmount = currentResourceCnt;
 					if(globalSettings.minerKeep1 && unloadAmount > 0) { unloadAmount -= 1; }
 					if (unloadAmount > 0) {
-						await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, userFleets[i].mineResource, userFleets[i].starbaseCoord, unloadAmount);
+						resp = await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, userFleets[i].mineResource, userFleets[i].starbaseCoord, unloadAmount, minerSupplySingleTx);
+						if(minerSupplySingleTx && resp) {
+							transactions.push(resp);
+						}															
 						//await wait(2000);
 					}
 
@@ -5201,10 +5226,13 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 						cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loading fuel`);
 						updateFleetState(userFleets[i], `Loading`);
 						let fuelCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.fuel);
-						let fuelResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, fleetFuelAcct, sageGameAcct.account.mints.fuel.toString(), fuelCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].fuelCapacity - currentFuelCnt);
+						let fuelResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, fleetFuelAcct, sageGameAcct.account.mints.fuel.toString(), fuelCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].fuelCapacity - currentFuelCnt, minerSupplySingleTx);
 						if (fuelResp && fuelResp.name == 'NotEnoughResource') {
 							cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough fuel`);
 							errorResource.push('fuel');
+						}
+						else if(minerSupplySingleTx && fuelResp.tx) {
+							transactions.push(fuelResp.tx);						
 						}
 						//await wait(2000);
 					} else { cLog(1,`${FleetTimeStamp(userFleets[i].label)} Fuel loading skipped: ${currentFuelCnt} / ${fuelNeeded}`); }
@@ -5213,29 +5241,39 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 						cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loading ammo`);
 						updateFleetState(userFleets[i], `Loading`);
 						let ammoCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.ammo);
-						let ammoResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].ammoBank, fleetAmmoAcct, sageGameAcct.account.mints.ammo.toString(), ammoCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].ammoCapacity - currentAmmoCnt);
+						let ammoResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].ammoBank, fleetAmmoAcct, sageGameAcct.account.mints.ammo.toString(), ammoCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].ammoCapacity - currentAmmoCnt, minerSupplySingleTx);
 						if (ammoResp && ammoResp.name == 'NotEnoughResource') {
 							cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough ammo`);
 							errorResource.push('ammo');
 						}
+						else if(minerSupplySingleTx && ammoResp.tx) {
+							transactions.push(ammoResp.tx);						
+						}
 						//await wait(2000);
 					} else { cLog(1,`${FleetTimeStamp(userFleets[i].label)} Ammo loading skipped: ${currentAmmoCnt} / ${ammoForDuration}`); }
 
+					// removed the following block, because we already have all the data, "miningduration" only needs to take the unload amount into account
+					/*
 					fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
 					cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
-                    currentFood = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.food.toString());
-                    fleetFoodAcct = currentFood ? currentFood.pubkey : fleetFoodToken;
-                    currentFoodCnt = currentFood ? currentFood.account.data.parsed.info.tokenAmount.uiAmount : 0;
+					currentFood = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.food.toString());
+					fleetFoodAcct = currentFood ? currentFood.pubkey : fleetFoodToken;
+					currentFoodCnt = currentFood ? currentFood.account.data.parsed.info.tokenAmount.uiAmount : 0;
 					miningDuration = calculateMiningDuration(userFleets[i].cargoCapacity - cargoCnt + currentFoodCnt, userFleets[i].miningRate, resourceHardness, systemRichness);
+     					*/
+					miningDuration = calculateMiningDuration(userFleets[i].cargoCapacity - cargoCnt + unloadAmount + currentFoodCnt, userFleets[i].miningRate, resourceHardness, systemRichness);
 					foodForDuration = Math.ceil(miningDuration * (userFleets[i].foodConsumptionRate / 10000)) + (globalSettings.minerKeep1 ? 1 : 0);
 					if (currentFoodCnt < foodForDuration) {
 						cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loading food`);
 						updateFleetState(userFleets[i], `Loading`);
 						let foodCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.food);
-						let foodResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetFoodAcct, sageGameAcct.account.mints.food.toString(), foodCargoTypeAcct, userFleets[i].starbaseCoord, foodForDuration - currentFoodCnt);
+						let foodResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetFoodAcct, sageGameAcct.account.mints.food.toString(), foodCargoTypeAcct, userFleets[i].starbaseCoord, foodForDuration - currentFoodCnt, minerSupplySingleTx);
 						if (foodResp && foodResp.name == 'NotEnoughResource') {
 							cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough food`);
 							errorResource.push('food');
+						}
+						else if(minerSupplySingleTx && foodResp.tx) {
+							transactions.push(foodResp.tx);						
 						}
 						//await wait(2000);
 					} else { cLog(1,`${FleetTimeStamp(userFleets[i].label)} Food loading skipped: ${currentFoodCnt} / ${foodForDuration}`); }
@@ -5246,7 +5284,15 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 						updateFleetState(userFleets[i], `ERROR: Not enough ${errorResource.toString()}`);
 						if(globalSettings.emailNotEnoughFFA) await sendEMail(userFleets[i].label + ' not enough ' + errorResource.toString(), '');
 					} else {
-						await execUndock(userFleets[i], userFleets[i].starbaseCoord);
+						//await execUndock(userFleets[i], userFleets[i].starbaseCoord);
+						resp = await execUndock(userFleets[i], userFleets[i].starbaseCoord, minerSupplySingleTx);
+						if(minerSupplySingleTx && resp) {
+							updateFleetState(userFleets[i], `Executing resupply tx`);
+							transactions.push(resp);
+							//console.log(transactions);
+							await txSliceAndSend(transactions, userFleets[i], 'RESUPPLY', 100, 6);
+							updateFleetState(userFleets[i], 'Idle');
+						}
 					}
 					//await wait(2000);
 					//userFleets[i].moveTarget = userFleets[i].destCoord;
@@ -7166,6 +7212,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			settingsModalContentString += '<div>Auto Start Script <input id="autoStartScript" type="checkbox"></input><br><small>Should Lab Assistant automatically start after initialization is complete?</small></div>';
 			settingsModalContentString += '<div>Reload On Stuck Fleets <input id="reloadPageOnFailedFleets" type="number" min="0" max="999" placeholder="0"></input><br><small>Automatically refresh the page if this many fleets get stuck (0 = never)</small></div>';
 			settingsModalContentString += '<div>Transports load/unload in a single Tx <input id="transportLoadUnloadSingleTx" type="checkbox"></input><br><small>EXPERIMENTAL: Transports load/unload all resources (up to 4) in a single transaction</small></div>';
+			settingsModalContentString += '<div>Miners resupply in a single Tx <input id="minerSupplySingleTx" type="checkbox"></input><br><small>EXPERIMENTAL: The complete dock/unload/load food, ammo, fuel/undock sequence is done in a single transaction. If enabled, it may be necessary to set "Minimum priority fee for multi-ix transactions".</small></div>';
 			settingsModalContentString += '<div>E-Mail-Interface <input id="emailInterface" type="text" size="40"></input><br><small>Send errors via the email interface (see "slya-email-interface.php" on GitHub for instructions).</small><button id="emailInterfaceTest">Test the interface URL</button> Result: <span id="emailInterfaceTestResult"></span></div>';
 			settingsModalContentString += '<div>';
 			settingsModalContentString += 'email fleet ix errors? <input id="emailFleetIxErrors" type="checkbox"></input><br>';
