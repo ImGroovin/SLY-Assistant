@@ -6004,7 +6004,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		const ammoEntry = globalSettings.transportUseAmmoBank ? transportManifest.find(e => e.res === sageGameAcct.account.mints.ammo.toString()) : undefined;
 		let resp = null;
 		let transactions = [];
-		let ammoLoadingIntoAmmoBank = ammoEntry ? resp = await execLoadFleetAmmo(userFleets[i], starbaseCoords, ammoEntry.amt, returnTx) : 0;
+		let ammoLoadingIntoAmmoBank = ammoEntry ? (resp = await execLoadFleetAmmo(userFleets[i], starbaseCoords, ammoEntry.amt, returnTx)).amountLoaded : 0;
 		if(returnTx && resp && resp.transaction) {
 			transactions.push(resp.transaction);
 		}
