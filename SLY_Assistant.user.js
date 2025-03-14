@@ -1349,7 +1349,8 @@ async function signatureStatusHandler() {
 				resolve(signatureStatus);
 			}
 		} catch(error) {
-			// If something goes wrong, we reject each request. If a promise of the queue was already resolved in the "try" block, the reject does (correctly) nothing and won't throw an error
+			// If something goes wrong, we reject each request. If a promise of the queue was already resolved in the "try" block, the reject does (correctly) nothing and won't throw an error			
+			logError('Error: Rejecting all signature checks - ' + error);
 			for (const req of currentHashes) {
 				req.reject({err: error});
 			}
