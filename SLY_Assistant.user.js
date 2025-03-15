@@ -5900,6 +5900,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		if (fuelToAdd <= 0) {
             fuelResp.status = 1;
             fuelResp.amount = fuelData.amount + fuelToAdd - fuelData.fuelNeeded;
+            if(transactions.length > 0) fuelResp.transactions = transactions;
             return fuelResp;
         }
 
@@ -5917,11 +5918,11 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		} else {
             fuelResp.status = 1;
             fuelResp.amount = fuelData.amount + fuelToAdd - fuelData.fuelNeeded;
-            if(returnTx) {
+            if(returnTx && execResp.tx) {
 		transactions.push(execResp.tx);
-		fuelResp.transactions = transactions;
             }
         }
+		if(transactions.length > 0) fuelResp.transactions = transactions;
 
 		return fuelResp
 	}
