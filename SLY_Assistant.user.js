@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.2
+// @version      0.7.3
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -3175,7 +3175,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         });
     }
 
-	async function execLoadFleetAmmo(fleet, starbaseCoords, amount) {
+	async function execLoadFleetAmmo(fleet, starbaseCoords, amount, returnTx) {
 		const ammoMint = sageGameAcct.account.mints.ammo;
 		const parsedTokenAccounts = await solanaReadConnection.getParsedTokenAccountsByOwner(fleet.ammoBank, {programId: tokenProgramPK});
 		const parsedTokenAccount = parsedTokenAccounts.value.find(item => item.account.data.parsed.info.mint === ammoMint.toString());
@@ -3192,10 +3192,11 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		const resAmmoMax = Math.min(fleet.ammoCapacity, amount);
 
 		let amountLoaded = 0;
+		let transaction = null;
 		if (currentAmmoCnt < resAmmoMax) {
 			amountLoaded = resAmmoMax - currentAmmoCnt;
 			cLog(1,`${FleetTimeStamp(fleet.label)} Loading Ammobanks: ${amountLoaded}`);
-			await execCargoFromStarbaseToFleet(
+			let resp = await execCargoFromStarbaseToFleet(
 				fleet,
 				fleet.ammoBank,
 				parsedTokenAccount ? parsedTokenAccount.pubkey : fleetAmmoToken,
@@ -3203,10 +3204,15 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				ammoCargoTypeAcct,
 				starbaseCoords,
 				amountLoaded,
+				false,
+				returnTx
 			);
+			if(resp && !resp.name) {
+				transaction = resp.tx;
+			}
 		}
 
-		return amountLoaded;
+		return { amountLoaded, transaction };
 	}
 
 	async function addAssistInput(fleet) {
@@ -5426,7 +5432,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         return {currentManifest, destinationManifest, needToLoad, needToUnload};
     }
 
-	async function handleCrewUnloading(fleet, starbaseCoords, amount) {
+	async function handleCrewUnloading(fleet, starbaseCoords, amount, returnTx) {
 	return new Promise(async resolve => {
 
 	    let starbaseX = starbaseCoords.split(',')[0].trim();
@@ -5454,12 +5460,19 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			}]).instruction()}
 			cLog(1,`${FleetTimeStamp(fleet.label)} Unloading crew`);
 			updateFleetState(fleet, 'Unloading crew');
-			let txResult = await txSignAndSend(txUnload, fleet, 'UNLOAD CREW', 100);
+			//let txResult = await txSignAndSend(txUnload, fleet, 'UNLOAD CREW', 100);
+
+			let txResult;
+			if(returnTx) {
+				txResult = txUnload;
+			} else {
+				txResult = await txSignAndSend(txUnload, fleet, 'UNLOAD CREW', 100);		
+			}
 
 			resolve(txResult);
 		});
 	}
-	async function handleCrewLoading(fleet, starbaseCoords, amount) {
+	async function handleCrewLoading(fleet, starbaseCoords, amount, returnTx) {
 		return new Promise(async resolve => {
 
 		    let starbaseX = starbaseCoords.split(',')[0].trim();
@@ -5497,8 +5510,12 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			    }]).instruction()}
 			    cLog(1,`${FleetTimeStamp(fleet.label)} Loading crew`);
 			    updateFleetState(fleet, 'Loading crew');
-			    txResult = await txSignAndSend(txLoad, fleet, 'LOAD CREW', 100);
-
+			    //txResult = await txSignAndSend(txLoad, fleet, 'LOAD CREW', 100);
+			    if(returnTx) {
+			    	txResult = txLoad;
+			    } else {				
+				txResult = await txSignAndSend(txLoad, fleet, 'LOAD CREW', 100);
+			    }
 		    }
 
 		    resolve(txResult);
@@ -5559,17 +5576,22 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
                 //if (checkCargoResult.needToLoad || checkCargoResult.needToUnload || fuelData.fuelNeeded > 0 || needToLoadCrew || needToUnloadCrew) {
                 if (checkCargoResult.needToLoad || checkCargoResult.needToUnload || fuelToAdd > 0 || needToLoadCrew > 0 || needToUnloadCrew > 0) {
-                    await execDock(userFleets[i], userFleets[i].starbaseCoord);
-
-                    if (hasStarbaseManifest || checkCargoResult.needToUnload) {
-                        await handleTransportUnloading(userFleets[i], userFleets[i].starbaseCoord, starbaseCargoManifest);
-                    } else cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading skipped - No resources specified`);
+                    //await execDock(userFleets[i], userFleets[i].starbaseCoord);
+                    let transportLoadUnloadSingleTx=globalSettings.transportLoadUnloadSingleTx;
+                    let transactions = [];
+                    let resp = await execDock(userFleets[i], userFleets[i].starbaseCoord, transportLoadUnloadSingleTx);
+                    if(transportLoadUnloadSingleTx && resp) {
+			transactions.push(resp);
+                    }
 
                     if(needToUnloadCrew) {
-			await handleCrewUnloading(userFleets[i], userFleets[i].starbaseCoord, needToUnloadCrew);
+			resp = await handleCrewUnloading(userFleets[i], userFleets[i].starbaseCoord, needToUnloadCrew, transportLoadUnloadSingleTx);
+			if(transportLoadUnloadSingleTx && resp) {
+				transactions.push(resp);
+			}
                     }
                     if(needToLoadCrew) {
-			let crewResp = await handleCrewLoading(userFleets[i], userFleets[i].starbaseCoord, needToLoadCrew);
+			let crewResp = await handleCrewLoading(userFleets[i], userFleets[i].starbaseCoord, needToLoadCrew, transportLoadUnloadSingleTx);
 			if (crewResp && crewResp.name == 'NotEnoughCrew') {
 				if(globalSettings.transportStopOnError) {
 					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Transporting - ERROR: Not enough crew`);
@@ -5579,13 +5601,31 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Not enough crew`);
 				}
 			}
+			else if(transportLoadUnloadSingleTx && crewResp) {
+				transactions.push(crewResp);
+			}
                     }
 
+                    if (hasStarbaseManifest || checkCargoResult.needToUnload) {
+                        resp = await handleTransportUnloading(userFleets[i], userFleets[i].starbaseCoord, starbaseCargoManifest, transportLoadUnloadSingleTx);
+                        if(transportLoadUnloadSingleTx) {
+				transactions = transactions.concat(resp.transactions);
+				if(hasTargetManifest) {
+					//if we need to load something, make sure we execute the unload transactions first
+					updateFleetState(userFleets[i], 'Exec tx bundle');
+					await txSliceAndSend(transactions, userFleets[i], 'LOAD/UNLOAD', 100, 5);
+					transactions = [];
+				}
+			}
+                    } else cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading skipped - No resources specified`);
+
                     //Refueling at Starbase
-                    let refuelResp = await handleTransportRefueling(userFleets[i], userFleets[i].starbaseCoord, [starbaseX, starbaseY], [destX, destY], true, 0, targetCargoManifest);
+                    let refuelResp = await handleTransportRefueling(userFleets[i], userFleets[i].starbaseCoord, [starbaseX, starbaseY], [destX, destY], true, 0, targetCargoManifest, transportLoadUnloadSingleTx);
                     if (refuelResp.status === 0) {
                         userFleets[i].state = refuelResp.detail;
                         return;
+                    } else if(transportLoadUnloadSingleTx && refuelResp && refuelResp.transactions) {
+			transactions = transactions.concat(refuelResp.transactions);
                     }
 
                     let fuelIndex = targetCargoManifest.findIndex(e => e.res === sageGameAcct.account.mints.fuel.toString());
@@ -5595,19 +5635,27 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
                     //Loading at Starbase
                     if (hasTargetManifest) {
-                        const loadedCargo = await handleTransportLoading(i, userFleets[i].starbaseCoord, targetCargoManifest);
-                        cLog(4,`${FleetTimeStamp(userFleets[i].label)} loadedCargo: `, loadedCargo);
-                        if(!loadedCargo && globalSettings.transportStopOnError) {
+                        const loadedCargo = await handleTransportLoading(i, userFleets[i].starbaseCoord, targetCargoManifest, transportLoadUnloadSingleTx);
+                        cLog(4,`${FleetTimeStamp(userFleets[i].label)} loadedCargo: `, loadedCargo.success);
+                        if(!loadedCargo.success && globalSettings.transportStopOnError) {
                             //const newFleetState = `ERROR: No more cargo to load`;
                             //cLog(1,`${FleetTimeStamp(userFleets[i].label)} ${newFleetState}`);
                             //userFleets[i].state = newFleetState;
                             cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Unexpected error on cargo load.`);
                             return;
-                        }
+                        } else if(transportLoadUnloadSingleTx) {
+                            transactions = transactions.concat(loadedCargo.transactions);
+			}
                     } else cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loading skipped - No resources specified`);
 
-                    let undockResult = await execUndock(userFleets[i], userFleets[i].starbaseCoord);
-                    cLog(4,`${FleetTimeStamp(userFleets[i].label)} userFleets[i]: `, undockResult);
+                    let undockResult = await execUndock(userFleets[i], userFleets[i].starbaseCoord, transportLoadUnloadSingleTx);
+                    if(transportLoadUnloadSingleTx) {
+			updateFleetState(userFleets[i], 'Exec tx bundle (final)');
+			transactions.push(undockResult);
+			undockResult = await txSliceAndSend(transactions, userFleets[i], 'LOAD/UNLOAD', 100, 5);
+			updateFleetState(userFleets[i], 'Idle');
+                    }					
+                    //cLog(4,`${FleetTimeStamp(userFleets[i].label)} userFleets[i]: `, undockResult);
                     let fleetState = await solanaReadConnection.getAccountInfoAndContext(userFleets[i].publicKey, {minContextSlot: undockResult.slot});
                 }
                 userFleets[i].moveTarget = userFleets[i].destCoord;
@@ -5643,20 +5691,22 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		cLog(3,`${FleetTimeStamp(userFleets[i].label)} Fuel needed`, fuelData.fuelNeeded, '/ fuel found', fuelData.amount, '/ fuel to add', fuelToAdd, '/ needToLoad', checkCargoResult.needToLoad, '/ needToUnload', checkCargoResult.needToUnload, '/ needToLoadCrew', needToLoadCrew, '/ needToUnloadCrew', needToUnloadCrew);
 
                 if (checkCargoResult.needToLoad || checkCargoResult.needToUnload || fuelToAdd > 0 || needToLoadCrew > 0 || needToUnloadCrew > 0) {
-                    await execDock(userFleets[i], userFleets[i].destCoord);
-
-                    //Unloading at Target
-                    let fuelUnloadDeficit = 0; //How far short of the manifest was the amount of fuel unloaded?
-                    if (hasTargetManifest || checkCargoResult.needToUnload) {
-                        const unloadResult = await handleTransportUnloading(userFleets[i], userFleets[i].destCoord, targetCargoManifest);
-                        fuelUnloadDeficit = unloadResult.fuelUnloadDeficit;
-                    } else cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading skipped - No resources specified`);
+                    //await execDock(userFleets[i], userFleets[i].destCoord);
+                    let transportLoadUnloadSingleTx=globalSettings.transportLoadUnloadSingleTx;
+                    let transactions = [];
+                    let resp = await execDock(userFleets[i], userFleets[i].destCoord, transportLoadUnloadSingleTx);
+                    if(transportLoadUnloadSingleTx && resp) {
+			transactions.push(resp);
+                    }
 
                     if(needToUnloadCrew) {
-			await handleCrewUnloading(userFleets[i], userFleets[i].destCoord, needToUnloadCrew);
+			resp = await handleCrewUnloading(userFleets[i], userFleets[i].destCoord, needToUnloadCrew, transportLoadUnloadSingleTx);
+			if(transportLoadUnloadSingleTx && resp) {
+				transactions.push(resp);
+			}
                     }
                     if(needToLoadCrew) {
-			let crewResp = await handleCrewLoading(userFleets[i], userFleets[i].destCoord, needToLoadCrew);
+			let crewResp = await handleCrewLoading(userFleets[i], userFleets[i].destCoord, needToLoadCrew, transportLoadUnloadSingleTx);
 			if (crewResp && crewResp.name == 'NotEnoughCrew') {
 				if(globalSettings.transportStopOnError) {
 					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Transporting - ERROR: Not enough crew`);
@@ -5665,14 +5715,34 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				} else {
 					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Not enough crew`);
 				}
+			} else if(transportLoadUnloadSingleTx && crewResp) {
+				transactions.push(crewResp);
 			}
                     }
 
+                    //Unloading at Target
+                    let fuelUnloadDeficit = 0; //How far short of the manifest was the amount of fuel unloaded?
+                    if (hasTargetManifest || checkCargoResult.needToUnload) {
+                        const unloadResult = await handleTransportUnloading(userFleets[i], userFleets[i].destCoord, targetCargoManifest, transportLoadUnloadSingleTx);
+                        fuelUnloadDeficit = unloadResult.fuelUnloadDeficit;
+                        if(transportLoadUnloadSingleTx) {
+				transactions = transactions.concat(unloadResult.transactions);
+				if(hasStarbaseManifest) {
+					//if we need to load something, make sure we execute the unload transactions first
+					updateFleetState(userFleets[i], 'Exec tx bundle');
+					await txSliceAndSend(transactions, userFleets[i], 'LOAD/UNLOAD', 100, 5);
+					transactions = [];
+				}
+			}                        
+                    } else cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading skipped - No resources specified`);
+
                     //Refueling at Target
-                    let refuelResp = await handleTransportRefueling(userFleets[i], userFleets[i].destCoord, [destX, destY], [starbaseX, starbaseY], false, fuelUnloadDeficit, starbaseCargoManifest);
+                    let refuelResp = await handleTransportRefueling(userFleets[i], userFleets[i].destCoord, [destX, destY], [starbaseX, starbaseY], false, fuelUnloadDeficit, starbaseCargoManifest, transportLoadUnloadSingleTx);
                     if (refuelResp.status === 0) {
                         userFleets[i].state = refuelResp.detail;
                         return;
+                    } else if(transportLoadUnloadSingleTx && refuelResp && refuelResp.transactions) {
+			transactions = transactions.concat(refuelResp.transactions);
                     }
 
                     let fuelIndex = starbaseCargoManifest.findIndex(e => e.res === sageGameAcct.account.mints.fuel.toString());
@@ -5682,19 +5752,27 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
                     //Loading at Target
                     if(hasStarbaseManifest) {
-                        const loadedCargo = await handleTransportLoading(i, userFleets[i].destCoord, starbaseCargoManifest);
-                        cLog(4,`${FleetTimeStamp(userFleets[i].label)} loadedCargo: `, loadedCargo);
-                        if(!loadedCargo && globalSettings.transportStopOnError) {
+                        const loadedCargo = await handleTransportLoading(i, userFleets[i].destCoord, starbaseCargoManifest, transportLoadUnloadSingleTx);
+                        cLog(4,`${FleetTimeStamp(userFleets[i].label)} loadedCargo: `, loadedCargo.success);
+                        if(!loadedCargo.success && globalSettings.transportStopOnError) {
                             //const newFleetState = `ERROR: No more cargo to load`;
                             //cLog(1,`${FleetTimeStamp(userFleets[i].label)} ${newFleetState}`);
                             //userFleets[i].state = newFleetState;
                             cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Unexpected error on cargo load.`);
                             return;
-                        }
+                        } else if(transportLoadUnloadSingleTx) {
+				transactions = transactions.concat(loadedCargo.transactions);
+			}                        
                     } else cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loading skipped - No resources specified`);
 
-                    let undockResult = await execUndock(userFleets[i], userFleets[i].destCoord);
-                    cLog(4,`${FleetTimeStamp(userFleets[i].label)} userFleets[i]: `, undockResult);
+                    let undockResult = await execUndock(userFleets[i], userFleets[i].destCoord, transportLoadUnloadSingleTx);
+                    if(transportLoadUnloadSingleTx) {
+			transactions.push(undockResult);
+			updateFleetState(userFleets[i], 'Exec tx bundle (final)');
+			undockResult = await txSliceAndSend(transactions, userFleets[i], 'LOAD/UNLOAD', 100, 5);
+			updateFleetState(userFleets[i], 'Idle');
+                    }
+                    //cLog(4,`${FleetTimeStamp(userFleets[i].label)} userFleets[i]: `, undockResult);
                     let fleetState = await solanaReadConnection.getAccountInfoAndContext(userFleets[i].publicKey, {minContextSlot: undockResult.slot});
                 }
                 userFleets[i].moveTarget = userFleets[i].starbaseCoord;
@@ -5747,7 +5825,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		}
 	}
 
-	async function fuelFleet(fleet, dockCoords, account, amount) {
+	async function fuelFleet(fleet, dockCoords, account, amount, returnTx) {
 		cLog(1,`${FleetTimeStamp(fleet.label)} Filling fuel tank: ${amount}`);
 		let fuelCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.fuel);
 		const fuelResp = await execCargoFromStarbaseToFleet(
@@ -5758,13 +5836,14 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			fuelCargoTypeAcct,
 			dockCoords,
 			amount,
-			true
+			true,
+			returnTx
 		);
 
 		return fuelResp;
 	}
 
-	async function handleTransportRefueling(fleet, starbaseCoord, currentPos, targetPos, roundTrip = true, amountToDropOff = 0, transportManifest) {
+	async function handleTransportRefueling(fleet, starbaseCoord, currentPos, targetPos, roundTrip = true, amountToDropOff = 0, transportManifest, returnTx) {
 		cLog(1,`${FleetTimeStamp(fleet.label)} ⛽ Refueling`);
 		updateFleetState(fleet, 'Refueling');
         let fuelResp = {status: 0, detail: '', amount: 0};
@@ -5799,12 +5878,17 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         cLog(2, `${FleetTimeStamp(fleet.label)} Fuel To Transport: ${fuelEntry.amt}`);
 		cLog(2, `${FleetTimeStamp(fleet.label)} Extra Fuel: ${extraFuel}`);
 
+		let transactions = [];
+
 		//Unload extra fuel from tank
 		if(amountToDropOff > 0) {
 			const fuelToUnload = Math.min(amountToDropOff, extraFuel);
 			if (fuelToUnload > 0) {
 				cLog(1,`${FleetTimeStamp(fleet.label)} Unloading extra fuel: ${fuelToUnload}`);
-				await execCargoFromFleetToStarbase(fleet, fleet.fuelTank, sageGameAcct.account.mints.fuel.toString(), starbaseCoord, fuelToUnload);
+				let resp = await execCargoFromFleetToStarbase(fleet, fleet.fuelTank, sageGameAcct.account.mints.fuel.toString(), starbaseCoord, fuelToUnload, returnTx);
+				if(returnTx && resp) {
+					transactions.push(resp);
+				}
 			}
 		}
 
@@ -5816,6 +5900,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		if (fuelToAdd <= 0) {
             fuelResp.status = 1;
             fuelResp.amount = fuelData.amount + fuelToAdd - fuelData.fuelNeeded;
+            if(transactions.length > 0) fuelResp.transactions = transactions;
             return fuelResp;
         }
 
@@ -5824,7 +5909,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         }
 
 		//Put in the fuel
-        let execResp = await fuelFleet(fleet, starbaseCoord, fuelData.account, fuelToAdd);
+        let execResp = await fuelFleet(fleet, starbaseCoord, fuelData.account, fuelToAdd, returnTx);
 
         if (execResp && execResp.name == 'NotEnoughResource') {
 			cLog(1,`${FleetTimeStamp(fleet.label)} ERROR: Not enough fuel`);
@@ -5833,22 +5918,28 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		} else {
             fuelResp.status = 1;
             fuelResp.amount = fuelData.amount + fuelToAdd - fuelData.fuelNeeded;
+            if(returnTx && execResp.tx) {
+		transactions.push(execResp.tx);
+            }
         }
+		if(transactions.length > 0) fuelResp.transactions = transactions;
 
 		return fuelResp
 	}
 
 	async function txSliceAndSend(transactions, fleet, opName, priorityFeeMultiplier, maxInstructionsPerTx) {
+		let txResult;
 		for (let chunk = 0; chunk < transactions.length; chunk += maxInstructionsPerTx) {
 			let transactionsSlice = transactions.slice(chunk, chunk + maxInstructionsPerTx);
 			if(transactionsSlice.length == 1)
-				await txSignAndSend(transactionsSlice[0], fleet, opName, priorityFeeMultiplier );
+				txResult = await txSignAndSend(transactionsSlice[0], fleet, opName, priorityFeeMultiplier );
 			else
-				await txSignAndSend(transactionsSlice, fleet, opName, priorityFeeMultiplier );
+				txResult = await txSignAndSend(transactionsSlice, fleet, opName, priorityFeeMultiplier );
 		}
+		return txResult;
 	}
 
-	async function handleTransportUnloading(fleet, starbaseCoord, transportManifest) {
+	async function handleTransportUnloading(fleet, starbaseCoord, transportManifest, returnTx) {
 		cLog(1,`${FleetTimeStamp(fleet.label)} 🚚 Unloading Transport`);
 		updateFleetState(fleet, 'Unloading');
 
@@ -5856,7 +5947,6 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		const fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(fleet.cargoHold, {programId: tokenProgramPK});
 
 		let transactions = [];
-		const transportLoadUnloadSingleTx = globalSettings.transportLoadUnloadSingleTx; //we read the setting once to prevent a race condition
 
 		//Unloading resources from manifest
 		let fuelUnloadDeficit = 0;
@@ -5874,8 +5964,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				if(globalSettings.transportKeep1 && amountToUnload > 0) { amountToUnload -= 1; }
 				if (amountToUnload > 0) {
 					cLog(1,`${FleetTimeStamp(fleet.label)} Unloading ${amountToUnload} ${entry.res}`);
-					let resp = await execCargoFromFleetToStarbase(fleet, fleet.cargoHold, entry.res, starbaseCoord, amountToUnload, transportLoadUnloadSingleTx);
-					if(transportLoadUnloadSingleTx && resp) {
+					let resp = await execCargoFromFleetToStarbase(fleet, fleet.cargoHold, entry.res, starbaseCoord, amountToUnload, transportLoadUnloadSingleTx, returnTx);
+					if(returnTx && resp) {
 						transactions.push(resp);
 					}
 					if(isFuel) fuelUnloadDeficit -= amountToUnload;
@@ -5888,11 +5978,6 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			}
 		}
 
-		if(transactions.length > 0) {
-			//when "transportUnloadsUnknownRSS is enabled, it is possible that we need to unload more than 4 rss, so we need to split the instructions
-			await txSliceAndSend(transactions, fleet, 'UNLOAD', 100, 4);
-		}
-
 		//Ammo bank unloading
 		const ammoEntry = globalSettings.transportUseAmmoBank ? transportManifest.find(e => e.res === ammoMint) : undefined;
 		if (ammoEntry) {
@@ -5902,20 +5987,28 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			let ammoToUnload = Math.min(currentAmmoCnt, ammoUnloadDeficit);
 			if (ammoToUnload > 0) {
 				cLog(1,`${FleetTimeStamp(fleet.label)} Unloading Ammobanks: ${ammoToUnload}`);
-				await execCargoFromFleetToStarbase(fleet, fleet.ammoBank, ammoMint, starbaseCoord, ammoToUnload);
+				let resp = await execCargoFromFleetToStarbase(fleet, fleet.ammoBank, ammoMint, starbaseCoord, ammoToUnload, returnTx);
+				if(returnTx && resp) {
+					transactions.push(resp);
+				}
 			}
 		}
 
-		return { fuelUnloadDeficit };
+		return { fuelUnloadDeficit, transactions };
 	}
 
-	async function handleTransportLoading(i, starbaseCoords, transportManifest) {
+	async function handleTransportLoading(i, starbaseCoords, transportManifest, returnTx) {
 		cLog(1,`${FleetTimeStamp(userFleets[i].label)} 📦 Loading Transport`);
 		updateFleetState(userFleets[i], 'Loading');
 
 		//Use ammo banks if possible
 		const ammoEntry = globalSettings.transportUseAmmoBank ? transportManifest.find(e => e.res === sageGameAcct.account.mints.ammo.toString()) : undefined;
-		let ammoLoadingIntoAmmoBank = ammoEntry ? await execLoadFleetAmmo(userFleets[i], starbaseCoords, ammoEntry.amt) : 0;
+		let resp = null;
+		let transactions = [];
+		let ammoLoadingIntoAmmoBank = ammoEntry ? (resp = await execLoadFleetAmmo(userFleets[i], starbaseCoords, ammoEntry.amt, returnTx)).amountLoaded : 0;
+		if(returnTx && resp && resp.transaction) {
+			transactions.push(resp.transaction);
+		}
 
         //Calculate remaining free cargo space
         cLog(2,`${FleetTimeStamp(userFleets[i].label)} Calculating cargoSpace ...`);
@@ -5927,8 +6020,6 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         cLog(2,`${FleetTimeStamp(userFleets[i].label)} cargoSpace remaining: ${cargoSpace}`);
 
 		let notEnoughInfo = '';
-		let transactions = [];
-		const transportLoadUnloadSingleTx = globalSettings.transportLoadUnloadSingleTx; //we read the setting once to prevent a race condition
 		for (const entry of transportManifest) {
 			if (entry.res && entry.amt > 0) {
 				if(cargoSpace < 1) {
@@ -5965,7 +6056,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 						starbaseCoords,
 						resMax,
 						false,
-						transportLoadUnloadSingleTx
+						returnTx
 					);
                     cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loaded ${resp.amount} ${entry.res}: `, resp);
                     cargoSpace -= resp && resp.amount ? cargoItems.find(r => r.token == entry.res).size * resp.amount : 0;
@@ -5975,7 +6066,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 						cLog(1,`${FleetTimeStamp(userFleets[i].label)} Not enough ${resShort}`);
 						notEnoughInfo += 'Not enough ' + resShort + '\n';
 					}
-					else if(transportLoadUnloadSingleTx && resp && resp.tx) {
+					else if(returnTx && resp && resp.tx) {
 						transactions.push(resp.tx);
 					}
 				}
@@ -5993,10 +6084,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 	            cLog(2,`${FleetTimeStamp(userFleets[i].label)} ERROR: No cargo loaded`);
 	            if(globalSettings.emailNoCargoLoaded) await sendEMail(userFleets[i].label + ' no cargo loaded', notEnoughInfo);
 	        }
-		else if(transactions.length > 0) {
-			await txSliceAndSend(transactions, userFleets[i], 'LOAD', 100, 4);
-		}
-		return !userFleets[i].state.includes('ERROR');
+		return { success: !userFleets[i].state.includes('ERROR'), transactions: transactions};
 	}
 
 	function startupScanBlockCheck(i, fleetCoords) {
@@ -7226,6 +7314,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			settingsModalContentString += '<div>Transports keep 1 resource <input id="transportKeep1" type="checkbox"></input><br><small>If unloading a resource, should transport fleets keep 1 resource to save a CreatePDA transaction when loading it again? It will tie up some Sol (for the account rent), but it will save a lot of transactions (and you can get back the Sol as soon as you wish).</small></div>';
 			settingsModalContentString += '<div>Miners keep 1 resource <input id="minerKeep1" type="checkbox"></input><br><small>Same as previous option but for miners. Also load 1 food more, so the food token account is not closed, too.</small></div>';
 			settingsModalContentString += '<div>Fleets leave 1 resource in starbases <input id="starbaseKeep1" type="checkbox"></input><br><small>Same as previous option but for starbases.</small></div>';
+			settingsModalContentString += '<div>Transports: Bundled instructions <input id="transportLoadUnloadSingleTx" type="checkbox"></input><br><small>Transports try to do the dock/unload/load/undock sequence in as few transactions as possible.</small></div>';
+			settingsModalContentString += '<div>Miners: Bundled instructions <input id="minerSupplySingleTx" type="checkbox"></input><br><small>The same, but for miners. If enabled, it may be necessary to set "Minimum priority fee for multi-ix transactions".</small></div>';
 			settingsModalContentString += '<div>Exclude fleets:<br><textarea id="excludeFleets" cols="40" rows="6"></textarea><br><small>Fleets that should be ignored<br>(one fleet name per line, case sensivity, reload required)</small></div>';
 			settingsModalContentString += '</li>';
 			settingsModalContentString += '<li class="tab_advanced">';
@@ -7233,8 +7323,6 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			settingsModalContentString += '<div>Console Logging <input id="debugLogLevel" type="number" min="0" max="9" placeholder="3"></input><br><small>How much console logging you want to see (higher number = more, 0 = none)</small></div>';
 			settingsModalContentString += '<div>Auto Start Script <input id="autoStartScript" type="checkbox"></input><br><small>Should Lab Assistant automatically start after initialization is complete?</small></div>';
 			settingsModalContentString += '<div>Reload On Stuck Fleets <input id="reloadPageOnFailedFleets" type="number" min="0" max="999" placeholder="0"></input><br><small>Automatically refresh the page if this many fleets get stuck (0 = never)</small></div>';
-			settingsModalContentString += '<div>Transports load/unload in a single Tx <input id="transportLoadUnloadSingleTx" type="checkbox"></input><br><small>EXPERIMENTAL: Transports load/unload all resources (up to 4) in a single transaction</small></div>';
-			settingsModalContentString += '<div>Miners resupply in a single Tx <input id="minerSupplySingleTx" type="checkbox"></input><br><small>EXPERIMENTAL: The complete dock/unload/load food, ammo, fuel/undock sequence is done in a single transaction. If enabled, it may be necessary to set "Minimum priority fee for multi-ix transactions".</small></div>';
 			settingsModalContentString += '<div>E-Mail-Interface <input id="emailInterface" type="text" size="40"></input><br><small>Send errors via the email interface (see "slya-email-interface.php" on GitHub for instructions).</small><button id="emailInterfaceTest">Test the interface URL</button> Result: <span id="emailInterfaceTestResult"></span></div>';
 			settingsModalContentString += '<div>';
 			settingsModalContentString += 'email fleet ix errors? <input id="emailFleetIxErrors" type="checkbox"></input><br>';
