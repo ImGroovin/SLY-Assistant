@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.3
+// @version      0.7.4
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -30,6 +30,8 @@
     ];
     let readRPCs = customReadRPCs.concat(saRPCs);
     let writeRPCs = customWriteRPCs.concat(saRPCs);
+
+    let customKeypair = null;
 
     //Program public keys
     /*
@@ -229,6 +231,9 @@
 
 			//How many fleets need to stall before triggering an automatic page reload? (0 = never trigger)
 			reloadPageOnFailedFleets: parseIntDefault(globalSettings.reloadPageOnFailedFleets, 0),
+
+			//Custom secret key (replaces Solflare/Phantom signing)
+			mySecretKey: parseStringDefault(globalSettings.mySecretKey,''),			
 		}
 
 		cLog(2, 'SYSTEM: Global Settings loaded', globalSettings);
@@ -1473,7 +1478,10 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		const signStart = Date.now();
 
                 try {
-                    if (typeof solflare === 'undefined') {
+                    if(customKeypair) {
+                        tx.sign([customKeypair]);
+                        txSigned = [tx];
+                    } else if (typeof solflare === 'undefined') {
                         txSigned = phantom && phantom.solana ? await phantom.solana.signAllTransactions([tx]) : solana.signAllTransactions([tx]);
                     } else {
                         txSigned = await solflare.signAllTransactions([tx]);
@@ -1482,7 +1490,10 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                     /* Catch the very rare "Could not establish connection. Receiving end does not exist" error from Solflare and just try it again: */
                     cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> Wallet extension error`, error1);
                     await wait(1000);
-                    if (typeof solflare === 'undefined') {
+                    if(customKeypair) {
+                        tx.sign([customKeypair]);
+                        txSigned = [tx];
+                    } else if (typeof solflare === 'undefined') {
                         txSigned = phantom && phantom.solana ? await phantom.solana.signAllTransactions([tx]) : solana.signAllTransactions([tx]);
                     } else {
                         txSigned = await solflare.signAllTransactions([tx]);
@@ -4284,6 +4295,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			statusPanelOpacity: parseIntDefault(document.querySelector('#statusPanelOpacity').value, 75),
 			autoStartScript: document.querySelector('#autoStartScript').checked,
 			reloadPageOnFailedFleets: parseIntDefault(document.querySelector('#reloadPageOnFailedFleets').value, 0),
+			mySecretKey: parseStringDefault(document.querySelector('#mySecretKey').value,''),			
 		}
 		// just to be sure there are no bad mistakes, restrict both fee settings to 50k lamports
 		if(globalSettings.automaticFeeMax > 50000) globalSettings.automaticFeeMax = 50000;
@@ -4350,6 +4362,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		document.querySelector('#statusPanelOpacity').value = globalSettings.statusPanelOpacity;
 		document.querySelector('#autoStartScript').checked = globalSettings.autoStartScript;
 		document.querySelector('#reloadPageOnFailedFleets').value = globalSettings.reloadPageOnFailedFleets;
+		document.querySelector('#mySecretKey').value = globalSettings.mySecretKey;
 	}
 
 	function settingsModalToggle() {
@@ -6925,7 +6938,12 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 	function initUser() {
 		return new Promise(async resolve => {
 
-			if (typeof solflare === 'undefined') {
+			if(globalSettings.mySecretKey) {
+				let mySecret = JSON.parse(globalSettings.mySecretKey);
+				customKeypair = solanaWeb3.Keypair.fromSecretKey(new Uint8Array(mySecret));
+				cLog(1, "SLYA uses custom key with public address:", customKeypair.publicKey.toString());
+				userPublicKey = customKeypair.publicKey;
+			} else if (typeof solflare === 'undefined') {
 				let walletConn = phantom && phantom.solana ? await phantom.solana.connect() : await solana.connect();
 				userPublicKey = walletConn.publicKey;
 			} else {
@@ -7319,6 +7337,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			settingsModalContentString += '<div>Exclude fleets:<br><textarea id="excludeFleets" cols="40" rows="6"></textarea><br><small>Fleets that should be ignored<br>(one fleet name per line, case sensivity, reload required)</small></div>';
 			settingsModalContentString += '</li>';
 			settingsModalContentString += '<li class="tab_advanced">';
+			settingsModalContentString += '<div>My secret key <input id="mySecretKey" type="text" size="40"></input><br><small>Normally SLYA will use Solflare or Phantom to sign transactions. You can optionally import the secret key of your wallet and let SLYA sign each transaction. While it works with any wallet, for security reasons you should only do this with a lancer wallet.<br>To get the key of your wallet, open Solflare, go to the list of all wallets, press the three dots next to the wallet, select "Export private key" (not the recovery phrase!), copy the key and paste it here (e.g.: "[82, 194, ...]" ). Then save the settings and reload SLYA. SLYA will output "SLYA uses custom key with public address: [...]" in the console log.</small></div>';
 			settingsModalContentString += '<div>Tx Poll Delay <input id="confirmationCheckingDelay" type="number" min="2000" max="10000" placeholder="2000"></input><br><small>How many milliseconds to wait before re-reading the chain for confirmation (min: 2000)</small></div>';
 			settingsModalContentString += '<div>Console Logging <input id="debugLogLevel" type="number" min="0" max="9" placeholder="3"></input><br><small>How much console logging you want to see (higher number = more, 0 = none)</small></div>';
 			settingsModalContentString += '<div>Auto Start Script <input id="autoStartScript" type="checkbox"></input><br><small>Should Lab Assistant automatically start after initialization is complete?</small></div>';
