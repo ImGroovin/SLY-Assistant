@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.0.22
+// @version      0.7.0.31
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -186,6 +186,9 @@
 
             //Subwarp when the distance is 1 diagonal sector or less
             subwarpShortDist: parseBoolDefault(globalSettings.subwarpShortDist, true),
+
+			//How many fleet max distance rate to subwarp when is wrap cd (higher number = 2, 0 = none)
+			smartWarpRemainingDistanceRate: parseIntDefault(globalSettings.smartWarpRemainingDistanceRate, 0),
 
 			//Determines if your transports should use their ammo banks to move ammo (in addition to their cargo holds)
 			transportUseAmmoBank: parseBoolDefault(globalSettings.transportUseAmmoBank, true),
@@ -4246,6 +4249,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			debugLogLevel: parseIntDefault(document.querySelector('#debugLogLevel').value, 3),
             craftingJobs: parseIntDefault(document.querySelector('#craftingJobs').value, 4),
 			subwarpShortDist: document.querySelector('#subwarpShortDist').checked,
+			smartWarpRemainingDistanceRate: parseIntDefault(document.querySelector('#smartWarpRemainingDistanceRate').value, 0),
 			transportUseAmmoBank: document.querySelector('#transportUseAmmoBank').checked,
 			transportStopOnError: document.querySelector('#transportStopOnError').checked,
 			transportFuel100: document.querySelector('#transportFuel100').checked,
@@ -4311,6 +4315,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		document.querySelector('#debugLogLevel').value = globalSettings.debugLogLevel;
         document.querySelector('#craftingJobs').value = globalSettings.craftingJobs;
 		document.querySelector('#subwarpShortDist').checked = globalSettings.subwarpShortDist;
+		document.querySelector('#smartWarpRemainingDistanceRate').value = globalSettings.smartWarpRemainingDistanceRate;
 		document.querySelector('#transportUseAmmoBank').checked = globalSettings.transportUseAmmoBank;
 		document.querySelector('#transportStopOnError').checked = globalSettings.transportStopOnError;
 		document.querySelector('#transportFuel100').checked = globalSettings.transportFuel100;
@@ -4614,47 +4619,67 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				let currentCargoFuel = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
 				let currentCargoFuelCnt = currentCargoFuel ? currentCargoFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
 
-                let shortSubwarp = moveDist < 1.5 && globalSettings.subwarpShortDist ? true : false;
+				let shortSubwarp = moveDist < 1.5 && globalSettings.subwarpShortDist ? true : false;
 				//Should a warp be attempted?
 				if (userFleets[i].moveType == 'warp' && (currentFuelCnt + currentCargoFuelCnt) >= warpCost && !shortSubwarp) {
 					let fleetAcctData = sageProgram.coder.accounts.decode('fleet', fleetAcctInfo.data);
 					let warpCooldownExpiresAt = fleetAcctData.warpCooldownExpiresAt.toNumber() * 1000;
 
-					//Wait for cooldown
-					while (Date.now() < warpCooldownExpiresAt) {
-						if (!userFleets[i].state.includes('Warp C/D')) {
-							const warpCDExpireTimeStr = `[${TimeToStr(new Date(warpCooldownExpiresAt))}]`;
-							cLog(1,`${FleetTimeStamp(userFleets[i].label)} Awaiting Warp C/D ${warpCDExpireTimeStr}`);
-							updateFleetState(userFleets[i], `Warp C/D ${warpCDExpireTimeStr}`);
+					// smart movement (author: zihan)
+					const maxWarpDistance = userFleets[i].maxWarpDistance / 100
+					if (smartWarpRemainingDistanceRate > 0 &&
+						(
+							moveDist > maxWarpDistance && (warpCooldownExpiresAt - Date.now() > userFleets[i].warpCooldown * 1000 * 0.3)
+							|| moveDist <= maxWarpDistance * smartWarpRemainingDistanceRate
+						)
+					) {
+						let moveDistNew = moveDist;
+						if (moveDist > maxWarpDistance) {
+							// if moveDist is too long distance, just subwarp half maxWarpDistance
+							moveDistNew = max(moveDist - maxWarpDistance, smartWarpRemainingDistanceRate * maxWarpDistance);
+							moveDistNew = min(moveDist, moveDistNew)
+							[moveX, moveY] = calcNextWarpPoint(moveDistNew, extra, [moveX, moveY]);
+						}
+						moveTime = calculateSubwarpTime(userFleets[i], moveDistNew);
+						await execSubwarp(userFleets[i], moveX, moveY, moveTime);
+					} else {
+						//Wait for cooldown
+						while (Date.now() < warpCooldownExpiresAt) {
+							if (!userFleets[i].state.includes('Warp C/D')) {
+								const warpCDExpireTimeStr = `[${TimeToStr(new Date(warpCooldownExpiresAt))}]`;
+								cLog(1,`${FleetTimeStamp(userFleets[i].label)} Awaiting Warp C/D ${warpCDExpireTimeStr}`);
+								updateFleetState(userFleets[i], `Warp C/D ${warpCDExpireTimeStr}`);
+							}
+
+							//await wait(Math.max(1000, warpCooldownExpiresAt - Date.now()));
+							if (warpCooldownExpiresAt - Date.now() < 5000) await wait(Math.max(1000, warpCooldownExpiresAt - Date.now()));
+							else await wait(5000);
+							if (userFleets[i].stopping) return;
+						}
+						await wait(2000); //Extra wait to ensure accuracy
+
+						//Calculate next warp point if more than 1 is needed to arrive at final destination
+						if (moveDist > userFleets[i].maxWarpDistance / 100) {
+							[moveX, moveY] = calcNextWarpPoint(userFleets[i].maxWarpDistance, extra, [moveX, moveY]);
+
+							//Saves temporary waypoints for transports in case the page is refreshed mid-journey while using warp
+							const fleetPK = userFleets[i].publicKey.toString();
+							const fleetSavedData = await GM.getValue(fleetPK, '{}');
+							const fleetParsedData = JSON.parse(fleetSavedData);
+							//cLog(3, `${FleetTimeStamp(userFleets[i].label)} moveTargets`, fleetParsedData.moveTarget, userFleets[i].moveTarget);
+							fleetParsedData.moveTarget = userFleets[i].moveTarget;
+							await GM.setValue(fleetPK, JSON.stringify(fleetParsedData));
+
+							//Update distance based on new warp target
+							moveDist = calculateMovementDistance(extra, [moveX,moveY]);
 						}
 
-						//await wait(Math.max(1000, warpCooldownExpiresAt - Date.now()));
-						if(warpCooldownExpiresAt - Date.now() < 5000) await wait(Math.max(1000, warpCooldownExpiresAt - Date.now()));
-						else await wait(5000);
-						if(userFleets[i].stopping) return;
+						moveTime = calculateWarpTime(userFleets[i], moveDist);
+						const warpResult = await execWarp(userFleets[i], moveX, moveY, moveTime);
+						warpCooldownFinished = warpResult.warpCooldownFinished;
 					}
-					await wait(2000); //Extra wait to ensure accuracy
-
-					//Calculate next warp point if more than 1 is needed to arrive at final destination
-					if (moveDist > userFleets[i].maxWarpDistance / 100) {
-						[moveX, moveY] = calcNextWarpPoint(userFleets[i].maxWarpDistance, extra, [moveX, moveY]);
-
-						//Saves temporary waypoints for transports in case the page is refreshed mid-journey while using warp
-						const fleetPK = userFleets[i].publicKey.toString();
-						const fleetSavedData = await GM.getValue(fleetPK, '{}');
-						const fleetParsedData = JSON.parse(fleetSavedData);
-						//cLog(3, `${FleetTimeStamp(userFleets[i].label)} moveTargets`, fleetParsedData.moveTarget, userFleets[i].moveTarget);
-						fleetParsedData.moveTarget = userFleets[i].moveTarget;
-						await GM.setValue(fleetPK, JSON.stringify(fleetParsedData));
-
-						//Update distance based on new warp target
-						moveDist = calculateMovementDistance(extra, [moveX,moveY]);
-					}
-
-					moveTime = calculateWarpTime(userFleets[i], moveDist);
-					const warpResult = await execWarp(userFleets[i], moveX, moveY, moveTime);
-					warpCooldownFinished = warpResult.warpCooldownFinished;
-				} else if (currentFuelCnt + currentCargoFuelCnt >= subwarpCost) {
+				}
+				else if (currentFuelCnt + currentCargoFuelCnt >= subwarpCost) {
 					moveTime = calculateSubwarpTime(userFleets[i], moveDist);
 					await execSubwarp(userFleets[i], moveX, moveY, moveTime);
 				} else {
@@ -7184,6 +7209,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			settingsModalContentString += '</li>';
 			settingsModalContentString += '<li class="tab_fleets">';
 			settingsModalContentString += '<div>Subwarp for short distances? <input id="subwarpShortDist" type="checkbox"></input><br><small>Should fleets subwarp when travel distance is 1 diagonal square or less?</small></div>';
+			settingsModalContentString += '<div>Smart Warp, Remaining distance: <input id="smartWarpRemainingDistanceRate" type="number" min="0.1" max="2" placeholder="0.5=50% max warp distance"></input>fleet Max Warp Distance<br><small>When warp CD, if there is not much remaining distance, using subwarp directly can better utilize time and control costs.</small></div>';
 			settingsModalContentString += '<div>Use Ammo Banks for Transport? <input id="transportUseAmmoBank" type="checkbox"></input><br><small>Should transports also use their ammo banks to help move ammo?</small></div>';
 			settingsModalContentString += '<div>Stop Transports On Error <input id="transportStopOnError" type="checkbox"></input><br><small>Should transport fleet stop completely if there is an error (example: not enough resource/fuel/etc.)?</small></div>';
 			settingsModalContentString += '<div>Fuel to 100% for transports <input id="transportFuel100" type="checkbox"></input><br><small>If a refuel is needed at the source, should transport fleets fill fuel to 100%? Can save a lot of transactions (depends on the tank size of the fleet).</small></div>';
