@@ -190,6 +190,9 @@
 			//How many fleet max distance rate to subwarp when is wrap cd (higher number = 2, 0 = none)
 			smartWarpRemainingDistanceRate: parseIntDefault(globalSettings.smartWarpRemainingDistanceRate, 0),
 
+			//How much multiple food for mining (max: 2,  default: 1)
+			multipleFoodMining: parseIntDefault(globalSettings.multipleFoodMining, 1),
+
 			//Determines if your transports should use their ammo banks to move ammo (in addition to their cargo holds)
 			transportUseAmmoBank: parseBoolDefault(globalSettings.transportUseAmmoBank, true),
 
@@ -4250,6 +4253,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
             craftingJobs: parseIntDefault(document.querySelector('#craftingJobs').value, 4),
 			subwarpShortDist: document.querySelector('#subwarpShortDist').checked,
 			smartWarpRemainingDistanceRate: parseIntDefault(document.querySelector('#smartWarpRemainingDistanceRate').value, 0),
+
+			multipleFoodMining: parseIntDefault(document.querySelector('#multipleFoodMining').value, 1),
 			transportUseAmmoBank: document.querySelector('#transportUseAmmoBank').checked,
 			transportStopOnError: document.querySelector('#transportStopOnError').checked,
 			transportFuel100: document.querySelector('#transportFuel100').checked,
@@ -4316,6 +4321,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         document.querySelector('#craftingJobs').value = globalSettings.craftingJobs;
 		document.querySelector('#subwarpShortDist').checked = globalSettings.subwarpShortDist;
 		document.querySelector('#smartWarpRemainingDistanceRate').value = globalSettings.smartWarpRemainingDistanceRate;
+
+		document.querySelector('#multipleFoodMining').value = globalSettings.multipleFoodMining;
 		document.querySelector('#transportUseAmmoBank').checked = globalSettings.transportUseAmmoBank;
 		document.querySelector('#transportStopOnError').checked = globalSettings.transportStopOnError;
 		document.querySelector('#transportFuel100').checked = globalSettings.transportFuel100;
@@ -5290,10 +5297,20 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 						cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loading food`);
 						updateFleetState(userFleets[i], `Loading`);
 						let foodCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.food);
-						let foodResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetFoodAcct, sageGameAcct.account.mints.food.toString(), foodCargoTypeAcct, userFleets[i].starbaseCoord, foodForDuration - currentFoodCnt);
+
+						// use multiple food for mining (authoer: zihan)
+						function respFoodfn(amount) {
+							return execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetFoodAcct, sageGameAcct.account.mints.food.toString(), foodCargoTypeAcct, userFleets[i].starbaseCoord, amount);
+						}
+						let foodResp = await respFoodfn(foodForDuration * multipleFoodMining - currentFoodCnt);
 						if (foodResp && foodResp.name == 'NotEnoughResource') {
-							cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough food`);
-							errorResource.push('food');
+							// try load food little again
+							cLog(1, 'try load food little again');
+							foodResp = await respFoodfn(foodForDuration - currentFoodCnt);
+							if (foodResp && foodResp.name == 'NotEnoughResource') {
+								cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough food`);
+								errorResource.push('food');
+							}
 						}
 						//await wait(2000);
 					} else { cLog(1,`${FleetTimeStamp(userFleets[i].label)} Food loading skipped: ${currentFoodCnt} / ${foodForDuration}`); }
@@ -7210,6 +7227,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			settingsModalContentString += '<li class="tab_fleets">';
 			settingsModalContentString += '<div>Subwarp for short distances? <input id="subwarpShortDist" type="checkbox"></input><br><small>Should fleets subwarp when travel distance is 1 diagonal square or less?</small></div>';
 			settingsModalContentString += '<div>Smart Warp, Remaining distance: <input id="smartWarpRemainingDistanceRate" type="number" min="0.1" max="2" placeholder="0.5=50% max warp distance"></input>fleet Max Warp Distance<br><small>When warp CD, if there is not much remaining distance, using subwarp directly can better utilize time and control costs.</small></div>';
+
+			settingsModalContentString += '<div>Use multiple food for mining? <select id="multipleFoodMining"> <option value="1" selected>1</option> <option value="2">2</option> </select><br><small>Using multiple times the amount of food for mining can reduce the frequency of food supply</small></div>';
 			settingsModalContentString += '<div>Use Ammo Banks for Transport? <input id="transportUseAmmoBank" type="checkbox"></input><br><small>Should transports also use their ammo banks to help move ammo?</small></div>';
 			settingsModalContentString += '<div>Stop Transports On Error <input id="transportStopOnError" type="checkbox"></input><br><small>Should transport fleet stop completely if there is an error (example: not enough resource/fuel/etc.)?</small></div>';
 			settingsModalContentString += '<div>Fuel to 100% for transports <input id="transportFuel100" type="checkbox"></input><br><small>If a refuel is needed at the source, should transport fleets fill fuel to 100%? Can save a lot of transactions (depends on the tank size of the fleet).</small></div>';
