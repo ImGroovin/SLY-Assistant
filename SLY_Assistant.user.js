@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.0
+// @version      0.7.0.22
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -5188,13 +5188,46 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					await execDock(userFleets[i], userFleets[i].starbaseCoord);
 					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading resource`);
 					updateFleetState(userFleets[i], `Unloading`);
-					//if (currentResourceCnt > 0) {
-					let unloadAmount = currentResourceCnt;
-					if(globalSettings.minerKeep1 && unloadAmount > 0) { unloadAmount -= 1; }
-					if (unloadAmount > 0) {
-						await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, userFleets[i].mineResource, userFleets[i].starbaseCoord, unloadAmount);
-						//await wait(2000);
-					}
+
+					// let unloadAmount = currentResourceCnt;
+					// if(globalSettings.minerKeep1 && unloadAmount > 0) { unloadAmount -= 1; }
+					// if (unloadAmount > 0) {
+					// 	await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, userFleets[i].mineResource, userFleets[i].starbaseCoord, unloadAmount);
+					// 	//await wait(2000);
+					// }
+
+					//Unload all token except food (author: zihan)
+					const unloadQueue = []
+					// console.log('mining fleetCurrentCargo', fleetCurrentCargo)
+					fleetCurrentCargo.value.forEach(async (item) => {
+						if (item.account.data.parsed.info.tokenAmount.uiAmount > 1 &&
+							item.account.data.parsed.info.mint !== sageGameAcct.account.mints.food.toString()) {
+								// console.log('mining fleetCurrentCargo item', item.account.data.parsed.info)
+								unloadQueue.push(
+									execCargoFromFleetToStarbase(
+										userFleets[i],
+										userFleets[i].cargoHold,
+										item.account.data.parsed.info.mint,
+										userFleets[i].starbaseCoord,
+										item.account.data.parsed.info.tokenAmount.uiAmount - (globalSettings.minerKeep1 ? 1 : 0))
+								)
+						}
+						// if there is too much food, unload part of food
+						else if (item.account.data.parsed.info.tokenAmount.uiAmount > foodForDuration * 2 &&
+							item.account.data.parsed.info.mint === sageGameAcct.account.mints.food.toString()) {
+								// console.log('mining fleetCurrentCargo food item', item.account.data.parsed.info)
+								unloadQueue.push(
+									execCargoFromFleetToStarbase(
+										userFleets[i],
+										userFleets[i].cargoHold,
+										item.account.data.parsed.info.mint,
+										userFleets[i].starbaseCoord,
+										item.account.data.parsed.info.tokenAmount.uiAmount - foodForDuration * 2)
+								)
+						}
+					})
+					await Promise.all(unloadQueue)
+					await wait(500);
 
 					//if (currentFuelCnt < userFleets[i].fuelCapacity) {
 					if (currentFuelCnt < fuelNeeded) {
@@ -5259,7 +5292,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 			//At mining area?
 			else if (fleetCoords[0] == destX && fleetCoords[1] == destY) {
-		if(userFleets[i].stopping) return;
+				if (userFleets[i].stopping) return;
                 fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
                 cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
                 currentFood = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.food.toString());
