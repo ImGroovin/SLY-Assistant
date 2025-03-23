@@ -4630,13 +4630,13 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					if (smartWarpRemainingDistanceRate > 0 &&
 						(
 							moveDist > maxWarpDistance && (warpCooldownExpiresAt - Date.now() > userFleets[i].warpCooldown * 1000 * 0.3)
-							|| moveDist <= maxWarpDistance * smartWarpRemainingDistanceRate
+							|| moveDist <= maxWarpDistance * smartWarpRemainingDistanceRate * 0.01
 						)
 					) {
 						let moveDistNew = moveDist;
 						if (moveDist > maxWarpDistance) {
 							// if moveDist is too long distance, just subwarp half maxWarpDistance
-							moveDistNew = max(moveDist - maxWarpDistance, smartWarpRemainingDistanceRate * maxWarpDistance);
+							moveDistNew = max(moveDist - maxWarpDistance, smartWarpRemainingDistanceRate * 0.01 * maxWarpDistance);
 							moveDistNew = min(moveDist, moveDistNew)
 							[moveX, moveY] = calcNextWarpPoint(moveDistNew, extra, [moveX, moveY]);
 						}
@@ -7176,7 +7176,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			settingsModalContentString += '</li>';
 			settingsModalContentString += '<li class="tab_fleets">';
 			settingsModalContentString += '<div>Subwarp for short distances? <input id="subwarpShortDist" type="checkbox"></input><br><small>Should fleets subwarp when travel distance is 1 diagonal square or less?</small></div>';
-			settingsModalContentString += '<div>Smart Warp, Remaining distance: <input id="smartWarpRemainingDistanceRate" type="number" min="0.1" max="2" placeholder="0.5=50% max warp distance"></input>multiple fleet Max Warp Distance<br><small>Suggestion 0.5 (=50% max warp distance). <br>When warp CD, if there is not much remaining distance, using subwarp directly can better utilize time and control costs.</small></div>';
+			settingsModalContentString += '<div>Smart Warp, Remaining distance: <input id="smartWarpRemainingDistanceRate" type="number" min="20" max="200" placeholder=""></input>% fleet Max Warp Distance<br><small>Suggestion 50 (=50% max warp distance). <br>When warp CD, if there is not much remaining distance, using subwarp directly can better utilize time and control costs.</small></div>';
 			settingsModalContentString += '<div>Use Ammo Banks for Transport? <input id="transportUseAmmoBank" type="checkbox"></input><br><small>Should transports also use their ammo banks to help move ammo?</small></div>';
 			settingsModalContentString += '<div>Stop Transports On Error <input id="transportStopOnError" type="checkbox"></input><br><small>Should transport fleet stop completely if there is an error (example: not enough resource/fuel/etc.)?</small></div>';
 			settingsModalContentString += '<div>Fuel to 100% for transports <input id="transportFuel100" type="checkbox"></input><br><small>If a refuel is needed at the source, should transport fleets fill fuel to 100%? Can save a lot of transactions (depends on the tank size of the fleet).</small></div>';
