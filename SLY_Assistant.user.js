@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    https://github.com/ImGroovin/SLY-Assistant
-// @version      0.7.0.32
+// @version      0.7.0.33
 // @description  Base http://tampermonkey.net/
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
