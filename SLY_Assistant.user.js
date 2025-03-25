@@ -6834,7 +6834,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			validMRZTargets.sort((a, b) => { if (a.name < b.name) { return -1; } if (a.name > b.name) { return 1; } return 0; });
 			validTargets = validMainTargets.concat(validMRZTargets);
 
-			console.log('validTargets:',validTargets);
+			cLog(1, `validTargets: ${validTargets}`);
 
             resolve();
         });
