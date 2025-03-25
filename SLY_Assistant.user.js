@@ -4634,16 +4634,16 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 					// smart movement (author: zihan)
 					const maxWarpDistance = userFleets[i].maxWarpDistance / 100
-					if (smartWarpRemainingDistanceRate > 0 &&
+					if (globalSettings.smartWarpRemainingDistanceRate > 0 &&
 						(
 							moveDist > maxWarpDistance && (warpCooldownExpiresAt - Date.now() > userFleets[i].warpCooldown * 1000 * 0.3)
-							|| moveDist <= maxWarpDistance * smartWarpRemainingDistanceRate * 0.01
+							|| moveDist <= maxWarpDistance * globalSettings.smartWarpRemainingDistanceRate * 0.01
 						)
 					) {
 						let moveDistNew = moveDist;
 						if (moveDist > maxWarpDistance) {
 							// if moveDist is too long distance, just subwarp half maxWarpDistance
-							moveDistNew = max(moveDist - maxWarpDistance, smartWarpRemainingDistanceRate * 0.01 * maxWarpDistance);
+							moveDistNew = max(moveDist - maxWarpDistance, globalSettings.smartWarpRemainingDistanceRate * 0.01 * maxWarpDistance);
 							moveDistNew = min(moveDist, moveDistNew)
 							[moveX, moveY] = calcNextWarpPoint(moveDistNew, extra, [moveX, moveY]);
 						}
