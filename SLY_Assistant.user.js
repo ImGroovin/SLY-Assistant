@@ -509,8 +509,8 @@
     cLog(1,'getALTs()');
     await getALTs();
 
-    cLog(1, `craftRecipes: ${craftRecipes}`);
-    cLog(1, `upgradeRecipes: ${upgradeRecipes}`);
+    cLog(1, 'craftRecipes: ', craftRecipes);
+    cLog(1, 'upgradeRecipes: ', upgradeRecipes);
 
     let sduItem = cargoItems.find(item => item.name === 'Survey Data Unit');
 	let fuelItem = cargoItems.find(item => item.token === sageGameAcct.account.mints.fuel.toString());
