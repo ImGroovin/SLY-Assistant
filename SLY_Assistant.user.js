@@ -5277,7 +5277,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 						function respFoodfn(amount) {
 							return execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetFoodAcct, sageGameAcct.account.mints.food.toString(), foodCargoTypeAcct, userFleets[i].starbaseCoord, amount);
 						}
-						let foodResp = await respFoodfn(foodForDuration * multipleFoodMining - currentFoodCnt);
+						let foodResp = await respFoodfn(foodForDuration * globalSettings.multipleFoodMining - currentFoodCnt);
 						if (foodResp && foodResp.name == 'NotEnoughResource') {
 							// try load food little again
 							cLog(1, 'try load food little again');
