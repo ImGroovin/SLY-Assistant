@@ -500,13 +500,13 @@
 			},
 	]);
 
-    cLog(0,'getResourceTokens()');
+    cLog(1,'getResourceTokens()');
     await getResourceTokens();
 
-    cLog(0,'getCraftRecipes()');
+    cLog(1,'getCraftRecipes()');
     await getCraftRecipes();
 
-    cLog(0,'getALTs()');
+    cLog(1,'getALTs()');
     await getALTs();
 
     cLog(1, `craftRecipes: ${craftRecipes}`);
