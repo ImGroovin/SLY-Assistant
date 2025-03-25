@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    https://github.com/ImGroovin/SLY-Assistant
-// @version      0.7.0.33
+// @version      0.7.0.34
 // @description  Base http://tampermonkey.net/
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -7230,7 +7230,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			settingsModalContentString += '<div>Subwarp for short distances? <input id="subwarpShortDist" type="checkbox"></input><br><small>Should fleets subwarp when travel distance is 1 diagonal square or less?</small></div>';
 			settingsModalContentString += '<div>Smart Warp, Remaining distance: <input id="smartWarpRemainingDistanceRate" type="number" min="20" max="200" placeholder=""></input>% fleet Max Warp Distance<br><small>Suggestion 50 (=50% max warp distance). <br>When warp CD, if there is not much remaining distance, using subwarp directly can better utilize time and control costs.</small></div>';
 
-			settingsModalContentString += '<div>Use multiple food for mining? <select id="multipleFoodMining"> <option value="1" selected>1</option> <option value="2">2</option> </select><br><small>Using multiple times the amount of food for mining can reduce the frequency of food supply</small></div>';
+			settingsModalContentString += '<div>Use multiple food for mining? <select id="multipleFoodMining"> <option value="1" selected>1</option> <option value="2">2</option> <option value="3">3</option> <option value="4">4</option> </select><br><small>Using multiple times the amount of food for mining can reduce the frequency of food supply</small></div>';
 			settingsModalContentString += '<div>Use Ammo Banks for Transport? <input id="transportUseAmmoBank" type="checkbox"></input><br><small>Should transports also use their ammo banks to help move ammo?</small></div>';
 			settingsModalContentString += '<div>Stop Transports On Error <input id="transportStopOnError" type="checkbox"></input><br><small>Should transport fleet stop completely if there is an error (example: not enough resource/fuel/etc.)?</small></div>';
 			settingsModalContentString += '<div>Fuel to 100% for transports <input id="transportFuel100" type="checkbox"></input><br><small>If a refuel is needed at the source, should transport fleets fill fuel to 100%? Can save a lot of transactions (depends on the tank size of the fleet).</small></div>';
