@@ -4633,8 +4633,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					let warpCooldownExpiresAt = fleetAcctData.warpCooldownExpiresAt.toNumber() * 1000;
 
 					// smart movement (author: zihan)
-					cLog(2, `smart movement ready? moveDist:${moveDist}, maxWarpDistance:${maxWarpDistance}, Setting:${globalSettings.smartWarpRemainingDistanceRate}`)
 					const maxWarpDistance = userFleets[i].maxWarpDistance / 100
+					cLog(2, `smart movement ready? moveDist:${moveDist}, maxWarpDistance:${maxWarpDistance}, Setting:${globalSettings.smartWarpRemainingDistanceRate}`)
 					if (globalSettings.smartWarpRemainingDistanceRate > 0 &&
 						(
 							moveDist > maxWarpDistance && (warpCooldownExpiresAt - Date.now() > userFleets[i].warpCooldown * 1000 * 0.3)
