@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.4
+// @version      0.7.5
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -198,6 +198,9 @@
 
 			//If refueling at the source, should transport fleets fill fuel to 100%?
 			transportFuel100: parseBoolDefault(globalSettings.transportFuel100, true),
+
+			//Should fleets always load the full ordered amount of consumables needed for operation (fuel, ammo, food)? (otherwise fractions are allowed, but a fleet may do an additional loop until it realizes there is not enough of the rss available)
+			fleetForceConsumableAmount: parseBoolDefault(globalSettings.fleetForceConsumableAmount, true),
 
 			//Valid patterns: square, ring, spiral, up, down, left, right, sly
 			scanBlockPattern: scanningPatterns.includes(globalSettings.scanBlockPattern) ? globalSettings.scanBlockPattern : 'square',
@@ -4284,6 +4287,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			transportUseAmmoBank: document.querySelector('#transportUseAmmoBank').checked,
 			transportStopOnError: document.querySelector('#transportStopOnError').checked,
 			transportFuel100: document.querySelector('#transportFuel100').checked,
+			fleetForceConsumableAmount: document.querySelector('#fleetForceConsumableAmount').checked,
 			scanBlockPattern: scanBlockPattern ? scanBlockPattern : 'square',
 			scanBlockLength: parseIntDefault(document.querySelector('#scanBlockLength').value, 5),
 			scanBlockResetAfterResupply: document.querySelector('#scanBlockResetAfterResupply').checked,
@@ -4351,6 +4355,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		document.querySelector('#transportUseAmmoBank').checked = globalSettings.transportUseAmmoBank;
 		document.querySelector('#transportStopOnError').checked = globalSettings.transportStopOnError;
 		document.querySelector('#transportFuel100').checked = globalSettings.transportFuel100;
+		document.querySelector('#fleetForceConsumableAmount').checked = globalSettings.fleetForceConsumableAmount;
 		document.querySelector('#scanBlockPattern').value = globalSettings.scanBlockPattern;
 		document.querySelector('#scanBlockLength').value = globalSettings.scanBlockLength;
 		document.querySelector('#scanBlockResetAfterResupply').checked =  globalSettings.scanBlockResetAfterResupply;
@@ -5262,7 +5267,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 						cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loading fuel`);
 						updateFleetState(userFleets[i], `Loading`);
 						let fuelCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.fuel);
-						let fuelResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, fleetFuelAcct, sageGameAcct.account.mints.fuel.toString(), fuelCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].fuelCapacity - currentFuelCnt, true, minerSupplySingleTx);
+						let fuelResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].fuelTank, fleetFuelAcct, sageGameAcct.account.mints.fuel.toString(), fuelCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].fuelCapacity - currentFuelCnt, globalSettings.fleetForceConsumableAmount, minerSupplySingleTx);
 						if (fuelResp && fuelResp.name == 'NotEnoughResource') {
 							cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough fuel`);
 							errorResource.push('fuel');
@@ -5277,7 +5282,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 						cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loading ammo`);
 						updateFleetState(userFleets[i], `Loading`);
 						let ammoCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.ammo);
-						let ammoResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].ammoBank, fleetAmmoAcct, sageGameAcct.account.mints.ammo.toString(), ammoCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].ammoCapacity - currentAmmoCnt, true, minerSupplySingleTx);
+						let ammoResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].ammoBank, fleetAmmoAcct, sageGameAcct.account.mints.ammo.toString(), ammoCargoTypeAcct, userFleets[i].starbaseCoord, userFleets[i].ammoCapacity - currentAmmoCnt, globalSettings.fleetForceConsumableAmount, minerSupplySingleTx);
 						if (ammoResp && ammoResp.name == 'NotEnoughResource') {
 							cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough ammo`);
 							errorResource.push('ammo');
@@ -5303,7 +5308,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 						cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loading food`);
 						updateFleetState(userFleets[i], `Loading`);
 						let foodCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.food);
-						let foodResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetFoodAcct, sageGameAcct.account.mints.food.toString(), foodCargoTypeAcct, userFleets[i].starbaseCoord, foodForDuration - currentFoodCnt, true, minerSupplySingleTx);
+						let foodResp = await execCargoFromStarbaseToFleet(userFleets[i], userFleets[i].cargoHold, fleetFoodAcct, sageGameAcct.account.mints.food.toString(), foodCargoTypeAcct, userFleets[i].starbaseCoord, foodForDuration - currentFoodCnt, globalSettings.fleetForceConsumableAmount, minerSupplySingleTx);
 						if (foodResp && foodResp.name == 'NotEnoughResource') {
 							cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR: Not enough food`);
 							errorResource.push('food');
@@ -5849,7 +5854,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			fuelCargoTypeAcct,
 			dockCoords,
 			amount,
-			true,
+			globalSettings.fleetForceConsumableAmount,
 			returnTx
 		);
 
@@ -7334,6 +7339,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			settingsModalContentString += '<div>Fleets leave 1 resource in starbases <input id="starbaseKeep1" type="checkbox"></input><br><small>Same as previous option but for starbases.</small></div>';
 			settingsModalContentString += '<div>Transports: Bundled instructions <input id="transportLoadUnloadSingleTx" type="checkbox"></input><br><small>Transports try to do the dock/unload/load/undock sequence in as few transactions as possible.</small></div>';
 			settingsModalContentString += '<div>Miners: Bundled instructions <input id="minerSupplySingleTx" type="checkbox"></input><br><small>The same, but for miners. If enabled, it may be necessary to set "Minimum priority fee for multi-ix transactions".</small></div>';
+			settingsModalContentString += '<div>Force amounts for consumables <input id="fleetForceConsumableAmount" type="checkbox"></input><br><small>Should fleets always try to load the full ordered amount of consumables needed for operation (fuel, ammo, food)? (otherwise fractions are allowed, but a fleet may do an additional loop until it realizes there is not enough of the consumable available for e.g. mining or warping)</small></div>';
 			settingsModalContentString += '<div>Exclude fleets:<br><textarea id="excludeFleets" cols="40" rows="6"></textarea><br><small>Fleets that should be ignored<br>(one fleet name per line, case sensivity, reload required)</small></div>';
 			settingsModalContentString += '</li>';
 			settingsModalContentString += '<li class="tab_advanced">';
