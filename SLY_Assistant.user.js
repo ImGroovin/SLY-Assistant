@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.5
+// @version      0.7.6
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -158,6 +158,7 @@
 			transportKeep1: parseBoolDefault(globalSettings.transportKeep1, false),
 			transportLoadUnloadSingleTx: parseBoolDefault(globalSettings.transportLoadUnloadSingleTx, false),
 			transportUnloadsUnknownRSS: parseBoolDefault(globalSettings.transportUnloadsUnknownRSS, false),
+			minerUnloadsAll: parseBoolDefault(globalSettings.minerUnloadsAll, false),
 			minerSupplySingleTx: parseBoolDefault(globalSettings.minerSupplySingleTx, false),
 			minerKeep1: parseBoolDefault(globalSettings.minerKeep1, false),
 			starbaseKeep1: parseBoolDefault(globalSettings.starbaseKeep1, false),
@@ -4264,6 +4265,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			transportKeep1: document.querySelector('#transportKeep1').checked,
 			transportLoadUnloadSingleTx: document.querySelector('#transportLoadUnloadSingleTx').checked,
 			transportUnloadsUnknownRSS: document.querySelector('#transportUnloadsUnknownRSS').checked,
+			minerUnloadsAll: document.querySelector('#minerUnloadsAll').checked,
 			minerSupplySingleTx: document.querySelector('#minerSupplySingleTx').checked,			
 			minerKeep1: document.querySelector('#minerKeep1').checked,
 			starbaseKeep1: document.querySelector('#starbaseKeep1').checked,
@@ -4333,6 +4335,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		document.querySelector('#transportKeep1').checked = globalSettings.transportKeep1;
 		document.querySelector('#transportLoadUnloadSingleTx').checked = globalSettings.transportLoadUnloadSingleTx;
 		document.querySelector('#transportUnloadsUnknownRSS').checked = globalSettings.transportUnloadsUnknownRSS;
+		document.querySelector('#minerUnloadsAll').checked = globalSettings.minerUnloadsAll;
 		document.querySelector('#minerSupplySingleTx').checked = globalSettings.minerSupplySingleTx;
 		document.querySelector('#minerKeep1').checked = globalSettings.minerKeep1;
 		document.querySelector('#starbaseKeep1').checked = globalSettings.starbaseKeep1;
@@ -5148,6 +5151,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		let fleetFuelAcct = currentFuel ? currentFuel.pubkey : fleetFuelToken;
 		let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
 		let fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
+		//todo: cargoCnt currently assumes that 1 rss always takes 1 of the cargo room
 		let cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
 		let currentFood = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.food.toString());
 		let fleetFoodAcct = currentFood ? currentFood.pubkey : fleetFoodToken;
@@ -5251,15 +5255,35 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					//await execDock(userFleets[i], userFleets[i].starbaseCoord);
 					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading resource`);
 					updateFleetState(userFleets[i], `Unloading`);
-					//if (currentResourceCnt > 0) {
-					let unloadAmount = currentResourceCnt;
-					if(globalSettings.minerKeep1 && unloadAmount > 0) { unloadAmount -= 1; }
-					if (unloadAmount > 0) {
-						resp = await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, userFleets[i].mineResource, userFleets[i].starbaseCoord, unloadAmount, minerSupplySingleTx);
-						if(minerSupplySingleTx && resp) {
-							transactions.push(resp);
-						}															
-						//await wait(2000);
+
+					let unloadAmount = 0;
+					if(globalSettings.minerUnloadsAll) {
+						for(let currentRes of fleetCurrentCargo.value) {
+							
+							// don't unload food
+							if(currentRes.account.data.parsed.info.mint === sageGameAcct.account.mints.food.toString()) continue;
+							
+							let amountToUnload = currentRes.account.data.parsed.info.tokenAmount.uiAmount;
+							if(globalSettings.minerKeep1 && amountToUnload > 0) { amountToUnload -= 1; }
+							if (amountToUnload > 0) {
+								resp = await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, currentRes.account.data.parsed.info.mint, userFleets[i].starbaseCoord, amountToUnload, minerSupplySingleTx);
+								if(minerSupplySingleTx && resp) {
+									transactions.push(resp);
+								}
+								unloadAmount += amountToUnload;						
+							}
+						}
+					}
+					else {						
+						unloadAmount = currentResourceCnt;
+						if(globalSettings.minerKeep1 && unloadAmount > 0) { unloadAmount -= 1; }
+						if (unloadAmount > 0) {
+							resp = await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, userFleets[i].mineResource, userFleets[i].starbaseCoord, unloadAmount, minerSupplySingleTx);
+							if(minerSupplySingleTx && resp) {
+								transactions.push(resp);
+							}															
+							//await wait(2000);
+						}
 					}
 
 					//if (currentFuelCnt < userFleets[i].fuelCapacity) {
@@ -7335,6 +7359,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			settingsModalContentString += '<div>Fuel to 100% for transports <input id="transportFuel100" type="checkbox"></input><br><small>If a refuel is needed at the source, should transport fleets fill fuel to 100%? Can save a lot of transactions (depends on the tank size of the fleet).</small></div>';
 			settingsModalContentString += '<div>Transports unload unknown RSS <input id="transportUnloadsUnknownRSS" type="checkbox"></input><br><small>If a transport has unknown cargo (not part of the starbase or destination transport orders), unload it at the current starbase.</small></div>';
 			settingsModalContentString += '<div>Transports keep 1 resource <input id="transportKeep1" type="checkbox"></input><br><small>If unloading a resource, should transport fleets keep 1 resource to save a CreatePDA transaction when loading it again? It will tie up some Sol (for the account rent), but it will save a lot of transactions (and you can get back the Sol as soon as you wish).</small></div>';
+			settingsModalContentString += '<div>Miners unload all cargo <input id="minerUnloadsAll" type="checkbox"></input><br><small>Miners always unload ALL resources from the cargo room at the starbase (exception: food).</small></div>';
 			settingsModalContentString += '<div>Miners keep 1 resource <input id="minerKeep1" type="checkbox"></input><br><small>Same as previous option but for miners. Also load 1 food more, so the food token account is not closed, too.</small></div>';
 			settingsModalContentString += '<div>Fleets leave 1 resource in starbases <input id="starbaseKeep1" type="checkbox"></input><br><small>Same as previous option but for starbases.</small></div>';
 			settingsModalContentString += '<div>Transports: Bundled instructions <input id="transportLoadUnloadSingleTx" type="checkbox"></input><br><small>Transports try to do the dock/unload/load/undock sequence in as few transactions as possible.</small></div>';
