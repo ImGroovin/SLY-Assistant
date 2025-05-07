@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.7
+// @version      0.7.8
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -4882,7 +4882,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
             let newState;
 			if (needPause) {
-				userFleets[i].scanEnd = Date.now() + (globalSettings.scanPauseTime * 1000);
+				//userFleets[i].scanEnd = Date.now() + (globalSettings.scanPauseTime * 1000);
+				userFleets[i].scanEnd = Date.now() + Math.max(globalSettings.scanPauseTime * 1000, userFleets[i].scanCooldown * 1000 + 2000);				
 				//userFleets[i].state = `Scanning Paused [${TimeToStr(new Date(userFleets[i].scanEnd))}]`;
                 newState = `Scanning Paused [${TimeToStr(new Date(userFleets[i].scanEnd))}]`;
 				cLog(1,`${FleetTimeStamp(userFleets[i].label)} Scanning Paused due to low probability [${TimeToStr(new Date(userFleets[i].scanEnd))}]`);
