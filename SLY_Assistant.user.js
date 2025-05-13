@@ -6781,8 +6781,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 			if(fleetParsedData.assignment) updateFleetState(userFleets[i], 'Starting');
 
-			//Stagger fleet starts by 500ms to avoid overloading the RPC
-			setTimeout(() => { startFleet(i);	}, 500 * (i + 1));
+			//Stagger fleet starts by 1000ms to avoid overloading the RPC
+			setTimeout(() => { startFleet(i);	}, 1000 * (i + 1));
 		}
 
         for (let i=1; i < globalSettings.craftingJobs+1; i++) {
