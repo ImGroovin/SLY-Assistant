@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.11
+// @version      0.7.12
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -6577,7 +6577,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 	                        } else if (userCraft.craftingId && craftingProcess.account.craftingId.toNumber() == userCraft.craftingId) {
 	                            let craftRecipe = craftRecipes.find(item => item.publicKey.toString() === craftingProcess.account.recipe.toString());
 	                            let calcEndTime = Math.max(craftingProcess.account.endTime.toNumber() - craftTime.starbaseTime, 0);
-	                            let adjustedEndTime = craftTime.resRemaining > 0 ? calcEndTime : (calcEndTime) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level];
+	                            //let adjustedEndTime = craftTime.resRemaining > 0 ? calcEndTime : (calcEndTime) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level];
+	                            let adjustedEndTime = (calcEndTime) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level];
 	                            //let craftTimeStr = 'Crafting [' + TimeToStr(new Date(Date.now() + adjustedEndTime * 1000)) + ']';
 	                            let craftTimeStr = "&#9874; " + craftRecipe.name + (userCraft.item!=craftRecipe.name?' ('+userCraft.item+')':'') + ' [' + TimeToStr(new Date(Date.now() + adjustedEndTime * 1000)) + ']';
 	                            updateFleetState(userCraft, craftTimeStr);
@@ -6737,7 +6738,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                             let craftDuration = (targetRecipe.craftRecipe.duration * craftAmount) / userCraft.crew;
                             let calcEndTime = TimeToStr(new Date(Date.now() + craftDuration * 1000));
                             let upgradeTimeStr = upgradeTime.resRemaining > 0 ? calcEndTime : 'Paused';
-                            let craftTimeStr = craftTime.resRemaining > 0 ? calcEndTime : TimeToStr(new Date(Date.now() + ((craftDuration * 1000) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level])));
+                            //let craftTimeStr = craftTime.resRemaining > 0 ? calcEndTime : TimeToStr(new Date(Date.now() + ((craftDuration * 1000) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level])));
+                            let craftTimeStr = TimeToStr(new Date(Date.now() + ((craftDuration * 1000) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level])));
                             let activityTimeStr = activityType == 'Crafting' ? craftTimeStr : upgradeTimeStr;
                             //updateFleetState(userCraft, activityType + ' [' + activityTimeStr + ']');
                             updateFleetState(userCraft, activityInfo + ' [' + activityTimeStr + ']');
