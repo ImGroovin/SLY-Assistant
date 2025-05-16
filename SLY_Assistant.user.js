@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.12
+// @version      0.7.13
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -6467,8 +6467,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         const resRemainingLocalTimeDiffMin = resRemainingLocalTimeDiff < 0 ? 0 : resRemainingLocalTimeDiff;
         const minUpkeepTimeRemaining = Math.min(localUpkeepTimeRemaining, upkeepTimeRemaining);
         const emptyAdjustment = minUpkeepTimeRemaining == upkeepTimeRemaining ? (timeSinceGlobalUpdate - minUpkeepTimeRemaining) * EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level] : 0;
-        //let starbaseTime = activity === 'Craft' ? lastLocalUpdate + localUpkeepTimeRemaining + emptyAdjustment : lastLocalUpdate + localUpkeepTimeRemaining;
-        let starbaseTime = activity === 'Craft' ? lastLocalUpdate + timeSinceGlobalUpdate * EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level] : lastLocalUpdate + localUpkeepTimeRemaining;
+        let starbaseTime = activity === 'Craft' ? lastLocalUpdate + localUpkeepTimeRemaining + emptyAdjustment : lastLocalUpdate + localUpkeepTimeRemaining;
+        //let starbaseTime = activity === 'Craft' ? lastLocalUpdate + timeSinceGlobalUpdate * EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level] : lastLocalUpdate + localUpkeepTimeRemaining;
         return {starbaseTime: starbaseTime, resRemaining: resRemainingLocalTimeDiffMin};
     }
 
@@ -6579,8 +6579,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 	                            let calcEndTime = Math.max(craftingProcess.account.endTime.toNumber() - craftTime.starbaseTime, 0);
 	                            //let adjustedEndTime = craftTime.resRemaining > 0 ? calcEndTime : (calcEndTime) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level];
 	                            let adjustedEndTime = (calcEndTime) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level];
-	                            //let craftTimeStr = 'Crafting [' + TimeToStr(new Date(Date.now() + adjustedEndTime * 1000)) + ']';
-	                            let craftTimeStr = "&#9874; " + craftRecipe.name + (userCraft.item!=craftRecipe.name?' ('+userCraft.item+')':'') + ' [' + TimeToStr(new Date(Date.now() + adjustedEndTime * 1000)) + ']';
+	                            let craftTimeStr = 'Crafting [' + TimeToStr(new Date(Date.now() + adjustedEndTime * 1000)) + ']';
+	                            //let craftTimeStr = "&#9874; " + craftRecipe.name + (userCraft.item!=craftRecipe.name?' ('+userCraft.item+')':'') + ' [' + TimeToStr(new Date(Date.now() + adjustedEndTime * 1000)) + ']';
 	                            updateFleetState(userCraft, craftTimeStr);
 	                            await updateCraft(userCraft);
 	                            //update less frequently if we have a long-running crafting task (3 minutes if remaining time >12 minutes, 2 minutes if remaining time >8 minutes), update faster if <60 seconds left
@@ -6738,8 +6738,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                             let craftDuration = (targetRecipe.craftRecipe.duration * craftAmount) / userCraft.crew;
                             let calcEndTime = TimeToStr(new Date(Date.now() + craftDuration * 1000));
                             let upgradeTimeStr = upgradeTime.resRemaining > 0 ? calcEndTime : 'Paused';
-                            //let craftTimeStr = craftTime.resRemaining > 0 ? calcEndTime : TimeToStr(new Date(Date.now() + ((craftDuration * 1000) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level])));
-                            let craftTimeStr = TimeToStr(new Date(Date.now() + ((craftDuration * 1000) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level])));
+                            let craftTimeStr = craftTime.resRemaining > 0 ? calcEndTime : TimeToStr(new Date(Date.now() + ((craftDuration * 1000) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level])));
+                            //let craftTimeStr = TimeToStr(new Date(Date.now() + ((craftDuration * 1000) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level])));
                             let activityTimeStr = activityType == 'Crafting' ? craftTimeStr : upgradeTimeStr;
                             //updateFleetState(userCraft, activityType + ' [' + activityTimeStr + ']');
                             updateFleetState(userCraft, activityInfo + ' [' + activityTimeStr + ']');
