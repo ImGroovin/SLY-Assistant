@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.10
+// @version      0.7.11
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -6441,8 +6441,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
     }
 
     async function getStarbaseTime(starbase, activity) {
-        //const EMPTY_CRAFTING_SPEED_PER_TIER = [0, .2, .275, .35, .425, .5, .5];
-	const EMPTY_CRAFTING_SPEED_PER_TIER = [0, 1, 1, 1, 1, 1, 1];
+        const EMPTY_CRAFTING_SPEED_PER_TIER = [0, .2, .275, .35, .425, .5, .5];
+	//const EMPTY_CRAFTING_SPEED_PER_TIER = [0, 1, 1, 1, 1, 1, 1];
         let currTime = Date.now() / 1000;
         let gameStateAcct = await sageProgram.account.gameState.fetch(sageGameAcct.account.gameState);
         let sbLevel = gameStateAcct.fleet.upkeep['level' + starbase.account.level];
@@ -6467,7 +6467,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         const resRemainingLocalTimeDiffMin = resRemainingLocalTimeDiff < 0 ? 0 : resRemainingLocalTimeDiff;
         const minUpkeepTimeRemaining = Math.min(localUpkeepTimeRemaining, upkeepTimeRemaining);
         const emptyAdjustment = minUpkeepTimeRemaining == upkeepTimeRemaining ? (timeSinceGlobalUpdate - minUpkeepTimeRemaining) * EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level] : 0;
-        let starbaseTime = activity === 'Craft' ? lastLocalUpdate + localUpkeepTimeRemaining + emptyAdjustment : lastLocalUpdate + localUpkeepTimeRemaining;
+        //let starbaseTime = activity === 'Craft' ? lastLocalUpdate + localUpkeepTimeRemaining + emptyAdjustment : lastLocalUpdate + localUpkeepTimeRemaining;
+        let starbaseTime = activity === 'Craft' ? lastLocalUpdate + timeSinceGlobalUpdate * EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level] : lastLocalUpdate + localUpkeepTimeRemaining;
         return {starbaseTime: starbaseTime, resRemaining: resRemainingLocalTimeDiffMin};
     }
 
@@ -6484,8 +6485,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         if (!enableAssistant) return;
 	let localTimeout = 60000;
         try {
-            //const EMPTY_CRAFTING_SPEED_PER_TIER = [0, .2, .275, .35, .425, .5, .5];
-            const EMPTY_CRAFTING_SPEED_PER_TIER = [0, 1, 1, 1, 1, 1, 1];
+            const EMPTY_CRAFTING_SPEED_PER_TIER = [0, .2, .275, .35, .425, .5, .5];
+            //const EMPTY_CRAFTING_SPEED_PER_TIER = [0, 1, 1, 1, 1, 1, 1];
             let craftSavedData = await GM.getValue(userCraft.label, '{}');
             let craftParsedData = JSON.parse(craftSavedData);
             userCraft = craftParsedData;
