@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.13
+// @version      0.7.14
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -6577,10 +6577,10 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 	                        } else if (userCraft.craftingId && craftingProcess.account.craftingId.toNumber() == userCraft.craftingId) {
 	                            let craftRecipe = craftRecipes.find(item => item.publicKey.toString() === craftingProcess.account.recipe.toString());
 	                            let calcEndTime = Math.max(craftingProcess.account.endTime.toNumber() - craftTime.starbaseTime, 0);
-	                            //let adjustedEndTime = craftTime.resRemaining > 0 ? calcEndTime : (calcEndTime) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level];
-	                            let adjustedEndTime = (calcEndTime) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level];
-	                            let craftTimeStr = 'Crafting [' + TimeToStr(new Date(Date.now() + adjustedEndTime * 1000)) + ']';
-	                            //let craftTimeStr = "&#9874; " + craftRecipe.name + (userCraft.item!=craftRecipe.name?' ('+userCraft.item+')':'') + ' [' + TimeToStr(new Date(Date.now() + adjustedEndTime * 1000)) + ']';
+	                            let adjustedEndTime = craftTime.resRemaining > 0 ? calcEndTime : (calcEndTime) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level];
+	                            //let adjustedEndTime = (calcEndTime) / EMPTY_CRAFTING_SPEED_PER_TIER[starbase.account.level];
+	                            //let craftTimeStr = 'Crafting [' + TimeToStr(new Date(Date.now() + adjustedEndTime * 1000)) + ']';
+	                            let craftTimeStr = "&#9874; " + craftRecipe.name + (userCraft.item!=craftRecipe.name?' ('+userCraft.item+')':'') + ' [' + TimeToStr(new Date(Date.now() + adjustedEndTime * 1000)) + ']';
 	                            updateFleetState(userCraft, craftTimeStr);
 	                            await updateCraft(userCraft);
 	                            //update less frequently if we have a long-running crafting task (3 minutes if remaining time >12 minutes, 2 minutes if remaining time >8 minutes), update faster if <60 seconds left
