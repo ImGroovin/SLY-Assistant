@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.14
+// @version      0.7.15
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -2209,7 +2209,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		await getAccountInfo(fleet.label, 'fleet fuel token', fleet.fuelToken) || await createPDA(fleet.fuelToken, fleet.fuelTank, new solanaWeb3.PublicKey(fuelItem.token), fleet);
 	}
 
-	async function execCargoFromStarbaseToFleet(fleet, cargoPodTo, tokenTo, tokenMint, cargoType, dockCoords, amount, forceAmount, returnTx) {
+	async function execCargoFromStarbaseToFleet(fleet, cargoPodTo, tokenTo, tokenMint, cargoType, dockCoords, amount, forceAmount, returnTx, alreadyLoadedInTransaction) {
 		return new Promise(async resolve => {
 			let txResult = {};
 			let starbaseX = dockCoords.split(',')[0].trim();
@@ -2243,6 +2243,11 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                     }
                 }
             }
+
+			if(alreadyLoadedInTransaction) {
+				mostFound = Math.max(mostFound - alreadyLoadedInTransaction, 0);
+			}
+
 			//amount = amount > mostFound ? mostFound : amount;
 			let orgAmount = amount;
 			if(globalSettings.starbaseKeep1) {
@@ -5727,6 +5732,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                     let fuelIndex = targetCargoManifest.findIndex(e => e.res === sageGameAcct.account.mints.fuel.toString());
                     if (fuelIndex > -1) {
                         targetCargoManifest[fuelIndex].amt = targetCargoManifest[fuelIndex].amt - refuelResp.amount;
+                        //when using a combined load tx, we need to take into account the amount loaded into the fuel tank, because the starbase still reports the original amount (otherwise we may get an ix error instead a "NotEnoughResource" error)
+                        targetCargoManifest[fuelIndex].alreadyLoadedInTransaction = refuelResp.amount;
                     }
 
                     //Loading at Starbase
@@ -6104,6 +6111,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		let ammoLoadingIntoAmmoBank = ammoEntry ? (resp = await execLoadFleetAmmo(userFleets[i], starbaseCoords, ammoEntry.amt, returnTx)).amountLoaded : 0;
 		if(returnTx && resp && resp.transaction) {
 			transactions.push(resp.transaction);
+			//when using a combined load tx, we need to take into account the amount loaded into the fuel tank, because the starbase still reports the original amount (otherwise we may get an ix error instead a "NotEnoughResource" error)
+			ammoEntry.alreadyLoadedInTransaction = ammoLoadingIntoAmmoBank;
 		}
 
         //Calculate remaining free cargo space
@@ -6152,7 +6161,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 						starbaseCoords,
 						resMax,
 						false,
-						returnTx
+						returnTx,
+						((returnTx && entry.alreadyLoadedInTransaction) ? entry.alreadyLoadedInTransaction : 0)
 					);
                     cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loaded ${resp.amount} ${entry.res}: `, resp);
                     cargoSpace -= resp && resp.amount ? cargoItems.find(r => r.token == entry.res).size * resp.amount : 0;
