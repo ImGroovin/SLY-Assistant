@@ -5733,7 +5733,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                     if (fuelIndex > -1) {
                         targetCargoManifest[fuelIndex].amt = targetCargoManifest[fuelIndex].amt - refuelResp.amount;
                         //when using a combined load tx, we need to take into account the amount loaded into the fuel tank, because the starbase still reports the original amount (otherwise we may get an ix error instead a "NotEnoughResource" error)
-                        targetCargoManifest[fuelIndex].alreadyLoadedInTransaction = refuelResp.amount;
+                        if(transportLoadUnloadSingleTx && refuelResp.alreadyLoaded) targetCargoManifest[fuelIndex].alreadyLoadedInTransaction = refuelResp.alreadyLoaded;
                     }
 
                     //Loading at Starbase
@@ -5982,6 +5982,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		cLog(2, `${FleetTimeStamp(fleet.label)} Extra Fuel: ${extraFuel}`);
 
 		let transactions = [];
+		let alreadyLoaded=0;
 
 		//Unload extra fuel from tank
 		if(amountToDropOff > 0) {
@@ -5989,6 +5990,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			if (fuelToUnload > 0) {
 				cLog(1,`${FleetTimeStamp(fleet.label)} Unloading extra fuel: ${fuelToUnload}`);
 				let resp = await execCargoFromFleetToStarbase(fleet, fleet.fuelTank, sageGameAcct.account.mints.fuel.toString(), starbaseCoord, fuelToUnload, returnTx);
+				alreadyLoaded -= fuelToUnload;
 				if(returnTx && resp) {
 					transactions.push(resp);
 				}
@@ -5998,6 +6000,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		//Calculate amount of fuel to add to the tank
         const totalFuel = fuelData.fuelNeeded + fuelEntry.amt;
 		let fuelToAdd = Math.min(fuelData.capacity, totalFuel) - fuelData.amount;
+		fuelResp.alreadyLoaded = alreadyLoaded;
 
 		//Bail if already has enough
 		if (fuelToAdd <= 0) {
@@ -6021,6 +6024,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		} else {
             fuelResp.status = 1;
             fuelResp.amount = fuelData.amount + fuelToAdd - fuelData.fuelNeeded;
+            alreadyLoaded += fuelToAdd;
+            fuelResp.alreadyLoaded = alreadyLoaded;
             if(returnTx && execResp.tx) {
 		transactions.push(execResp.tx);
             }
