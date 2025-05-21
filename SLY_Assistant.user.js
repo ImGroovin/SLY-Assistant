@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.16
+// @version      0.7.17
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -2777,7 +2777,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                 }).remainingAccounts(startCraftProcRemainingAccts).instruction()}
             transactions.push(tx2);
 
-            let txResult = {craftingId: formattedRandomBytes, result: await txSignAndSend(transactions, userCraft, 'START CRAFTING', Math.min(globalSettings.craftingTxMultiplier, 500) )};
+            //let txResult = {craftingId: formattedRandomBytes, result: await txSignAndSend(transactions, userCraft, 'START CRAFTING', Math.min(globalSettings.craftingTxMultiplier, 500) )};
+            let txResult = {craftingId: formattedRandomBytes, result: await txSliceAndSend(transactions, userCraft, 'START CRAFTING', Math.min(globalSettings.craftingTxMultiplier, 500), 6 )};
 
             // statsadd start
             let postTokenBalances = txResult.result.meta.postTokenBalances;
@@ -2967,7 +2968,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
             transactions.push(tx2);
 
             //let txResult = await txSignAndSend(tx2, userCraft, 'COMPLETING CRAFT TX2');
-            let txResult = await txSignAndSend(transactions, userCraft, 'COMPLETING CRAFT', Math.min(globalSettings.craftingTxMultiplier, 500) );
+            //let txResult = await txSignAndSend(transactions, userCraft, 'COMPLETING CRAFT', Math.min(globalSettings.craftingTxMultiplier, 500) );
+            let txResult = await txSliceAndSend(transactions, userCraft, 'COMPLETING CRAFT', Math.min(globalSettings.craftingTxMultiplier, 500), 6); 
 
             // Allow RPC to catch up (to be sure the crew is available before starting the next job)
             await wait(4000);
@@ -6075,7 +6077,12 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			}).compileToV0Message(addressLookupTables);
 			let tx = new solanaWeb3.VersionedTransaction(messageV0);
 			//if (extraSigner) tx.sign([extraSigner]);
-			let txSize = tx.serialize().length;
+			let txSize = 9999;
+			try {
+				txSize = tx.serialize().length;
+			} catch (err) {
+				// couldn't serialize due to "RangeError: encoding overruns Uint8Array", so we reached the limit, txSize is still 9999 now and we will use the tx from the previous loop
+			}
 						
 			// check the size (use 1216 as max size instead of 1232, just to be sure, so we have 16 bytes of free space)
 			// the first ix should always fit into a tx
@@ -6099,6 +6106,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				txResult = await txSignAndSend(transactionsSlice[0], fleet, opName, priorityFeeMultiplier );
 			else
 				txResult = await txSignAndSend(transactionsSlice, fleet, opName, priorityFeeMultiplier );
+			if(fleet.state.includes('ERROR')) break;
 		}
 		return txResult;
 	}		
