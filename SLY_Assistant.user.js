@@ -2245,7 +2245,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
             }
 
 			if(alreadyLoadedInTransaction) {
-				mostFound = Math.max(mostFound - alreadyLoadedInTransaction, 0);
+				mostFound = mostFound - alreadyLoadedInTransaction;
 			}
 
 			//amount = amount > mostFound ? mostFound : amount;
