@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.15
+// @version      0.7.16
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -6035,6 +6035,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		return fuelResp
 	}
 
+	/*
 	async function txSliceAndSend(transactions, fleet, opName, priorityFeeMultiplier, maxInstructionsPerTx) {
 		let txResult;
 		for (let chunk = 0; chunk < transactions.length; chunk += maxInstructionsPerTx) {
@@ -6046,6 +6047,61 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		}
 		return txResult;
 	}
+ 	*/
+
+	//new approach: squeeze as much as possible into a transaction by calculating the exact tx sizes, only make another tx if the max tx size is exceeded
+	async function txSliceAndSend(transactions, fleet, opName, priorityFeeMultiplier, maxInstructionsPerTx) {
+		// TODO: maxInstructionsPerTx is not longer used, remove later
+		let txResult;
+		let curPos=0;
+		let curSize=1;
+		let lastBlock=null;
+		let allTxSlices=[];
+		
+		while(curPos+curSize <= transactions.length) {
+			
+			let instructions = [];
+			const priorityFee = 5;
+			let curBlock = transactions.slice(curPos, curPos + curSize);
+			
+			instructions.push(solanaWeb3.ComputeBudgetProgram.setComputeUnitPrice({microLamports: priorityFee}));
+			curBlock.forEach(item => instructions.push(item.instruction))
+			
+			let latestBH = 'EkSnNWid2cvwEVnVx9aBqawnmiCNiDgp3gUdkDPTKN1N'; //dummy block hash
+			let messageV0 = new solanaWeb3.TransactionMessage({
+				payerKey: userPublicKey,
+				recentBlockhash: latestBH,
+				instructions,
+			}).compileToV0Message(addressLookupTables);
+			let tx = new solanaWeb3.VersionedTransaction(messageV0);
+			//if (extraSigner) tx.sign([extraSigner]);
+			let txSize = tx.serialize().length;
+						
+			// check the size (use 1216 as max size instead of 1232, just to be sure, so we have 16 bytes of free space)
+			// the first ix should always fit into a tx
+			if(curSize > 1 && txSize > 1216) {
+				allTxSlices.push(lastBlock);
+				lastBlock = null;
+				curPos += curSize - 1;
+				curSize = 1;
+			} else {
+				curSize += 1;
+			}
+			
+			lastBlock = curBlock;
+		}
+		if(lastBlock) {
+			allTxSlices.push(lastBlock);
+		}
+		
+		for (const transactionsSlice of allTxSlices) {
+			if(transactionsSlice.length == 1)
+				txResult = await txSignAndSend(transactionsSlice[0], fleet, opName, priorityFeeMultiplier );
+			else
+				txResult = await txSignAndSend(transactionsSlice, fleet, opName, priorityFeeMultiplier );
+		}
+		return txResult;
+	}		
 
 	async function handleTransportUnloading(fleet, starbaseCoord, transportManifest, returnTx) {
 		cLog(1,`${FleetTimeStamp(fleet.label)} 🚚 Unloading Transport`);
