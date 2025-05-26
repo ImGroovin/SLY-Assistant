@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.17
+// @version      0.7.18
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -477,13 +477,17 @@
 
 	let sageProgram = new BrowserAnchor.anchor.Program(sageIDL, sageProgramPK, anchorProvider);
 	let [sageGameAcct] = await sageProgram.account.game.all();
+	let cargoStatsDefinitionAcctPK = sageGameAcct.account.cargo.statsDefinition;
 	let [sageSDUTrackerAcct] = await sageProgram.account.surveyDataUnitTracker.all();
 	let profileProgram = new BrowserAnchor.anchor.Program(profileIDL, profileProgramPK, anchorProvider);
     let pointsProgram = new BrowserAnchor.anchor.Program(pointsIDL, pointsProgramId, anchorProvider);
     let pointsStoreProgram = new BrowserAnchor.anchor.Program(pointsStoreIDL, pointsStoreProgramId, anchorProvider);
     let craftingProgram = new BrowserAnchor.anchor.Program(craftingIDL, craftingProgramPK, anchorProvider);
 	let cargoProgram = new BrowserAnchor.anchor.Program(cargoIDL, cargoProgramPK, anchorProvider);
-	let [cargoStatsDefinitionAcct] = await cargoProgram.account.cargoStatsDefinition.all();
+	//let [cargoStatsDefinitionAcct] = await cargoProgram.account.cargoStatsDefinition.all();
+	let cargoStatsDefinitionAccts = await cargoProgram.account.cargoStatsDefinition.all();
+	//we need to select the correct account:
+	let cargoStatsDefinitionAcct = cargoStatsDefinitionAccts.find(item => item.publicKey.toString() === cargoStatsDefinitionAcctPK.toString());	
 	let cargoStatsDefSeqId = cargoStatsDefinitionAcct.account.seqId;
 	let seqBN = new BrowserAnchor.anchor.BN(cargoStatsDefSeqId);
 	let seqArr = seqBN.toTwos(64).toArrayLike(BrowserBuffer.Buffer.Buffer, "be", 2);
@@ -498,9 +502,15 @@
 	const cargoTypes = await cargoProgram.account.cargoType.all([
 			{
 				 memcmp: {
-						 offset: 75,
+						 offset: 108,//75,
 							bytes: seq58,
 					},
+			},
+			{
+				memcmp: {
+					offset: 9,
+					bytes: cargoStatsDefinitionAcct.publicKey.toBase58()
+				}
 			},
 	]);
 
@@ -659,7 +669,7 @@
 	// 100 is the max data size of getMultipleAccountsInfo
 	for (let i = 0; i < publicKeys.length; i += 100) {
 		let publicKeysSlice = publicKeys.slice(i, i + 100);
-		let cargoTypeAccts = await solanaReadConnection.getMultipleAccountsInfo(publicKeys);
+		let cargoTypeAccts = await solanaReadConnection.getMultipleAccountsInfo(publicKeysSlice);
 		for(let j=0; j < cargoTypeAccts.length; j++) {
 			let cargoTypeDataExtra = cargoTypeAccts[j].data.subarray(110);
 			let cargoTypeDataExtraBuff = BrowserBuffer.Buffer.Buffer.from(cargoTypeDataExtra);
@@ -689,7 +699,18 @@
     }
 
     async function getCraftRecipes() {
-        const allCraftCategories = await craftingProgram.account.recipeCategory.all();
+        let craftingDomain = sageGameAcct.account.crafting.domain;
+        //const allCraftCategories = await craftingProgram.account.recipeCategory.all();
+	//we need to select the correct craftingDomain:
+        const allCraftCategories = await craftingProgram.account.recipeCategory.all([
+			{
+				memcmp: {
+					offset: 9,
+					bytes: craftingDomain.toBase58(),
+				},
+			},
+        
+        ]);
         let upgradeCategory = allCraftCategories.find(item => (new TextDecoder().decode(new Uint8Array(item.account.namespace)).replace(/\0/g, '')) === 'Upgrade');
 
         let statusBN = new BrowserAnchor.anchor.BN(2);
@@ -702,6 +723,13 @@
                     bytes: status58,
                 },
             },
+            //we only select the recipes for the correct crafting domain
+            {
+		memcmp: {
+			offset: 9,
+			bytes: craftingDomain.toBase58(),
+		},
+            },
         ]);
 
 	let publicKeys = [];
@@ -712,7 +740,7 @@
 	// 100 is the max data size of getMultipleAccountsInfo
 	for (let i = 0; i < publicKeys.length; i += 100) {
 		let publicKeysSlice = publicKeys.slice(i, i + 100);
-		let recipeAcctInfos = await solanaReadConnection.getMultipleAccountsInfo(publicKeys);
+		let recipeAcctInfos = await solanaReadConnection.getMultipleAccountsInfo(publicKeysSlice);
 		for(let j=0; j < recipeAcctInfos.length; j++) {
 			recipeDatas[i + j] = recipeAcctInfos[j].data.subarray(223);
 		}
@@ -791,7 +819,7 @@
                 ],
                 pointsProgramId
             );
-
+            /*
             let [pointsModifierAccount] = await pointsProgram.account.pointsModifier.all([
                 {
                     memcmp: {
@@ -800,12 +828,21 @@
                     },
                 },
             ]);
-
             userXpAccounts[userXpAccountGroup] = {
                 userPointsAccount: userXpAccount,
                 pointsCategory: xpCategory,
                 pointsModifierAccount: pointsModifierAccount.publicKey
             }
+	    */
+		
+            let sageGamePointsCategory = Object.values(sageGameAcct.account.points).find(item => item.category.toString() == xpCategory.toString());
+
+            userXpAccounts[userXpAccountGroup] = {
+                userPointsAccount: userXpAccount,
+                pointsCategory: xpCategory,
+                pointsModifierAccount: sageGamePointsCategory.modifier
+            }
+
             resolve(userXpAccounts[userXpAccountGroup]);
         });
     }
@@ -916,7 +953,7 @@
 		return bestCoords;
 	}
 
-	function calcWarpFuelReq(fleet, startCoords, endCoords) {
+	function calcWarpFuelReq(fleet, startCoords, endCoords, warpSubwarp) {
 		if(!CoordsValid(startCoords) || !CoordsValid(endCoords)) {
 			cLog(4, `${FleetTimeStamp(fleet.label)} calcWarpFuelReq: Bad coords`, startCoords, endCoords);
 			return 0;
@@ -938,6 +975,11 @@
 			fuelRequired += Math.ceil(distance * (fleet.warpFuelConsumptionRate / 100));
 			curWP = nextWP;
 			jumps++;
+			if(warpSubwarp) {
+				const distToTarget = calculateMovementDistance(curWP, endCoords);
+				fuelRequired += calculateSubwarpFuelBurn(fleet, distToTarget);
+				break;
+			}
 		};
 
 		//cLog(4, `${FleetTimeStamp(fleet.label)} calcWarpFuelReq: ${fuelRequired} fuel over ${jumps} jumps`);
@@ -2800,7 +2842,17 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
             let craftRecipe = craftRecipes.find(item => item.publicKey.toString() === craftingProcess.recipe.toString());
 
-            if (craftingProcess.status == 2) {
+            // status:
+            // <2 = not ready
+            // 2 = ready
+            // 3 = at least 1 ingredient was burned, but the craftingProcess is still open			
+            if (craftingProcess.status < 2) {
+		updateFleetState(userCraft, 'ERROR: Invalid crafting state');
+		resolve({});
+		return;
+            }
+
+            //if (craftingProcess.status == 2) {
                 for (let ingredient of craftRecipe.input) {
                     let [ingredientToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
                         [
@@ -2810,7 +2862,17 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                         ],
                         programPK
                     );
-                    if (!await getAccountInfo(userCraft.label, 'Crafting ingredient token', ingredientToken)) transactions.push(await createPDA(ingredientToken, craftingProcess, ingredient.mint, userCraft, false));
+                    
+                    //we don't need to check for PDA. Also we don't need to create one.
+                    //if (!await getAccountInfo(userCraft.label, 'Crafting ingredient token', ingredientToken)) transactions.push(await createPDA(ingredientToken, craftingProcess, ingredient.mint, userCraft, false));
+
+                    // input Checksum has a bit for each ingredient.
+                    // so if we have 3 ingredients, the initial value is 1+2+4=7
+                    // when we claim the ingredient with index 1, the checksum is 1+4=5 now
+                    // we need to make sure it works with more than 8 ingredients
+                    const bitValue = craftingProcess.inputsChecksum[0] + craftingProcess.inputsChecksum[1] * 256;
+                    const ingredientBurned = ((bitValue >> ingredient.idx) & 1) == 0;
+                    if(ingredientBurned) { cLog(1,`${FleetTimeStamp(userCraft.label)} Ingredient`, ingredient.idx, `was already burned, skipping ...`); continue; }
 
                     let tx = { instruction: await sageProgram.methods.burnCraftingConsumables({
                         ingredientIndex: ingredient.idx
@@ -2886,36 +2948,42 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                 );
                 if (!await getAccountInfo(userCraft.label, 'Crafting ingredient token', outputFrom)) transactions.push(await createPDA(outputFrom, craftableItem.publicKey, craftRecipe.output.mint, userCraft, false));
 
-                let tx1 = { instruction: await sageProgram.methods.claimCraftingOutputs({
-                    ingredientIndex: craftRecipe.output.idx
-                }).accountsStrict({
-                    starbaseAndStarbasePlayer: {
-                        starbase: starbase.publicKey,
-                        starbasePlayer: starbasePlayer
-                    },
-                    gameAccounts: {
-                        gameId: sageGameAcct.publicKey,
-                        gameState: sageGameAcct.account.gameState
-                    },
-                    craftingInstance: craftingProcess.craftingInstance,
-                    craftingProcess: craftingProcess.craftingProcess,
-                    craftingFacility: starbase.account.craftingFacility,
-                    craftingRecipe: craftingProcess.recipe,
-                    craftableItem: craftableItem.publicKey,
-                    cargoPodTo: starbasePlayerCargoHold,
-                    cargoType: cargoTypeAcct.publicKey,
-                    cargoStatsDefinition: sageGameAcct.account.cargo.statsDefinition,
-                    tokenFrom: outputFrom,
-                    tokenTo: starbaseCargoToken,
-                    craftingProgram: craftingProgramPK,
-                    cargoProgram: cargoProgramPK,
-                    tokenProgram: tokenProgramPK
-                }).instruction()}
-                transactions.push(tx1);
+                //if the output checksum is 0, we haven't claimed the output yet.
+                if(!craftingProcess.outputsChecksum[0])
+                {
+	                let tx1 = { instruction: await sageProgram.methods.claimCraftingOutputs({
+	                    ingredientIndex: craftRecipe.output.idx
+	                }).accountsStrict({
+	                    starbaseAndStarbasePlayer: {
+	                        starbase: starbase.publicKey,
+	                        starbasePlayer: starbasePlayer
+	                    },
+	                    gameAccounts: {
+	                        gameId: sageGameAcct.publicKey,
+	                        gameState: sageGameAcct.account.gameState
+	                    },
+	                    craftingInstance: craftingProcess.craftingInstance,
+	                    craftingProcess: craftingProcess.craftingProcess,
+	                    craftingFacility: starbase.account.craftingFacility,
+	                    craftingRecipe: craftingProcess.recipe,
+	                    craftableItem: craftableItem.publicKey,
+	                    cargoPodTo: starbasePlayerCargoHold,
+	                    cargoType: cargoTypeAcct.publicKey,
+	                    cargoStatsDefinition: sageGameAcct.account.cargo.statsDefinition,
+	                    tokenFrom: outputFrom,
+	                    tokenTo: starbaseCargoToken,
+	                    craftingProgram: craftingProgramPK,
+	                    cargoProgram: cargoProgramPK,
+	                    tokenProgram: tokenProgramPK
+	                }).instruction()}
+	                transactions.push(tx1);
+		} else {
+			cLog(1,`${FleetTimeStamp(userCraft.label)} Output was already claimed, skipping ...`);
+		}
 
                 //cLog(1,`${FleetTimeStamp(userCraft.label)} Completing craft (2 transactions)`);
                 //let tx1Result = await txSignAndSend(transactions, userCraft, 'COMPLETING CRAFT TX1');
-            }
+            //}
 
             let [craftingAtlasToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
                 [
@@ -3302,9 +3370,18 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			fleetStarbaseCoordTd.appendChild(fleetStarbaseCoord);
    			*/
 
+			/*
 			let fleetSubwarpPref = document.createElement('input');
 			fleetSubwarpPref.setAttribute('type', 'checkbox');
 			fleetSubwarpPref.checked = fleetParsedData && fleetParsedData.subwarpPref && fleetParsedData.subwarpPref == 'true' ? true : false;
+			let fleetSubwarpPrefTd = document.createElement('td');
+			fleetSubwarpPrefTd.appendChild(fleetSubwarpPref);
+   			*/
+			let fleetSubwarpPref = document.createElement('select');
+			fleetSubwarpPref.style.width = '85px';
+			fleetSubwarpPref.innerHTML = '<option value="0">Warp</option><option value="1">Subwarp</option><option value="2">Warp(SB) / Subwarp</option>';
+			if(fleetParsedData) { if(fleetParsedData.subwarpPref == 'false') fleetParsedData.subwarpPref=0; if(fleetParsedData.subwarpPref == 'true') fleetParsedData.subwarpPref=1; } // compatibility to old version
+			fleetSubwarpPref.value = fleetParsedData && fleetParsedData.subwarpPref ? fleetParsedData.subwarpPref : 0;
 			let fleetSubwarpPrefTd = document.createElement('td');
 			fleetSubwarpPrefTd.appendChild(fleetSubwarpPref);
 
@@ -4068,16 +4145,18 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				fleetDestCoord = validateCoordInput(row.children[2].children[1].value);
 			}
 			let fleetStarbaseCoord = validateCoordInput(row.children[3].firstChild.value);	//fleetStarbaseCoord = fleetStarbaseCoord ? fleetStarbaseCoord.replace('.', ',') : fleetStarbaseCoord;
-			let subwarpPref = row.children[4].firstChild.checked;
+			//let subwarpPref = row.children[4].firstChild.checked;
+			let subwarpPref = parseInt(row.children[4].firstChild.value) || 0;
 			let userFleetIndex = userFleets.findIndex(item => {return item.publicKey == fleetPK});
-			let moveType = subwarpPref == true ? 'subwarp' : 'warp';
+			//let moveType = subwarpPref == true ? 'subwarp' : 'warp';
+			let moveType = subwarpPref == 1 ? 'subwarp' : (subwarpPref == 2 ? 'warpsubwarp' : 'warp');
 
 			const destCoords = ConvertCoords(fleetDestCoord);
 			const starbaseCoords = ConvertCoords(fleetStarbaseCoord);
 
 			if(fleetAssignment !== '') {
 				//let warpCost = calculateWarpFuelBurn(userFleets[userFleetIndex], moveDist);
-				let warpCost = calcWarpFuelReq(userFleets[userFleetIndex], starbaseCoords, destCoords );
+				let warpCost = calcWarpFuelReq(userFleets[userFleetIndex], starbaseCoords, destCoords, moveType == 'warpsubwarp' );
 				if (warpCost > userFleets[userFleetIndex].fuelCapacity) {
 					let subwarpCost = calculateSubwarpFuelBurn(userFleets[userFleetIndex], calculateMovementDistance(starbaseCoords, destCoords));
 					if (subwarpCost * 2 > userFleets[userFleetIndex].fuelCapacity) {
@@ -4700,7 +4779,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		setTimeout(() => { if(cleanBtn) cleanBtn.innerHTML = 'Clean'; }, 2000);
 	}
 
-	async function handleMovement(i, moveDist, moveX, moveY) {
+	async function handleMovement(i, moveDist, moveX, moveY, isStarbaseAndWarpSubwarp) {
 		let moveTime = 1;
 		let warpCooldownFinished = 0;
 		let fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
@@ -4709,7 +4788,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		//Fleet idle and needs to be moved?
 		if (fleetState == 'Idle' && extra.length > 1 && moveDist && moveX !== null && moveX !== '' && moveY != null && moveY !== '') {
 			if (extra[0] !== moveX || extra[1] !== moveY) {
-				let warpCost = calcWarpFuelReq(userFleets[i], extra, [moveX, moveY]);
+				let warpCost = calcWarpFuelReq(userFleets[i], extra, [moveX, moveY], isStarbaseAndWarpSubwarp);
 				cLog(4, `${FleetTimeStamp(userFleets[i].label)} warpCost: ${warpCost}`);
 				let subwarpCost = calculateSubwarpFuelBurn(userFleets[i], moveDist);
 				let fleetCurrentFuelTank = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: tokenProgramPK});
@@ -4722,7 +4801,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
                 let shortSubwarp = moveDist < 1.5 && globalSettings.subwarpShortDist ? true : false;
 				//Should a warp be attempted?
-				if (userFleets[i].moveType == 'warp' && (currentFuelCnt + currentCargoFuelCnt) >= warpCost && !shortSubwarp) {
+				//if (userFleets[i].moveType == 'warp' && (currentFuelCnt + currentCargoFuelCnt) >= warpCost && !shortSubwarp) {
+				if ((userFleets[i].moveType == 'warp' || isStarbaseAndWarpSubwarp) && (currentFuelCnt + currentCargoFuelCnt) >= warpCost && !shortSubwarp) {
 					let fleetAcctData = sageProgram.coder.accounts.decode('fleet', fleetAcctInfo.data);
 					let warpCooldownExpiresAt = fleetAcctData.warpCooldownExpiresAt.toNumber() * 1000;
 
@@ -4848,10 +4928,13 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				const starbaseCoords = ConvertCoords(userFleets[i].starbaseCoord);
 				//cLog(4, `${FleetTimeStamp(userFleets[i].label)} starbaseCoords: ${starbaseCoords}`);
 
+				let isStarbaseAndWarpSubwarp = (userFleets[i].moveType == 'warpsubwarp' && fleetCoords[0] == starbaseCoords[0] && fleetCoords[1] == starbaseCoords[1]);
+
 				let fuelNeeded = 0;
-				if (userFleets[i].moveType == 'warp') {
-					const warpCostFromFleetToDest = calcWarpFuelReq(userFleets[i], fleetCoords, destCoords);
-					const warpCostFromDestToStarbase = calcWarpFuelReq(userFleets[i], destCoords, starbaseCoords);
+				if (userFleets[i].moveType == 'warp' || isStarbaseAndWarpSubwarp) {
+					const warpCostFromFleetToDest = calcWarpFuelReq(userFleets[i], fleetCoords, destCoords, isStarbaseAndWarpSubwarp);
+					//const warpCostFromDestToStarbase = calcWarpFuelReq(userFleets[i], destCoords, starbaseCoords);
+					const warpCostFromDestToStarbase = userFleets[i].moveType == 'warpsubwarp' ? calculateSubwarpFuelBurn(userFleets[i], calculateMovementDistance(destCoords, starbaseCoords)) : calcWarpFuelReq(userFleets[i], destCoords, starbaseCoords);
 					fuelNeeded = warpCostFromFleetToDest + warpCostFromDestToStarbase;
 					cLog(4, `${FleetTimeStamp(userFleets[i].label)} Warp cost to target: ${warpCostFromFleetToDest}`);
 					cLog(4, `${FleetTimeStamp(userFleets[i].label)} Warp cost to return: ${warpCostFromDestToStarbase}`);
@@ -4876,7 +4959,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 								//Clamp the scan end time to the cooldown if it is higher (due to paused scanning)
 								userFleets[i].scanEnd = (scanEndsIn > userFleets[i].scanCooldown * 1000 ? userFleets[i].scanCooldown * 1000 : scanEndsIn) + Date.now(); //fixed a wrong time calculation
 								await saveScanEnd(i);
-								await handleMovement(i, moveDist, destCoords[0], destCoords[1]);
+								await handleMovement(i, moveDist, destCoords[0], destCoords[1], isStarbaseAndWarpSubwarp);
 								cLog(1,`${FleetTimeStamp(userFleets[i].label)} Movement finished`);
 								userFleets[i].scanStrikes = 0;
 						} else {
@@ -5235,12 +5318,15 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 		cLog(4, `${FleetTimeStamp(userFleets[i].label)} handleMining -> fleet:`, fleetCoords, `starbase:`, [starbaseX, starbaseY], `target:`, [destX, destY]);
 
-		const warpCostToTarget = fleetCoords.length == 2 ? calcWarpFuelReq(userFleets[i], fleetCoords, [destX, destY]) : 0;
-		let warpCost = warpCostToTarget +  calcWarpFuelReq(userFleets[i], [destX, destY], [starbaseX, starbaseY]) + userFleets[i].planetExitFuelAmount;
+		let isStarbaseAndWarpSubwarp = (userFleets[i].moveType == 'warpsubwarp' && (fleetCoords[0] == starbaseX && fleetCoords[1] == starbaseY) || (fleetCoords[0] == destX && fleetCoords[1] == destY));
+		let isSourceStarbaseAndWarpSubwarp = (userFleets[i].moveType == 'warpsubwarp' && (fleetCoords[0] == starbaseX && fleetCoords[1] == starbaseY));
+
+		const warpCostToTarget = fleetCoords.length == 2 ? calcWarpFuelReq(userFleets[i], fleetCoords, [destX, destY], isSourceStarbaseAndWarpSubwarp) : 0;
+		let warpCost = warpCostToTarget +  calcWarpFuelReq(userFleets[i], [destX, destY], [starbaseX, starbaseY], userFleets[i].moveType == 'warpsubwarp') + userFleets[i].planetExitFuelAmount;
 		let halfWarpCost = warpCostToTarget + calculateSubwarpFuelBurn(userFleets[i], distReturn) + userFleets[i].planetExitFuelAmount;
 		let subwarpCost = calculateSubwarpFuelBurn(userFleets[i], distToTarget) + calculateSubwarpFuelBurn(userFleets[i], distReturn) + userFleets[i].planetExitFuelAmount;
 		let fuelNeeded = userFleets[i].planetExitFuelAmount;
-		if (userFleets[i].moveType == 'warp') {
+		if (userFleets[i].moveType == 'warp' || isStarbaseAndWarpSubwarp) {
 			fuelNeeded += userFleets[i].fuelCapacity < warpCost ? userFleets[i].fuelCapacity < halfWarpCost ? subwarpCost : halfWarpCost : warpCost;
 		} else fuelNeeded += subwarpCost;
 
@@ -5250,7 +5336,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				let targetY = userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[1].trim() : '';
 				let moveDist = calculateMovementDistance(fleetCoords, [targetX,targetY]);
 				if (moveDist > 0) {
-					let warpCooldownFinished = await handleMovement(i, moveDist, targetX, targetY);
+					let warpCooldownFinished = await handleMovement(i, moveDist, targetX, targetY, isStarbaseAndWarpSubwarp);
 				} else {
 					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Idle 💤`);
 					updateFleetState(userFleets[i], 'Idle');
@@ -5891,7 +5977,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                 const targetX = userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[0].trim() : '';
                 const targetY = userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[1].trim() : '';
                 const moveDist = calculateMovementDistance(fleetCoords, [targetX,targetY]);
-                await handleMovement(i, moveDist, targetX, targetY);
+		let isStarbaseAndWarpSubwarp = userFleets[i].moveType == 'warpsubwarp' && ((fleetCoords[0] == starbaseX && fleetCoords[1] == starbaseY) || (fleetCoords[0] == destX && fleetCoords[1] == destY));
+                await handleMovement(i, moveDist, targetX, targetY, isStarbaseAndWarpSubwarp);
             } else {
                 cLog(1,`${FleetTimeStamp(userFleets[i].label)} Transporting - ERROR: Fleet must start at Target or Starbase`);
                 updateFleetState(userFleets[i], 'ERROR: Fleet must start at Target or Starbase');
@@ -5905,13 +5992,13 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		const token = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
 		const account = token ? token.pubkey : await getFleetFuelToken(fleet);
 		const amount = token ? token.account.data.parsed.info.tokenAmount.uiAmount : 0;
-        const warpCost = calcWarpFuelReq(fleet, currentPos, targetPos);
+        const warpCost = calcWarpFuelReq(fleet, currentPos, targetPos, fleet.moveType == 'warpsubwarp');
         const subwarpCost = Math.ceil(calculateSubwarpFuelBurn(fleet, moveDist));
 
         //Calculate fuel needed
         const costMultiplier = roundTrip ? 2 : 1;
         let fuelNeeded = 0;
-        if (fleet.moveType == 'warp') {
+        if (fleet.moveType == 'warp' || fleet.moveType == 'warpsubwarp') {
             fuelNeeded = warpCost * costMultiplier;
             if (fuelNeeded > fleet.fuelCapacity) fuelNeeded = roundTrip ? warpCost + subwarpCost : subwarpCost;
         } else {
@@ -6652,7 +6739,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				//...is true. But when there was ANY completed craft at this starbase (even a manual one) the block was always unnecessarily executed
 				//todo: the later loop through completedCraftingProcesses isn't needed anymore, because we should only have exactly one completed process (this job)
 	                        if (craftingProcess.account.endTime.toNumber() < craftTime.starbaseTime && [2,3].includes(craftingProcess.account.status) && userCraft.craftingId && craftingProcess.account.craftingId.toNumber() == userCraft.craftingId) {
-	                            completedCraftingProcesses.push({craftingProcess: craftingProcess.publicKey, craftingInstance: craftingInstance.publicKey, recipe: craftingProcess.account.recipe, status: craftingProcess.account.status, craftingId: craftingProcess.account.craftingId.toNumber()});
+	                            completedCraftingProcesses.push({craftingProcess: craftingProcess.publicKey, craftingInstance: craftingInstance.publicKey, recipe: craftingProcess.account.recipe, status: craftingProcess.account.status, inputsChecksum: craftingProcess.account.inputsChecksum, outputsChecksum: craftingProcess.account.outputsChecksum, craftingId: craftingProcess.account.craftingId.toNumber()});
 	                        } else if (userCraft.craftingId && craftingProcess.account.craftingId.toNumber() == userCraft.craftingId) {
 	                            let craftRecipe = craftRecipes.find(item => item.publicKey.toString() === craftingProcess.account.recipe.toString());
 	                            let calcEndTime = Math.max(craftingProcess.account.endTime.toNumber() - craftTime.starbaseTime, 0);
@@ -6707,6 +6794,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 	                                await updateCraft(userCraft);
 	                            }
 	                        }
+				else { localTimeout = 120000; }
 	                    }
 	                }
 
@@ -6724,6 +6812,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 	                                //await GM.setValue(userCraft.label, JSON.stringify(userCraft));
 	                            }
 	                        }
+				else { localTimeout = 120000; }
 	                    }
 	                }
 		    }
@@ -6827,6 +6916,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                             await updateCraft(userCraft);
                             //await GM.setValue(userCraft.label, JSON.stringify(userCraft));
 		        }
+			else { localTimeout = 120000; }
                     }
                 } else if (userCraft.state === 'Idle') {
                     //updateFleetState(userCraft, 'Waiting for crew/material');
@@ -7448,7 +7538,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			let assistModalContent = document.createElement('div');
 			assistModalContent.classList.add('assist-modal-content');
 			let iconStr = 'data:image/png;base64,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';
-			assistModalContent.innerHTML = '<div class="assist-modal-header"><img src="' + iconStr + '" /><div style="text-align:center;padding-left: 15px;">SLYA v' + GM_info.script.version + '<div style="font-size:65%">(<span class="tooltip">Info<div class="tooltiptext">You can enter amounts with the suffixes K, M and G. So e.g. "1M" equals "1000000".<br>The "Clean" button will clean up your config file and will remove all fleets that are not shown in the table below (do a backup before!).<br>The "Download" button will save/backup your current config to a file.<br>If something goes wrong, you can import the backup later and paste it in the "Import" textbox.<br>Scanning fleets: If you want to disable "Minimum probability" and/or "Instant strike out below", enter "-1".</div></span>)</div></div><div class="assist-modal-header-right"><button id="cleanBtn" class="assist-modal-btn">Clean</button><button id="undockAllBtn" class="assist-modal-btn">Undock All</button><button id="configImportExport" class="assist-modal-btn">Import</button><button id="downloadConfig" class="assist-modal-btn">Download</button><button class=" assist-modal-btn assist-modal-save">Save</button>&nbsp;&nbsp;<span class="assist-modal-close">&#x2715;</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><table id="fleetTable"><tr><td>Fleet</td><td>Assignment</td><td>Target</td><td>Starbase</td><td>Subwarp</td><td>Max Cargo</td><td>Max Ammo</td><td>Max Fuel</td></tr></table><hr><strong>Crafting</strong><table id="craftTable"><tr><td></td><td>Starbase</td><td>Crew</td><td>Item | Max Amount</td><td>If stock is below</td><td>Use special ingredient</td></tr></table></div>';
+			assistModalContent.innerHTML = '<div class="assist-modal-header"><img src="' + iconStr + '" /><div style="text-align:center;padding-left: 15px;">SLYA v' + GM_info.script.version + '<div style="font-size:65%">(<span class="tooltip">Info<div class="tooltiptext">You can enter amounts with the suffixes K, M and G. So e.g. "1M" equals "1000000".<br>The "Clean" button will clean up your config file and will remove all fleets that are not shown in the table below (do a backup before!).<br>The "Download" button will save/backup your current config to a file.<br>If something goes wrong, you can import the backup later and paste it in the "Import" textbox.<br>Scanning fleets: If you want to disable "Minimum probability" and/or "Instant strike out below", enter "-1".</div></span>)</div></div><div class="assist-modal-header-right"><button id="cleanBtn" class="assist-modal-btn">Clean</button><button id="undockAllBtn" class="assist-modal-btn">Undock All</button><button id="configImportExport" class="assist-modal-btn">Import</button><button id="downloadConfig" class="assist-modal-btn">Download</button><button class=" assist-modal-btn assist-modal-save">Save</button>&nbsp;&nbsp;<span class="assist-modal-close">&#x2715;</span></div></div><div class="assist-modal-body"><span id="assist-modal-error"></span><table id="fleetTable"><tr><td>Fleet</td><td>Assignment</td><td>Target</td><td>Starbase</td><td>Warp/Subwarp</td><td>Max Cargo</td><td>Max Ammo</td><td>Max Fuel</td></tr></table><hr><strong>Crafting</strong><table id="craftTable"><tr><td></td><td>Starbase</td><td>Crew</td><td>Item | Max Amount</td><td>If stock is below</td><td>Use special ingredient</td></tr></table></div>';
 			assistModal.append(assistModalContent);
 
 			let settingsModal = document.createElement('div');
