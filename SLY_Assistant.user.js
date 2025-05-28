@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.19
+// @version      0.7.20
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -5560,7 +5560,14 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
             let resourceMined = Math.ceil(mineTimePassed * ((userFleets[i].miningRate/10000) * (systemRichness/100)) / (resourceHardness/100));
             let timeFoodRemaining = Math.ceil((currentFoodCnt - foodConsumed) / (userFleets[i].foodConsumptionRate / 10000));
             let timeAmmoRemaining = userFleets[i].ammoConsumptionRate > 0 ? Math.ceil((currentAmmoCnt - ammoConsumed) / (userFleets[i].ammoConsumptionRate / 10000)) : maxMiningDuration;
-            let simCurrentCargo = userFleets[i].cargoCapacity - cargoCnt - resourceMined + currentFoodCnt - foodConsumed;
+            
+            //wrong calculation, fixed: we must not subtract the foodConsumed from the simulated cargo space, because the food doesn't exist anymore
+            //we instead ignore the food needed for consumption completely
+
+            //let simCurrentCargo = userFleets[i].cargoCapacity - cargoCnt - resourceMined + currentFoodCnt - foodConsumed;
+            let foodMaxConsumed = Math.ceil(maxMiningDuration * (userFleets[i].foodConsumptionRate / 10000));
+            let simCurrentCargo = userFleets[i].cargoCapacity - cargoCnt - resourceMined + foodMaxConsumed;
+
             let timeCargoRemaining = calculateMiningDuration(simCurrentCargo, userFleets[i].miningRate, resourceHardness, systemRichness);
             let timeLimit = Math.min(timeFoodRemaining, timeAmmoRemaining, timeCargoRemaining);
             let mineEnd = Date.now()+(timeLimit * 1000);
