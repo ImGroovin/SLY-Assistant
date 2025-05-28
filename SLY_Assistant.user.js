@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.18
+// @version      0.7.19
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -2897,6 +2897,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                     transactions.push(tx);
                 }
 
+		//outputToken was not used anywhere, removed
+		/*
                 let [outputToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
                     [
                         craftingProcess.craftingProcess.toBuffer(),
@@ -2905,6 +2907,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                     ],
                     programPK
                 );
+		*/
 
                 let starbasePlayerCargoHold = getStarbasePlayerCargoMaxItem(starbasePlayerCargoHoldsAndTokens, craftRecipe.output.mint.toString());
                 starbasePlayerCargoHold = starbasePlayerCargoHold ? starbasePlayerCargoHold.starbasePlayerCargoHold : starbasePlayerCargoHoldsAndTokens.length > 0 ? starbasePlayerCargoHoldsAndTokens[0].starbasePlayerCargoHold : await execCreateCargoPod(userCraft, userCraft.coordinates);
@@ -5318,7 +5321,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 		cLog(4, `${FleetTimeStamp(userFleets[i].label)} handleMining -> fleet:`, fleetCoords, `starbase:`, [starbaseX, starbaseY], `target:`, [destX, destY]);
 
-		let isStarbaseAndWarpSubwarp = (userFleets[i].moveType == 'warpsubwarp' && (fleetCoords[0] == starbaseX && fleetCoords[1] == starbaseY) || (fleetCoords[0] == destX && fleetCoords[1] == destY));
+		let isStarbaseAndWarpSubwarp = (userFleets[i].moveType == 'warpsubwarp' && ((fleetCoords[0] == starbaseX && fleetCoords[1] == starbaseY) || (fleetCoords[0] == destX && fleetCoords[1] == destY)));
 		let isSourceStarbaseAndWarpSubwarp = (userFleets[i].moveType == 'warpsubwarp' && (fleetCoords[0] == starbaseX && fleetCoords[1] == starbaseY));
 
 		const warpCostToTarget = fleetCoords.length == 2 ? calcWarpFuelReq(userFleets[i], fleetCoords, [destX, destY], isSourceStarbaseAndWarpSubwarp) : 0;
