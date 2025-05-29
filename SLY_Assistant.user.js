@@ -6035,7 +6035,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         //Calculate fuel needed
         const costMultiplier = roundTrip ? 2 : 1;
         let fuelNeeded = 0;
-        if (fleet.moveType == 'warp' || fleet.moveType == 'warpsubwarp' || fleet.moveType == 'warpsubwarp') {
+        if (fleet.moveType == 'warp' || fleet.moveType == 'warpsubwarp' || fleet.moveType == 'warp-subwarp-warp') {
             fuelNeeded = warpCost * costMultiplier;
             if (fuelNeeded > fleet.fuelCapacity) fuelNeeded = roundTrip ? warpCost + subwarpCost : subwarpCost;
         } else {
