@@ -4824,6 +4824,13 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 								moveX = moveXNew;
 								moveY = moveYNew;
 								moveDist = moveDistNew;
+								
+								//if we don't subwarp the full way to the target, we need to save the target (exactly as in the warp block below), just in case SLYA gets reloaded
+								const fleetPK = userFleets[i].publicKey.toString();
+								const fleetSavedData = await GM.getValue(fleetPK, '{}');
+								const fleetParsedData = JSON.parse(fleetSavedData);
+								fleetParsedData.moveTarget = userFleets[i].moveTarget;
+								await GM.setValue(fleetPK, JSON.stringify(fleetParsedData));
 							}							
 						}
 						forceSubwarp = true;
