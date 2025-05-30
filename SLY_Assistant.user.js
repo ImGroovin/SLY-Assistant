@@ -4923,7 +4923,9 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				let targetX = userFleets[i].moveTarget != '' && userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[0].trim() : '';
 				let targetY = userFleets[i].moveTarget != '' && userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[1].trim() : '';
 				if (extra[0] == targetX && extra[1] == targetY) {
-						userFleets[i].moveTarget = [];
+						//bugfix: moveTarget is string based, not an array!
+						//userFleets[i].moveTarget = [];
+						userFleets[i].moveTarget = '';
 						let fleetSavedData = await GM.getValue(userFleets[i].publicKey.toString(), '{}');
 						let fleetParsedData = JSON.parse(fleetSavedData);
 						let fleetPK = userFleets[i].publicKey.toString();
