@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.20
+// @version      0.7.21
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -3382,7 +3382,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
    			*/
 			let fleetSubwarpPref = document.createElement('select');
 			fleetSubwarpPref.style.width = '85px';
-			fleetSubwarpPref.innerHTML = '<option value="0">Warp</option><option value="1">Subwarp</option><option value="2">Warp(SB) / Subwarp</option>';
+			fleetSubwarpPref.innerHTML = '<option value="0">Warp</option><option value="1">Subwarp</option><option value="2">Warp(SB) / Subwarp</option><option value="3">Warp, Subwarp, Warp, ...</option>';
 			if(fleetParsedData) { if(fleetParsedData.subwarpPref == 'false') fleetParsedData.subwarpPref=0; if(fleetParsedData.subwarpPref == 'true') fleetParsedData.subwarpPref=1; } // compatibility to old version
 			fleetSubwarpPref.value = fleetParsedData && fleetParsedData.subwarpPref ? fleetParsedData.subwarpPref : 0;
 			let fleetSubwarpPrefTd = document.createElement('td');
@@ -4152,7 +4152,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			let subwarpPref = parseInt(row.children[4].firstChild.value) || 0;
 			let userFleetIndex = userFleets.findIndex(item => {return item.publicKey == fleetPK});
 			//let moveType = subwarpPref == true ? 'subwarp' : 'warp';
-			let moveType = subwarpPref == 1 ? 'subwarp' : (subwarpPref == 2 ? 'warpsubwarp' : 'warp');
+			let moveType = subwarpPref == 1 ? 'subwarp' : (subwarpPref == 2 ? 'warpsubwarp' : (subwarpPref == 3 ? 'warp-subwarp-warp' : 'warp') );
 
 			const destCoords = ConvertCoords(fleetDestCoord);
 			const starbaseCoords = ConvertCoords(fleetStarbaseCoord);
@@ -4802,12 +4802,46 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				let currentCargoFuel = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
 				let currentCargoFuelCnt = currentCargoFuel ? currentCargoFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
 
-                let shortSubwarp = moveDist < 1.5 && globalSettings.subwarpShortDist ? true : false;
+				let shortSubwarp = moveDist < 1.5 && globalSettings.subwarpShortDist ? true : false;
+				let fleetAcctData = sageProgram.coder.accounts.decode('fleet', fleetAcctInfo.data);
+				let warpCooldownExpiresAt = fleetAcctData.warpCooldownExpiresAt.toNumber() * 1000;
+				let forceSubwarp = false;
+				if(!shortSubwarp && userFleets[i].moveType == 'warp-subwarp-warp' && Date.now() < warpCooldownExpiresAt) {					
+					let warpCooldownLeft = (warpCooldownExpiresAt - Date.now()) / 1000;
+					let fullDistanceLeft = calculateMovementDistance(extra, [moveX,moveY]);
+					let subwarpDistanceWhileCooldown = warpCooldownLeft * (userFleets[i].subwarpSpeed / 1e6);
+					let maxSubwarpDistancePastCooldown = (userFleets[i].warpCoolDown - warpCooldownLeft) * (userFleets[i].subwarpSpeed / 1e6); //how far could we subwarp in the past cooldown time?
+					//if the past warp cooldown is too low that it would've allowed a subwarp, we subwarp if we can do at least 0.5 AU in the remaining time. If a lot more of the cooldown is done, we check if we can do at least 0.71 AU because moveX and moveY can be off by 0.49999 (=0.5) each (due to rounding) and sqrt(0.5*0.5+0.5*0.5)=0.707, so it is possible that the previous subwarp was 0.707 units off, but we don't want to subwarp again
+					if(fullDistanceLeft > 0 && ((maxSubwarpDistancePastCooldown < 0.5 && subwarpDistanceWhileCooldown >= 0.5) || subwarpDistanceWhileCooldown >= 0.71)) {
+						if(subwarpDistanceWhileCooldown < 1.415) subwarpDistanceWhileCooldown = 1.415; // we subwarp at least 1 sector in the direction of the target and we choose 1.415 (=sqrt(2) rounded up), so all 8 directions have the same chance
+						let distanceRatio = Math.min(1, subwarpDistanceWhileCooldown / fullDistanceLeft);																		
+						if(distanceRatio < 1) {
+							let moveXNew = Math.round((moveX-extra[0]) * distanceRatio) + extra[0];
+							let moveYNew = Math.round((moveY-extra[1]) * distanceRatio) + extra[1];
+							let moveDistNew = calculateMovementDistance(extra, [moveXNew,moveYNew]);
+							//if we would be near the target after subwarp, we subwarp the full distance if "subwarpShortDist" is enabled, so we only set the new coords if this isn't the case
+							if(!globalSettings.subwarpShortDist || moveDist - moveDistNew >= 1.5) {
+								moveX = moveXNew;
+								moveY = moveYNew;
+								moveDist = moveDistNew;
+								
+								//if we don't subwarp the full way to the target, we need to save the target (exactly as in the warp block below), just in case SLYA gets reloaded
+								const fleetPK = userFleets[i].publicKey.toString();
+								const fleetSavedData = await GM.getValue(fleetPK, '{}');
+								const fleetParsedData = JSON.parse(fleetSavedData);
+								fleetParsedData.moveTarget = userFleets[i].moveTarget;
+								await GM.setValue(fleetPK, JSON.stringify(fleetParsedData));
+							}							
+						}
+						forceSubwarp = true;
+					}					
+				}
+				
 				//Should a warp be attempted?
 				//if (userFleets[i].moveType == 'warp' && (currentFuelCnt + currentCargoFuelCnt) >= warpCost && !shortSubwarp) {
-				if ((userFleets[i].moveType == 'warp' || isStarbaseAndWarpSubwarp) && (currentFuelCnt + currentCargoFuelCnt) >= warpCost && !shortSubwarp) {
-					let fleetAcctData = sageProgram.coder.accounts.decode('fleet', fleetAcctInfo.data);
-					let warpCooldownExpiresAt = fleetAcctData.warpCooldownExpiresAt.toNumber() * 1000;
+				if ((userFleets[i].moveType == 'warp' || userFleets[i].moveType == 'warp-subwarp-warp' || isStarbaseAndWarpSubwarp) && (currentFuelCnt + currentCargoFuelCnt) >= warpCost && !shortSubwarp && !forceSubwarp) {
+					//let fleetAcctData = sageProgram.coder.accounts.decode('fleet', fleetAcctInfo.data);
+					//let warpCooldownExpiresAt = fleetAcctData.warpCooldownExpiresAt.toNumber() * 1000;
 
 					//Wait for cooldown
 					while (Date.now() < warpCooldownExpiresAt) {
@@ -4889,7 +4923,9 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				let targetX = userFleets[i].moveTarget != '' && userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[0].trim() : '';
 				let targetY = userFleets[i].moveTarget != '' && userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[1].trim() : '';
 				if (extra[0] == targetX && extra[1] == targetY) {
-						userFleets[i].moveTarget = [];
+						//bugfix: moveTarget is string based, not an array!
+						//userFleets[i].moveTarget = [];
+						userFleets[i].moveTarget = '';
 						let fleetSavedData = await GM.getValue(userFleets[i].publicKey.toString(), '{}');
 						let fleetParsedData = JSON.parse(fleetSavedData);
 						let fleetPK = userFleets[i].publicKey.toString();
@@ -4934,7 +4970,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				let isStarbaseAndWarpSubwarp = (userFleets[i].moveType == 'warpsubwarp' && fleetCoords[0] == starbaseCoords[0] && fleetCoords[1] == starbaseCoords[1]);
 
 				let fuelNeeded = 0;
-				if (userFleets[i].moveType == 'warp' || isStarbaseAndWarpSubwarp) {
+				if (userFleets[i].moveType == 'warp' || userFleets[i].moveType == 'warp-subwarp-warp' || isStarbaseAndWarpSubwarp) {
 					const warpCostFromFleetToDest = calcWarpFuelReq(userFleets[i], fleetCoords, destCoords, isStarbaseAndWarpSubwarp);
 					//const warpCostFromDestToStarbase = calcWarpFuelReq(userFleets[i], destCoords, starbaseCoords);
 					const warpCostFromDestToStarbase = userFleets[i].moveType == 'warpsubwarp' ? calculateSubwarpFuelBurn(userFleets[i], calculateMovementDistance(destCoords, starbaseCoords)) : calcWarpFuelReq(userFleets[i], destCoords, starbaseCoords);
@@ -5329,7 +5365,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		let halfWarpCost = warpCostToTarget + calculateSubwarpFuelBurn(userFleets[i], distReturn) + userFleets[i].planetExitFuelAmount;
 		let subwarpCost = calculateSubwarpFuelBurn(userFleets[i], distToTarget) + calculateSubwarpFuelBurn(userFleets[i], distReturn) + userFleets[i].planetExitFuelAmount;
 		let fuelNeeded = userFleets[i].planetExitFuelAmount;
-		if (userFleets[i].moveType == 'warp' || isStarbaseAndWarpSubwarp) {
+		if (userFleets[i].moveType == 'warp' || userFleets[i].moveType == 'warp-subwarp-warp' || isStarbaseAndWarpSubwarp) {
 			fuelNeeded += userFleets[i].fuelCapacity < warpCost ? userFleets[i].fuelCapacity < halfWarpCost ? subwarpCost : halfWarpCost : warpCost;
 		} else fuelNeeded += subwarpCost;
 
@@ -6008,7 +6044,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         //Calculate fuel needed
         const costMultiplier = roundTrip ? 2 : 1;
         let fuelNeeded = 0;
-        if (fleet.moveType == 'warp' || fleet.moveType == 'warpsubwarp') {
+        if (fleet.moveType == 'warp' || fleet.moveType == 'warpsubwarp' || fleet.moveType == 'warp-subwarp-warp') {
             fuelNeeded = warpCost * costMultiplier;
             if (fuelNeeded > fleet.fuelCapacity) fuelNeeded = roundTrip ? warpCost + subwarpCost : subwarpCost;
         } else {
