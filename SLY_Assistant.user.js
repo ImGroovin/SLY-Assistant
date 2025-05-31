@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.21
+// @version      0.7.22
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -5814,6 +5814,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                     //await execDock(userFleets[i], userFleets[i].starbaseCoord);
                     let transportLoadUnloadSingleTx=globalSettings.transportLoadUnloadSingleTx;
                     let transactions = [];
+                    let unloadedAmountInTransaction = 0;
+			
                     let resp = await execDock(userFleets[i], userFleets[i].starbaseCoord, transportLoadUnloadSingleTx);
                     if(transportLoadUnloadSingleTx && resp) {
 			transactions.push(resp);
@@ -5845,12 +5847,15 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                         resp = await handleTransportUnloading(userFleets[i], userFleets[i].starbaseCoord, starbaseCargoManifest, transportLoadUnloadSingleTx);
                         if(transportLoadUnloadSingleTx) {
 				transactions = transactions.concat(resp.transactions);
+				unloadedAmountInTransaction = resp.unloadedAmount;
+				/*
 				if(hasTargetManifest) {
 					//if we need to load something, make sure we execute the unload transactions first
 					updateFleetState(userFleets[i], 'Exec tx bundle');
 					await txSliceAndSend(transactions, userFleets[i], 'LOAD/UNLOAD', 100, 5);
 					transactions = [];
 				}
+    				*/
 			}
                     } else cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading skipped - No resources specified`);
 
@@ -5872,7 +5877,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
                     //Loading at Starbase
                     if (hasTargetManifest) {
-                        const loadedCargo = await handleTransportLoading(i, userFleets[i].starbaseCoord, targetCargoManifest, transportLoadUnloadSingleTx);
+                        const loadedCargo = await handleTransportLoading(i, userFleets[i].starbaseCoord, targetCargoManifest, transportLoadUnloadSingleTx, transportLoadUnloadSingleTx ? unloadedAmountInTransaction : 0);
                         cLog(4,`${FleetTimeStamp(userFleets[i].label)} loadedCargo: `, loadedCargo.success);
                         if(!loadedCargo.success && globalSettings.transportStopOnError) {
                             //const newFleetState = `ERROR: No more cargo to load`;
@@ -5887,7 +5892,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
                     let undockResult = await execUndock(userFleets[i], userFleets[i].starbaseCoord, transportLoadUnloadSingleTx);
                     if(transportLoadUnloadSingleTx) {
-			updateFleetState(userFleets[i], 'Exec tx bundle (final)');
+			updateFleetState(userFleets[i], 'Exec tx bundle');
 			transactions.push(undockResult);
 			undockResult = await txSliceAndSend(transactions, userFleets[i], 'LOAD/UNLOAD', 100, 5);
 			updateFleetState(userFleets[i], 'Idle');
@@ -5931,6 +5936,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                     //await execDock(userFleets[i], userFleets[i].destCoord);
                     let transportLoadUnloadSingleTx=globalSettings.transportLoadUnloadSingleTx;
                     let transactions = [];
+                    let unloadedAmountInTransaction = 0;
+
                     let resp = await execDock(userFleets[i], userFleets[i].destCoord, transportLoadUnloadSingleTx);
                     if(transportLoadUnloadSingleTx && resp) {
 			transactions.push(resp);
@@ -5964,12 +5971,15 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                         fuelUnloadDeficit = unloadResult.fuelUnloadDeficit;
                         if(transportLoadUnloadSingleTx) {
 				transactions = transactions.concat(unloadResult.transactions);
+				unloadedAmountInTransaction = unloadResult.unloadedAmount;
+				/*
 				if(hasStarbaseManifest) {
 					//if we need to load something, make sure we execute the unload transactions first
 					updateFleetState(userFleets[i], 'Exec tx bundle');
 					await txSliceAndSend(transactions, userFleets[i], 'LOAD/UNLOAD', 100, 5);
 					transactions = [];
 				}
+    				*/
 			}                        
                     } else cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading skipped - No resources specified`);
 
@@ -5989,7 +5999,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
                     //Loading at Target
                     if(hasStarbaseManifest) {
-                        const loadedCargo = await handleTransportLoading(i, userFleets[i].destCoord, starbaseCargoManifest, transportLoadUnloadSingleTx);
+                        const loadedCargo = await handleTransportLoading(i, userFleets[i].destCoord, starbaseCargoManifest, transportLoadUnloadSingleTx, transportLoadUnloadSingleTx ? unloadedAmountInTransaction : 0);
                         cLog(4,`${FleetTimeStamp(userFleets[i].label)} loadedCargo: `, loadedCargo.success);
                         if(!loadedCargo.success && globalSettings.transportStopOnError) {
                             //const newFleetState = `ERROR: No more cargo to load`;
@@ -6005,7 +6015,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                     let undockResult = await execUndock(userFleets[i], userFleets[i].destCoord, transportLoadUnloadSingleTx);
                     if(transportLoadUnloadSingleTx) {
 			transactions.push(undockResult);
-			updateFleetState(userFleets[i], 'Exec tx bundle (final)');
+			updateFleetState(userFleets[i], 'Exec tx bundle');
 			undockResult = await txSliceAndSend(transactions, userFleets[i], 'LOAD/UNLOAD', 100, 5);
 			updateFleetState(userFleets[i], 'Idle');
                     }
@@ -6252,6 +6262,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		const fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(fleet.cargoHold, {programId: tokenProgramPK});
 
 		let transactions = [];
+		let unloadedAmount = 0;
 
 		//Unloading resources from manifest
 		let fuelUnloadDeficit = 0;
@@ -6275,6 +6286,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					}
 					if(isFuel) fuelUnloadDeficit -= amountToUnload;
 					if(isAmmo) ammoUnloadDeficit -= amountToUnload;
+					unloadedAmount += amountToUnload;
 				} else {
 					cLog(1,`${FleetTimeStamp(fleet.label)} Unload ${entry.res} skipped - none found in ship's cargo hold`);
 				}
@@ -6299,10 +6311,10 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			}
 		}
 
-		return { fuelUnloadDeficit, transactions };
+		return { fuelUnloadDeficit, transactions, unloadedAmount };
 	}
 
-	async function handleTransportLoading(i, starbaseCoords, transportManifest, returnTx) {
+	async function handleTransportLoading(i, starbaseCoords, transportManifest, returnTx, alreadyUnloadedInTransaction) {
 		cLog(1,`${FleetTimeStamp(userFleets[i].label)} 📦 Loading Transport`);
 		updateFleetState(userFleets[i], 'Loading');
 
@@ -6322,6 +6334,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         const fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
         const cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount * cargoItems.find(r => r.token == account.data.parsed.info.mint).size, 0);
         let cargoSpace = userFleets[i].cargoCapacity - cargoCnt;
+        if(alreadyUnloadedInTransaction) cargoSpace += alreadyUnloadedInTransaction;
         const startingCargoSpace = cargoSpace;
         let expectedCnt = 0;
         cLog(2,`${FleetTimeStamp(userFleets[i].label)} cargoSpace remaining: ${cargoSpace}`);
