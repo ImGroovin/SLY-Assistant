@@ -7971,5 +7971,5 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 	let autoSpanRef = document.querySelector('#autoScanBtn > span');
 	autoSpanRef ? autoSpanRef.innerHTML = 'Start' : null;
 	cLog(0,'init complete');
-	cLog(0,'Fleets: ', userFleets);
+	cLog(0,'Fleets:', userFleets);
 })();
