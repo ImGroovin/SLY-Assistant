@@ -4810,7 +4810,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					let warpCooldownLeft = (warpCooldownExpiresAt - Date.now()) / 1000;
 					let fullDistanceLeft = calculateMovementDistance(extra, [moveX,moveY]);
 					let subwarpDistanceWhileCooldown = warpCooldownLeft * (userFleets[i].subwarpSpeed / 1e6);
-					let maxSubwarpDistancePastCooldown = (userFleets[i].warpCoolDown - warpCooldownLeft) * (userFleets[i].subwarpSpeed / 1e6); //how far could we subwarp in the past cooldown time?
+					let maxSubwarpDistancePastCooldown = (userFleets[i].warpCooldown - warpCooldownLeft) * (userFleets[i].subwarpSpeed / 1e6); //how far could we subwarp in the past cooldown time?
 					//if the past warp cooldown is too low that it would've allowed a subwarp, we subwarp if we can do at least 0.5 AU in the remaining time. If a lot more of the cooldown is done, we check if we can do at least 0.71 AU because moveX and moveY can be off by 0.49999 (=0.5) each (due to rounding) and sqrt(0.5*0.5+0.5*0.5)=0.707, so it is possible that the previous subwarp was 0.707 units off, but we don't want to subwarp again
 					if(fullDistanceLeft > 0 && ((maxSubwarpDistancePastCooldown < 0.5 && subwarpDistanceWhileCooldown >= 0.5) || subwarpDistanceWhileCooldown >= 0.71)) {
 						if(subwarpDistanceWhileCooldown < 1.415) subwarpDistanceWhileCooldown = 1.415; // we subwarp at least 1 sector in the direction of the target and we choose 1.415 (=sqrt(2) rounded up), so all 8 directions have the same chance
