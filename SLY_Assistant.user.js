@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.22
+// @version      0.7.23
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -6286,7 +6286,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					}
 					if(isFuel) fuelUnloadDeficit -= amountToUnload;
 					if(isAmmo) ammoUnloadDeficit -= amountToUnload;
-					unloadedAmount += amountToUnload;
+					unloadedAmount += amountToUnload * cargoItems.find(r => r.token == entry.res).size;
 				} else {
 					cLog(1,`${FleetTimeStamp(fleet.label)} Unload ${entry.res} skipped - none found in ship's cargo hold`);
 				}
