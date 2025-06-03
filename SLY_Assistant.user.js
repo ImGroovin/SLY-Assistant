@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.23
+// @version      0.7.24
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -162,6 +162,7 @@
 			minerSupplySingleTx: parseBoolDefault(globalSettings.minerSupplySingleTx, false),
 			minerKeep1: parseBoolDefault(globalSettings.minerKeep1, false),
 			starbaseKeep1: parseBoolDefault(globalSettings.starbaseKeep1, false),
+			queueExitWarpSubwarp: parseBoolDefault(globalSettings.queueExitWarpSubwarp, false),
 
 			emailInterface: parseStringDefault(globalSettings.emailInterface,''),
 
@@ -852,10 +853,23 @@
 		return await solanaReadConnection.getAccountInfo(params);
 	}
 
-    function getFleetState(fleetAcctInfo) {
+    function getFleetState(fleetAcctInfo, fleet) {
         let remainingData = fleetAcctInfo.data.subarray(439);
         let fleetState = 'Unknown';
         let extra = null;
+
+	if(fleet && fleet.exitWarpSubwarpPending) {
+		fleetState = 'Idle';
+		let sector = null;
+		if(fleet.exitWarpSubwarpPending == 1) sector = sageProgram.coder.types.decode('MoveWarp', remainingData.subarray(1));
+		if(fleet.exitWarpSubwarpPending == 2) { 
+			sector = sageProgram.coder.types.decode('MoveSubwarp', remainingData.subarray(1));
+			fleet.exitSubwarpWillBurnFuel = sector.fuelExpenditure.toNumber();
+		}
+		extra = [sector.toSector[0].toNumber(), sector.toSector[1].toNumber()];
+		return [fleetState, extra];
+	}
+
         switch(remainingData[0]) {
             case 0:
                 fleetState = 'StarbaseLoadingBay';
@@ -1479,6 +1493,19 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			let priorityFeeMin = 1;
 			if(ix.constructor === Array) priorityFeeMin = Math.max(1, Math.min(globalSettings.minPriorityFeeForMultiIx, 50000) * 5);
 
+			if(fleet.exitWarpSubwarpPending) {
+				let exitWarpSubwarpTx = null;				
+				if(fleet.exitWarpSubwarpPending == 1) exitWarpSubwarpTx = await execExitWarp(fleet, true);
+				else exitWarpSubwarpTx = await execExitSubwarp(fleet, true);
+				if(ix.constructor === Array) {
+					ix = [exitWarpSubwarpTx].concat(ix);
+				} else {
+					ix = [exitWarpSubwarpTx,ix];
+				}
+				fleet.exitWarpSubwarpPending = 0;
+				fleet.exitSubwarpWillBurnFuel = 0;
+			}
+
 			let confirmed = false;
 			while (!confirmed) {
 				//let tx = new solanaWeb3.Transaction();
@@ -1741,7 +1768,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		});
 	}
 
-    async function execExitSubwarp(fleet) {
+    async function execExitSubwarp(fleet, returnTx) {
         return new Promise(async resolve => {
             let fuelCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == sageGameAcct.account.mints.fuel);
             let tx = { instruction: await sageProgram.methods.fleetStateHandler().accountsStrict({
@@ -1837,7 +1864,13 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			cLog(1,`${FleetTimeStamp(fleet.label)} Exiting Subwarp`);
 			updateFleetState(fleet, 'Exiting Subwarp');
 
-			let txResult = await txSignAndSend(tx, fleet, 'EXIT SUBWARP', 100);
+			//let txResult = await txSignAndSend(tx, fleet, 'EXIT SUBWARP', 100);
+			let txResult;
+			if(returnTx) {
+				txResult = tx;
+			} else {			
+				txResult = await txSignAndSend(tx, fleet, 'EXIT SUBWARP', 100);
+			}
 
 			cLog(1,`${FleetTimeStamp(fleet.label)} Idle 💤`);
 			updateFleetState(fleet, 'Idle');
@@ -1887,7 +1920,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         });
     }
 
-    async function execExitWarp(fleet) {
+    async function execExitWarp(fleet, returnTx) {
         return new Promise(async resolve => {
             let tx = { instruction: await sageProgram.methods.fleetStateHandler().accountsStrict({
                 fleet: fleet.publicKey
@@ -1947,7 +1980,13 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
             cLog(1,`${FleetTimeStamp(fleet.label)} Exiting Warp`);
             updateFleetState(fleet, 'Exiting Warp');
 
-            let txResult = await txSignAndSend(tx, fleet, 'EXIT WARP', 10);
+            //let txResult = await txSignAndSend(tx, fleet, 'EXIT WARP', 10);
+            let txResult;
+            if(returnTx) {
+            	txResult = tx;
+            } else {
+            	txResult = await txSignAndSend(tx, fleet, 'EXIT WARP', 10);
+            }
 
             cLog(1,`${FleetTimeStamp(fleet.label)} Idle 💤`);
             updateFleetState(fleet, 'Idle');
@@ -2097,7 +2136,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 		if(assignment == 'Transport' || assignment == 'Mine') {
 			const fleetAcctInfo = await solanaReadConnection.getAccountInfo(fleet.publicKey);
-			const [fleetState, extra] = getFleetState(fleetAcctInfo);
+			const [fleetState, extra] = getFleetState(fleetAcctInfo, fleet);
 			if (fleetState === 'StarbaseLoadingBay') {
 				const starbase = await sageProgram.account.starbase.fetch(extra.starbase);
 				const coords = starbase.sector[0].toNumber() + ',' + starbase.sector[1].toNumber();
@@ -3889,6 +3928,9 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			cLog(1,`${FleetTimeStamp(fleet.label)} Manual request for resetting the fleet state`);
 			updateFleetState(fleet,'ERROR: Trying to restart ...',true); // keep string "ERROR" for now to prevent an early start of operateFleet()
 
+			fleet.exitWarpSubwarpPending = 0;
+			fleet.exitSubwarpWillBurnFuel = 0;
+
 			let fleetAcctInfo = await getAccountInfo(fleet.label, 'full fleet info', fleet.publicKey);
 			let [fleetState, extra] = getFleetState(fleetAcctInfo);
 			let fleetCoords = fleetState == 'Idle' && extra ? extra : [];
@@ -4410,6 +4452,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			minerSupplySingleTx: document.querySelector('#minerSupplySingleTx').checked,			
 			minerKeep1: document.querySelector('#minerKeep1').checked,
 			starbaseKeep1: document.querySelector('#starbaseKeep1').checked,
+			queueExitWarpSubwarp: document.querySelector('#queueExitWarpSubwarp').checked,
 
 			emailInterface: parseStringDefault(document.querySelector('#emailInterface').value,''),
 
@@ -4480,6 +4523,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		document.querySelector('#minerSupplySingleTx').checked = globalSettings.minerSupplySingleTx;
 		document.querySelector('#minerKeep1').checked = globalSettings.minerKeep1;
 		document.querySelector('#starbaseKeep1').checked = globalSettings.starbaseKeep1;
+		document.querySelector('#queueExitWarpSubwarp').checked = globalSettings.queueExitWarpSubwarp;
 
 		document.querySelector('#emailInterface').value = globalSettings.emailInterface;
 
@@ -4786,7 +4830,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		let moveTime = 1;
 		let warpCooldownFinished = 0;
 		let fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
-		let [fleetState, extra] = getFleetState(fleetAcctInfo);
+		let [fleetState, extra] = getFleetState(fleetAcctInfo, userFleets[i]);
 
 		//Fleet idle and needs to be moved?
 		if (fleetState == 'Idle' && extra.length > 1 && moveDist && moveX !== null && moveX !== '' && moveY != null && moveY !== '') {
@@ -4796,7 +4840,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				let subwarpCost = calculateSubwarpFuelBurn(userFleets[i], moveDist);
 				let fleetCurrentFuelTank = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: tokenProgramPK});
 				let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
-				let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
+				let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount - userFleets[i].exitSubwarpWillBurnFuel : 0;
 
 				let fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
 				let currentCargoFuel = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
@@ -4890,7 +4934,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 		await wait(2000); //Allow time for RPC to update
 		fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
-		[fleetState, extra] = getFleetState(fleetAcctInfo);
+		[fleetState, extra] = getFleetState(fleetAcctInfo, userFleets[i]);
 		let warpFinish = fleetState == 'MoveWarp' ? extra.warpFinish.toNumber() * 1000 : 0;
 		let subwarpFinish = fleetState == 'MoveSubwarp' ? extra.arrivalTime.toNumber() * 1000 : 0;
 		let endTime = warpFinish > subwarpFinish ? warpFinish : subwarpFinish;
@@ -4911,14 +4955,33 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		}
 
 		//await wait(2000);
+
+		let localQueueExitWarpSubwarp = false;
+		if(globalSettings.queueExitWarpSubwarp) {
+			//exclude scanning fleets from this feature, because we can't bundle a scan instruction with any other ix
+			let fleetSavedData = await GM.getValue(userFleets[i].publicKey.toString(), '{}');
+			let fleetParsedData = JSON.parse(fleetSavedData);
+			if (fleetParsedData.assignment != 'Scan') localQueueExitWarpSubwarp = true;
+		}
+
 		if (fleetState == 'MoveWarp') {
-			await execExitWarp(userFleets[i]);
+			if (localQueueExitWarpSubwarp) {
+				userFleets[i].exitWarpSubwarpPending = 1;
+				updateFleetState(userFleets[i], 'Idle');
+			} else {			
+				await execExitWarp(userFleets[i]);
+			}
 		} else if (fleetState == 'MoveSubwarp'){
-			await execExitSubwarp(userFleets[i]);
+			if (localQueueExitWarpSubwarp) {
+				userFleets[i].exitWarpSubwarpPending = 2;
+				updateFleetState(userFleets[i], 'Idle');
+			} else {
+				await execExitSubwarp(userFleets[i]);
+			}
 		}
 
 		fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
-		[fleetState, extra] = getFleetState(fleetAcctInfo);
+		[fleetState, extra] = getFleetState(fleetAcctInfo, userFleets[i]);
 		if (fleetState == 'Idle' && extra) {
 				let targetX = userFleets[i].moveTarget != '' && userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[0].trim() : '';
 				let targetY = userFleets[i].moveTarget != '' && userFleets[i].moveTarget.split(',').length > 1 ? userFleets[i].moveTarget.split(',')[1].trim() : '';
@@ -5332,7 +5395,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		let fleetCurrentFuelTank = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].fuelTank, {programId: tokenProgramPK});
 		let currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
 		let fleetFuelAcct = currentFuel ? currentFuel.pubkey : fleetFuelToken;
-		let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
+		let currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount - userFleets[i].exitSubwarpWillBurnFuel : 0;
 		let fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
 		//todo: cargoCnt currently assumes that 1 rss always takes 1 of the cargo room
 		let cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
@@ -5572,7 +5635,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 				//Fetch update mining state from chain
 				const fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
-				const [fleetState, extra] = getFleetState(fleetAcctInfo);
+				const [fleetState, extra] = getFleetState(fleetAcctInfo, userFleets[i]);
 				cLog(4, `${FleetTimeStamp(userFleets[i].label)} chain fleet state: ${fleetState}`);
 				fleetMining = fleetState == 'MineAsteroid' ? extra : null;
 			}
@@ -6047,7 +6110,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		const fleetCurrentFuelTank = await solanaReadConnection.getParsedTokenAccountsByOwner(fleet.fuelTank, {programId: tokenProgramPK});
 		const token = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
 		const account = token ? token.pubkey : await getFleetFuelToken(fleet);
-		const amount = token ? token.account.data.parsed.info.tokenAmount.uiAmount : 0;
+		const amount = token ? token.account.data.parsed.info.tokenAmount.uiAmount - fleet.exitSubwarpWillBurnFuel : 0;
         const warpCost = calcWarpFuelReq(fleet, currentPos, targetPos, fleet.moveType == 'warpsubwarp');
         const subwarpCost = Math.ceil(calculateSubwarpFuelBurn(fleet, moveDist));
 
@@ -6202,6 +6265,9 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		let curSize=1;
 		let lastBlock=null;
 		let allTxSlices=[];
+
+		if(fleet.exitWarpSubwarpPending == 1) { transactions = [await execExitWarp(fleet, true)].concat(transactions); fleet.exitWarpSubwarpPending = 0; }
+		if(fleet.exitWarpSubwarpPending == 2) { transactions = [await execExitSubwarp(fleet, true)].concat(transactions); fleet.exitWarpSubwarpPending = 0; fleet.exitSubwarpWillBurnFuel = 0; }
 		
 		while(curPos+curSize <= transactions.length) {
 			
@@ -6474,7 +6540,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				cLog(2, `${FleetTimeStamp(userFleets[i].label)} <getAccountInfo> (${userFleets[i].state})`);
 				let fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
 				updateFleetMiscStats(userFleets[i],fleetAcctInfo);
-				let [fleetState, extra] = getFleetState(fleetAcctInfo);
+				let [fleetState, extra] = getFleetState(fleetAcctInfo, userFleets[i]);
 				cLog(3, `${FleetTimeStamp(userFleets[i].label)} chain fleet state: ${fleetState}`);
 				let fleetCoords = fleetState == 'Idle' ? extra : [];
 				let fleetMining = fleetState == 'MineAsteroid' ? extra : null;
@@ -6512,7 +6578,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 						for(let retryCount=1; retryCount<=4; retryCount++) {
 							await wait(10000);
 							fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
-							[fleetState, extra] = getFleetState(fleetAcctInfo);
+							[fleetState, extra] = getFleetState(fleetAcctInfo, userFleets[i]);
 							cLog(1, `${FleetTimeStamp(userFleets[i].label)} chain fleet state (after retry ${retryCount}/4): ${fleetState}`);
 							fleetCoords = fleetState == 'Idle' ? extra : [];
 							fleetMining = fleetState == 'MineAsteroid' ? extra : null;
@@ -7137,7 +7203,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
             autoSpanRef.innerHTML = 'Stop';
             for (let i=0, n=userFleets.length; i < n; i++) {
                 let fleetAcctInfo = await getAccountInfo(userFleets[i].label, 'full fleet info', userFleets[i].publicKey);
-                let [fleetState, extra] = getFleetState(fleetAcctInfo);
+                let [fleetState, extra] = getFleetState(fleetAcctInfo, userFleets[i]);
                 let fleetCoords = fleetState == 'Idle' && extra ? extra : [];
                 userFleets[i].startingCoords = fleetCoords;
                 userFleets[i].state = fleetState;
@@ -7480,6 +7546,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					publicKey: fleet.publicKey,
 					label: fleetLabel,
 					state: fleetState,
+					exitWarpSubwarpPending: 0,
+					exitSubwarpWillBurnFuel: 0,
 					moveTarget: fleetMoveTarget,
 					startingCoords: fleetCoords,
 					cargoHold: fleet.account.cargoHold,
@@ -7664,6 +7732,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			settingsModalContentString += '<div>Console Logging <input id="debugLogLevel" type="number" min="0" max="9" placeholder="3"></input><br><small>How much console logging you want to see (higher number = more, 0 = none)</small></div>';
 			settingsModalContentString += '<div>Auto Start Script <input id="autoStartScript" type="checkbox"></input><br><small>Should Lab Assistant automatically start after initialization is complete?</small></div>';
 			settingsModalContentString += '<div>Reload On Stuck Fleets <input id="reloadPageOnFailedFleets" type="number" min="0" max="999" placeholder="0"></input><br><small>Automatically refresh the page if this many fleets get stuck (0 = never)</small></div>';
+			settingsModalContentString += '<div>Queue exit warp/subwarp <input id="queueExitWarpSubwarp" type="checkbox"></input><br><small>EXPERIMENTAL: Queue the exit warp/subwarp instruction, so it gets bundled with the following instruction(s). Saves one transaction in most cases. Works only with miners and transporters (a scan instruction can\'t be bundled with any other instruction).</small></div>';
 			settingsModalContentString += '<div>E-Mail-Interface <input id="emailInterface" type="text" size="40"></input><br><small>Send errors via the email interface (see "slya-email-interface.php" on GitHub for instructions).</small><button id="emailInterfaceTest">Test the interface URL</button> Result: <span id="emailInterfaceTestResult"></span></div>';
 			settingsModalContentString += '<div>';
 			settingsModalContentString += 'email fleet ix errors? <input id="emailFleetIxErrors" type="checkbox"></input><br>';
