@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.24
+// @version      0.7.25
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -3475,10 +3475,10 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			scanMinDiv.appendChild(scanMinLabel);
 			scanMinDiv.appendChild(scanMin);
 			let scanMin2Label = document.createElement('span');
-			scanMin2Label.innerHTML = 'Instant stricke out below:';
+			scanMin2Label.innerHTML = 'Instant strike out below:';
 			let scanMin2 = document.createElement('input');
 			scanMin2.setAttribute('type', 'text');
-			scanMin2.placeholder = '5';
+			scanMin2.placeholder = '0';
 			scanMin2.style.width = '30px';
 			scanMin2.style.marginRight = '10px';
 			scanMin2.value = fleetParsedData && fleetParsedData.scanMin2 ? fleetParsedData.scanMin2 : '';
@@ -3524,10 +3524,21 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			scanRow2.classList.add('assist-scan2-row');
 			scanRow2.style.display = fleetParsedData && fleetParsedData.assignment == 'Scan' ? 'table-row' : 'none';
 
+			let scanMin3Label = document.createElement('span');
+			scanMin3Label.innerHTML = 'Instant s/o below (on success):';
+			let scanMin3 = document.createElement('input');
+			scanMin3.setAttribute('type', 'text');
+			scanMin3.placeholder = '0';
+			scanMin3.style.width = '30px';
+			scanMin3.style.marginRight = '10px';
+			scanMin3.value = fleetParsedData && fleetParsedData.scanMin3 ? fleetParsedData.scanMin3 : '';
+			scanMinDiv.appendChild(scanMin3Label);
+			scanMinDiv.appendChild(scanMin3);
+
 			let scanPadTd2 = document.createElement('td');
 			scanRow2.appendChild(scanPadTd2);
 			let scanPatternLabel = document.createElement('span');
-			scanPatternLabel.innerHTML = 'Override the global pattern:';
+			scanPatternLabel.innerHTML = 'Override pattern:';
 			let scanPattern = document.createElement('select');
 			scanPattern.style.marginRight = '10px';
 			scanPattern.innerHTML += '<option value=""></option>';
@@ -3544,6 +3555,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			scanPatternLength.value = fleetParsedData && fleetParsedData.scanPatternLength ? fleetParsedData.scanPatternLength : '';
 			
 			let scanPatternDiv = document.createElement('div');
+			scanPatternDiv.appendChild(scanMin3Label);
+			scanPatternDiv.appendChild(scanMin3);
 			scanPatternDiv.appendChild(scanPatternLabel);
 			scanPatternDiv.appendChild(scanPattern);
 			scanPatternDiv.appendChild(scanPatternLengthLabel);
@@ -4220,8 +4233,9 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			let scanMin2 = parseInt(scanRows[i].children[1].children[0].children[3].value) || 0;
 			let scanMove = scanRows[i].children[2].children[0].children[1].checked;
 
-			let scanPattern = scanRows2[i].children[1].children[0].children[1].value;
-			let scanPatternLength = parseInt(scanRows2[i].children[1].children[0].children[3].value) || 0;
+			let scanMin3 = parseInt(scanRows2[i].children[1].children[0].children[1].value) || 0;
+			let scanPattern = scanRows2[i].children[1].children[0].children[3].value;
+			let scanPatternLength = parseInt(scanRows2[i].children[1].children[0].children[5].value) || 0;
 
 			let fleetMineResource = mineRows[i].children[1].children[1].value;
 			fleetMineResource = fleetMineResource !== '' ? cargoItems.find(r => r.name == fleetMineResource).token : '';
@@ -4264,7 +4278,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 				let fleetScanEnd = fleetParsedData && fleetParsedData.scanEnd ? fleetParsedData.scanEnd : 0;
 
-				await GM.setValue(fleetPK, `{\"name\": \"${fleetName}\", \"assignment\": \"${fleetAssignment}\", \"mineResource\": \"${fleetMineResource}\", \"dest\": \"${fleetDestCoord}\", \"starbase\": \"${fleetStarbaseCoord}\", \"moveType\": \"${moveType}\", \"subwarpPref\": \"${subwarpPref}\", \"moveTarget\": \"${fleetMoveTarget}\", \"transportResource1\": \"${transportResource1}\", \"transportResource1Perc\": ${transportResource1Perc}, \"transportResource1Crew\": ${transportResource1Crew}, \"transportResource2\": \"${transportResource2}\", \"transportResource2Perc\": ${transportResource2Perc}, \"transportResource3\": \"${transportResource3}\", \"transportResource3Perc\": ${transportResource3Perc}, \"transportResource4\": \"${transportResource4}\", \"transportResource4Perc\": ${transportResource4Perc}, \"transportSBResource1\": \"${transportSBResource1}\", \"transportSBResource1Perc\": ${transportSBResource1Perc}, \"transportSBResource1Crew\": ${transportSBResource1Crew}, \"transportSBResource2\": \"${transportSBResource2}\", \"transportSBResource2Perc\": ${transportSBResource2Perc}, \"transportSBResource3\": \"${transportSBResource3}\", \"transportSBResource3Perc\": ${transportSBResource3Perc}, \"transportSBResource4\": \"${transportSBResource4}\", \"transportSBResource4Perc\": ${transportSBResource4Perc}, \"scanBlock\": ${JSON.stringify(scanBlock)}, \"scanMin\": ${scanMin}, \"scanMin2\": ${scanMin2}, \"scanPattern\": \"${scanPattern}\", \"scanPatternLength\": ${scanPatternLength}, \"scanMove\": \"${scanMove}\", \"scanEnd\": ${fleetScanEnd} }`);
+				await GM.setValue(fleetPK, `{\"name\": \"${fleetName}\", \"assignment\": \"${fleetAssignment}\", \"mineResource\": \"${fleetMineResource}\", \"dest\": \"${fleetDestCoord}\", \"starbase\": \"${fleetStarbaseCoord}\", \"moveType\": \"${moveType}\", \"subwarpPref\": \"${subwarpPref}\", \"moveTarget\": \"${fleetMoveTarget}\", \"transportResource1\": \"${transportResource1}\", \"transportResource1Perc\": ${transportResource1Perc}, \"transportResource1Crew\": ${transportResource1Crew}, \"transportResource2\": \"${transportResource2}\", \"transportResource2Perc\": ${transportResource2Perc}, \"transportResource3\": \"${transportResource3}\", \"transportResource3Perc\": ${transportResource3Perc}, \"transportResource4\": \"${transportResource4}\", \"transportResource4Perc\": ${transportResource4Perc}, \"transportSBResource1\": \"${transportSBResource1}\", \"transportSBResource1Perc\": ${transportSBResource1Perc}, \"transportSBResource1Crew\": ${transportSBResource1Crew}, \"transportSBResource2\": \"${transportSBResource2}\", \"transportSBResource2Perc\": ${transportSBResource2Perc}, \"transportSBResource3\": \"${transportSBResource3}\", \"transportSBResource3Perc\": ${transportSBResource3Perc}, \"transportSBResource4\": \"${transportSBResource4}\", \"transportSBResource4Perc\": ${transportSBResource4Perc}, \"scanBlock\": ${JSON.stringify(scanBlock)}, \"scanMin\": ${scanMin}, \"scanMin2\": ${scanMin2}, \"scanMin3\": ${scanMin3}, \"scanPattern\": \"${scanPattern}\", \"scanPatternLength\": ${scanPatternLength}, \"scanMove\": \"${scanMove}\", \"scanEnd\": ${fleetScanEnd} }`);
 				userFleets[userFleetIndex].mineResource = fleetMineResource;
 				userFleets[userFleetIndex].destCoord = fleetDestCoord;
 				userFleets[userFleetIndex].starbaseCoord = fleetStarbaseCoord;
@@ -4272,6 +4286,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				userFleets[userFleetIndex].scanBlock = scanBlock;
 				userFleets[userFleetIndex].scanMin = scanMin;
 				userFleets[userFleetIndex].scanMin2 = scanMin2;
+				userFleets[userFleetIndex].scanMin3 = scanMin3;
 				userFleets[userFleetIndex].scanPattern = scanPattern;
 				userFleets[userFleetIndex].scanPatternLength = scanPatternLength;
 				userFleets[userFleetIndex].scanMove = scanMove;
@@ -5103,6 +5118,9 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			if(scanCondition < userFleets[i].scanMin2) {
 				userFleets[i].scanStrikes = globalSettings.scanStrikeCount;
 				cLog(3,`${FleetTimeStamp(userFleets[i].label)} ⚡⚡️ Instant strike out`);
+			} else if(scanCondition < userFleets[i].scanMin3 && sduFound > 0) {
+				userFleets[i].scanStrikes = globalSettings.scanStrikeCount;
+				cLog(3,`${FleetTimeStamp(userFleets[i].label)} ⚡⚡️ Instant strike out`);				
 			} else if(scanCondition < userFleets[i].scanMin) {
 				userFleets[i].scanStrikes++;
 				cLog(3,`${FleetTimeStamp(userFleets[i].label)} ⚡️ Strike ${userFleets[i].scanStrikes} / ${globalSettings.scanStrikeCount}`);
@@ -7176,6 +7194,10 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 	// And we ignore the start/stop button as long as the init sequence isn't done yet.
 	// Added Docking and Undocking to the wait sequence, so a fleet finishes the docking->load/unload->undock loop first (and doesn't get interrupted in between).
         if((!initComplete) || ((!newState) && globalWaitForStopSequence)) return;
+        if(autoSpanRef.innerHTML=='Reload') {
+		window.location.reload();
+		return;
+	}
         if (enableAssistant === true || newState) {
             globalWaitForStopSequence = true;
             let waitForSequence = true;
@@ -7196,7 +7218,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                 await wait(5000);
             }
             globalWaitForStopSequence = false;
-            autoSpanRef.innerHTML = newState ? newState : 'Start';
+            autoSpanRef.innerHTML = newState ? newState : 'Reload';
         } else {
             enableAssistant = true;
             await startAssistant();
@@ -7487,7 +7509,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				let fleetDest = fleetParsedData && fleetParsedData.dest ? fleetParsedData.dest : '';
 				let fleetScanBlock = fleetParsedData && fleetParsedData.scanBlock ? fleetParsedData.scanBlock : [];
 				let fleetScanMin = fleetParsedData && fleetParsedData.scanMin ? fleetParsedData.scanMin : 15;
-				let fleetScanMin2 = fleetParsedData && fleetParsedData.scanMin2 ? fleetParsedData.scanMin2 : 5;
+				let fleetScanMin2 = fleetParsedData && fleetParsedData.scanMin2 ? fleetParsedData.scanMin2 : 0;
+				let fleetScanMin3 = fleetParsedData && fleetParsedData.scanMin3 ? fleetParsedData.scanMin3 : 0;
 				let fleetScanPattern = fleetParsedData && fleetParsedData.scanPattern ? fleetParsedData.scanPattern : '';
 				let fleetScanPatternLength = fleetParsedData && fleetParsedData.scanPatternLength ? fleetParsedData.scanPatternLength : 0;
 				let fleetScanMove = fleetParsedData && fleetParsedData.scanMove == 'false' || false ? false : true;
@@ -7585,6 +7608,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					scanStrikes: 0,
 					scanMin: fleetScanMin,
 					scanMin2: fleetScanMin2,
+					scanMin3: fleetScanMin3,
 					scanPattern: fleetScanPattern,
 					scanPatternLength: fleetScanPatternLength,
 					scanMove: fleetScanMove,
