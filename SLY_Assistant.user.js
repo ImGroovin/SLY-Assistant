@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.25
+// @version      0.7.26
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -69,7 +69,7 @@
 
 	let globalSettings;
 	const settingsGmKey = 'globalSettings';
-	const scanningPatterns = ['square', 'ring', 'spiral', 'up', 'down', 'left', 'right', 'sly'];
+	const scanningPatterns = ['square', 'ring', 'spiral', 'up', 'down', 'left', 'right', 'sly', 'auto(1)', 'auto(1+)', 'auto(1,2hv)', 'auto(1,2hv+)'];
 	await loadGlobalSettings();
 
 	let errorLog = [];
@@ -2286,7 +2286,9 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 	async function createScannerPDAs(fleet) {
 		cLog(2,`${FleetTimeStamp(fleet.label)} Maintaining Scanner PDAs`);
 		await getAccountInfo(fleet.label, 'fleet SDU token', fleet.sduToken) || await createPDA(fleet.sduToken, fleet.cargoHold, new solanaWeb3.PublicKey(sduItem.token), fleet);
-		await getAccountInfo(fleet.label, 'fleet food token', fleet.foodToken) || await createPDA(fleet.foodToken, fleet.cargoHold, new solanaWeb3.PublicKey(foodItem.token), fleet);
+		if(fleet.scanCost > 0) {
+			await getAccountInfo(fleet.label, 'fleet food token', fleet.foodToken) || await createPDA(fleet.foodToken, fleet.cargoHold, new solanaWeb3.PublicKey(foodItem.token), fleet);
+		}
 		await getAccountInfo(fleet.label, 'fleet fuel token', fleet.fuelToken) || await createPDA(fleet.fuelToken, fleet.fuelTank, new solanaWeb3.PublicKey(fuelItem.token), fleet);
 	}
 
@@ -3553,6 +3555,53 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			scanPatternLength.setAttribute('type', 'text');
 			scanPatternLength.style.width = '30px';			
 			scanPatternLength.value = fleetParsedData && fleetParsedData.scanPatternLength ? fleetParsedData.scanPatternLength : '';
+
+			let scanSearchDistLabel = document.createElement('span');
+			scanSearchDistLabel.innerHTML = '<br>[Auto] Search dist:';
+			let scanSearchDist = document.createElement('input');
+			scanSearchDist.setAttribute('type', 'text');
+			scanSearchDist.style.width = '25px';
+			scanSearchDist.placeholder = '15';
+			scanSearchDist.style.marginRight = '5px';
+			scanSearchDist.value = fleetParsedData && fleetParsedData.scanSearchDist ? fleetParsedData.scanSearchDist : '';
+			let scanClusterFactorLabel = document.createElement('span');
+			scanClusterFactorLabel.innerHTML = 'Cluster/dist:';
+			let scanClusterFactor = document.createElement('input');
+			scanClusterFactor.setAttribute('type', 'text');
+			scanClusterFactor.style.width = '25px';
+			scanClusterFactor.placeholder = '50';
+			scanClusterFactor.style.marginRight = '5px';
+			scanClusterFactor.value = fleetParsedData && fleetParsedData.scanClusterFactor ? fleetParsedData.scanClusterFactor : '';
+			let scanNeighborhoodMinGoodLabel = document.createElement('span');
+			scanNeighborhoodMinGoodLabel.innerHTML = 'Neighbor min good:';
+			let scanNeighborhoodMinGood = document.createElement('input');
+			scanNeighborhoodMinGood.setAttribute('type', 'text');
+			scanNeighborhoodMinGood.style.width = '25px';
+			scanNeighborhoodMinGood.placeholder = '3';
+			scanNeighborhoodMinGood.style.marginRight = '5px';
+			scanNeighborhoodMinGood.value = fleetParsedData && fleetParsedData.scanNeighborhoodMinGood ? fleetParsedData.scanNeighborhoodMinGood : '';
+			let scanCheckWhileCooldownLeftLabel = document.createElement('span');
+			scanCheckWhileCooldownLeftLabel.innerHTML = 'Check % c/d left:';
+			let scanCheckWhileCooldownLeft = document.createElement('input');
+			scanCheckWhileCooldownLeft.setAttribute('type', 'text');
+			scanCheckWhileCooldownLeft.style.width = '25px';
+			scanCheckWhileCooldownLeft.placeholder = '0';
+			scanCheckWhileCooldownLeft.value = fleetParsedData && fleetParsedData.scanCheckWhileCooldownLeft ? fleetParsedData.scanCheckWhileCooldownLeft : '';
+			let scanCheckWhileCooldownLeftProbLabel = document.createElement('span');
+			scanCheckWhileCooldownLeftProbLabel.innerHTML = 'Prob:';
+			let scanCheckWhileCooldownLeftProb = document.createElement('input');
+			scanCheckWhileCooldownLeftProb.setAttribute('type', 'text');
+			scanCheckWhileCooldownLeftProb.style.width = '25px';
+			scanCheckWhileCooldownLeftProb.placeholder = '0';
+			scanCheckWhileCooldownLeftProb.style.marginRight = '5px';
+			scanCheckWhileCooldownLeftProb.value = fleetParsedData && fleetParsedData.scanCheckWhileCooldownLeftProb ? fleetParsedData.scanCheckWhileCooldownLeftProb : '';
+			let scanBypassPercentLabel = document.createElement('span');
+			scanBypassPercentLabel.innerHTML = 'Bypass %:';
+			let scanBypassPercent = document.createElement('input');
+			scanBypassPercent.setAttribute('type', 'text');
+			scanBypassPercent.style.width = '25px';
+			scanBypassPercent.placeholder = '4';
+			scanBypassPercent.value = fleetParsedData && fleetParsedData.scanBypassPercent ? fleetParsedData.scanBypassPercent : '';
 			
 			let scanPatternDiv = document.createElement('div');
 			scanPatternDiv.appendChild(scanMin3Label);
@@ -3561,6 +3610,18 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			scanPatternDiv.appendChild(scanPattern);
 			scanPatternDiv.appendChild(scanPatternLengthLabel);
 			scanPatternDiv.appendChild(scanPatternLength);
+			scanPatternDiv.appendChild(scanSearchDistLabel);
+			scanPatternDiv.appendChild(scanSearchDist);
+			scanPatternDiv.appendChild(scanClusterFactorLabel);
+			scanPatternDiv.appendChild(scanClusterFactor);
+			scanPatternDiv.appendChild(scanNeighborhoodMinGoodLabel);
+			scanPatternDiv.appendChild(scanNeighborhoodMinGood);
+			scanPatternDiv.appendChild(scanCheckWhileCooldownLeftLabel);
+			scanPatternDiv.appendChild(scanCheckWhileCooldownLeft);
+			scanPatternDiv.appendChild(scanCheckWhileCooldownLeftProbLabel);
+			scanPatternDiv.appendChild(scanCheckWhileCooldownLeftProb);
+			scanPatternDiv.appendChild(scanBypassPercentLabel);
+			scanPatternDiv.appendChild(scanBypassPercent);
 			let scanPatternTd = document.createElement('td');
 			scanPatternTd.setAttribute('colspan', '7');
 			scanPatternTd.appendChild(scanPatternDiv);
@@ -3955,6 +4016,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			fleet.justResupplied=false;
 			fleet.moveTarget = '';
 			fleet.stopping = false;
+			fleet.scanAutoMoveTo = null;
 			//updateFleetState(fleet, fleetState, true);
 			updateFleetState(fleet, 'Starting', true);
 			fleet.state = fleetState; // overwrite "starting" with the real state but don't display it - just like in toggleAssistant
@@ -4237,6 +4299,13 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			let scanPattern = scanRows2[i].children[1].children[0].children[3].value;
 			let scanPatternLength = parseInt(scanRows2[i].children[1].children[0].children[5].value) || 0;
 
+			let scanSearchDist = parseInt(scanRows2[i].children[1].children[0].children[7].value) || 15;
+			let scanClusterFactor = parseInt(scanRows2[i].children[1].children[0].children[9].value) || 50;
+			let scanNeighborhoodMinGood = parseInt(scanRows2[i].children[1].children[0].children[11].value) || 3;
+			let scanCheckWhileCooldownLeft = parseInt(scanRows2[i].children[1].children[0].children[13].value) || 0;
+			let scanCheckWhileCooldownLeftProb = parseInt(scanRows2[i].children[1].children[0].children[15].value) || 0;
+			let scanBypassPercent = parseInt(scanRows2[i].children[1].children[0].children[17].value) || 4;
+
 			let fleetMineResource = mineRows[i].children[1].children[1].value;
 			fleetMineResource = fleetMineResource !== '' ? cargoItems.find(r => r.name == fleetMineResource).token : '';
 
@@ -4278,7 +4347,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 				let fleetScanEnd = fleetParsedData && fleetParsedData.scanEnd ? fleetParsedData.scanEnd : 0;
 
-				await GM.setValue(fleetPK, `{\"name\": \"${fleetName}\", \"assignment\": \"${fleetAssignment}\", \"mineResource\": \"${fleetMineResource}\", \"dest\": \"${fleetDestCoord}\", \"starbase\": \"${fleetStarbaseCoord}\", \"moveType\": \"${moveType}\", \"subwarpPref\": \"${subwarpPref}\", \"moveTarget\": \"${fleetMoveTarget}\", \"transportResource1\": \"${transportResource1}\", \"transportResource1Perc\": ${transportResource1Perc}, \"transportResource1Crew\": ${transportResource1Crew}, \"transportResource2\": \"${transportResource2}\", \"transportResource2Perc\": ${transportResource2Perc}, \"transportResource3\": \"${transportResource3}\", \"transportResource3Perc\": ${transportResource3Perc}, \"transportResource4\": \"${transportResource4}\", \"transportResource4Perc\": ${transportResource4Perc}, \"transportSBResource1\": \"${transportSBResource1}\", \"transportSBResource1Perc\": ${transportSBResource1Perc}, \"transportSBResource1Crew\": ${transportSBResource1Crew}, \"transportSBResource2\": \"${transportSBResource2}\", \"transportSBResource2Perc\": ${transportSBResource2Perc}, \"transportSBResource3\": \"${transportSBResource3}\", \"transportSBResource3Perc\": ${transportSBResource3Perc}, \"transportSBResource4\": \"${transportSBResource4}\", \"transportSBResource4Perc\": ${transportSBResource4Perc}, \"scanBlock\": ${JSON.stringify(scanBlock)}, \"scanMin\": ${scanMin}, \"scanMin2\": ${scanMin2}, \"scanMin3\": ${scanMin3}, \"scanPattern\": \"${scanPattern}\", \"scanPatternLength\": ${scanPatternLength}, \"scanMove\": \"${scanMove}\", \"scanEnd\": ${fleetScanEnd} }`);
+				await GM.setValue(fleetPK, `{\"name\": \"${fleetName}\", \"assignment\": \"${fleetAssignment}\", \"mineResource\": \"${fleetMineResource}\", \"dest\": \"${fleetDestCoord}\", \"starbase\": \"${fleetStarbaseCoord}\", \"moveType\": \"${moveType}\", \"subwarpPref\": \"${subwarpPref}\", \"moveTarget\": \"${fleetMoveTarget}\", \"transportResource1\": \"${transportResource1}\", \"transportResource1Perc\": ${transportResource1Perc}, \"transportResource1Crew\": ${transportResource1Crew}, \"transportResource2\": \"${transportResource2}\", \"transportResource2Perc\": ${transportResource2Perc}, \"transportResource3\": \"${transportResource3}\", \"transportResource3Perc\": ${transportResource3Perc}, \"transportResource4\": \"${transportResource4}\", \"transportResource4Perc\": ${transportResource4Perc}, \"transportSBResource1\": \"${transportSBResource1}\", \"transportSBResource1Perc\": ${transportSBResource1Perc}, \"transportSBResource1Crew\": ${transportSBResource1Crew}, \"transportSBResource2\": \"${transportSBResource2}\", \"transportSBResource2Perc\": ${transportSBResource2Perc}, \"transportSBResource3\": \"${transportSBResource3}\", \"transportSBResource3Perc\": ${transportSBResource3Perc}, \"transportSBResource4\": \"${transportSBResource4}\", \"transportSBResource4Perc\": ${transportSBResource4Perc}, \"scanBlock\": ${JSON.stringify(scanBlock)}, \"scanMin\": ${scanMin}, \"scanMin2\": ${scanMin2}, \"scanMin3\": ${scanMin3}, \"scanSearchDist\": ${scanSearchDist}, \"scanClusterFactor\": ${scanClusterFactor}, \"scanNeighborhoodMinGood\": ${scanNeighborhoodMinGood}, \"scanCheckWhileCooldownLeft\": ${scanCheckWhileCooldownLeft}, \"scanCheckWhileCooldownLeftProb\": ${scanCheckWhileCooldownLeftProb}, \"scanBypassPercent\": ${scanBypassPercent}, \"scanPattern\": \"${scanPattern}\", \"scanPatternLength\": ${scanPatternLength}, \"scanMove\": \"${scanMove}\", \"scanEnd\": ${fleetScanEnd} }`);
 				userFleets[userFleetIndex].mineResource = fleetMineResource;
 				userFleets[userFleetIndex].destCoord = fleetDestCoord;
 				userFleets[userFleetIndex].starbaseCoord = fleetStarbaseCoord;
@@ -4287,6 +4356,12 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				userFleets[userFleetIndex].scanMin = scanMin;
 				userFleets[userFleetIndex].scanMin2 = scanMin2;
 				userFleets[userFleetIndex].scanMin3 = scanMin3;
+				userFleets[userFleetIndex].scanSearchDist = scanSearchDist;
+				userFleets[userFleetIndex].scanClusterFactor = scanClusterFactor;
+				userFleets[userFleetIndex].scanNeighborhoodMinGood = scanNeighborhoodMinGood;
+				userFleets[userFleetIndex].scanCheckWhileCooldownLeft = scanCheckWhileCooldownLeft;
+				userFleets[userFleetIndex].scanCheckWhileCooldownLeftProb = scanCheckWhileCooldownLeftProb;
+				userFleets[userFleetIndex].scanBypassPercent = scanBypassPercent;
 				userFleets[userFleetIndex].scanPattern = scanPattern;
 				userFleets[userFleetIndex].scanPatternLength = scanPatternLength;
 				userFleets[userFleetIndex].scanMove = scanMove;
@@ -5135,13 +5210,20 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				userFleets[i].scanSkipCnt++;
 			}
 
+			let scanBlockPattern = globalSettings.scanBlockPattern;
+			if(userFleets[i].scanPattern) scanBlockPattern=userFleets[i].scanPattern;
+
 			//Iterate pattern positioning id (or reset to 0 if reached end)
 			if(userFleets[i].scanMove && struckOut)
-				userFleets[i].scanBlockIdx = userFleets[i].scanBlockIdx > userFleets[i].scanBlock.length - 2 ? 0 : userFleets[i].scanBlockIdx+1;
+				if(!scanBlockPattern.includes('auto')) {
+					userFleets[i].scanBlockIdx = userFleets[i].scanBlockIdx > userFleets[i].scanBlock.length - 2 ? 0 : userFleets[i].scanBlockIdx+1;
+				} else {
+					await handleScanAutoMovement(i, fleetCoords);
+				}
 
 			const needPause =
 				(struckOut && !userFleets[i].scanMove) ||
-				(userFleets[i].scanMove && userFleets[i].scanSkipCnt >= userFleets[i].scanBlock.length - 1)
+				(userFleets[i].scanMove && userFleets[i].scanSkipCnt >= userFleets[i].scanBlock.length - 1 && !scanBlockPattern.includes('auto'))
 
             let newState;
 			if (needPause) {
@@ -5302,6 +5384,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 			//Update last op to prevent fleet stall flagging
 			userFleets[i].lastOp = Date.now();
+
+			userFleets[i].scanAutoMoveTo = null;
 
 			//Undock
 			await execUndock(userFleets[i], userFleets[i].starbaseCoord);
@@ -6521,6 +6605,62 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		fleet.crewCount = fleetAcctData.stats.miscStats.crewCount;
 	}
 
+	let lastScanMapRead = 0;
+	let lastScanMapCache=null;
+	let lastScanMapIsUpdating = false;
+	async function readScanMap() {
+		
+		//if a concurrent call is reading the map, we wait until the read is done (up to 10 seconds)
+		let loopCounter = 0;
+        	while (lastScanMapIsUpdating && loopCounter < 50) {
+			await wait(200);
+			loopCounter++;
+		}		
+		if(lastScanMapRead <= Date.now()-30*1000) {
+			
+			lastScanMapIsUpdating = true;
+			lastScanMapCache = null;
+			lastScanMapRead = Date.now();
+			let message = '';
+			try {
+				cLog(1, 'Requesting the SDU file');			
+				const response = await fetch('https://slya.de/sdu.json');
+				if (!response.ok) {
+					message = 'Error while reading the SDU file: ' + response.status + ' ' + response.statusText;					
+				} else {
+					const result = await response.json();
+					if(result.timestamp < Date.now() - 60*10*1000) {
+						cLog(1, 'Error: SDU file too old');
+					} else {
+						lastScanMapCache = result.scans;
+					}
+				}
+			} catch(error) {
+				message = 'Error while requesting the SDU file: ' + error.message;
+			}
+			lastScanMapIsUpdating = false;
+			if(message) cLog(1, message);		
+		} else {
+			//console.log('Reading cached scan map');
+		}
+		
+		return lastScanMapCache;
+	}
+
+	async function scanTargetStillValid(i,fleetCoords) {
+		let scanData = await readScanMap();
+		let scanX = fleetCoords[0];
+		let scanY = fleetCoords[1];
+		let scan = scanData.find(item => item.x == scanX && item.y == scanY);
+		if(scan && scan.c * 100 < userFleets[i].scanCheckWhileCooldownLeftProb) {
+			cLog(3,`${FleetTimeStamp(userFleets[i].label)} SAM scan coord`,scanX,`/`,scanY,`turned bad while waiting for the cooldown.`);
+			return false;
+		}
+		return true;
+	}
+
+	async function handleScanAutoMovement(o,$){let t=!1,n=parseInt(userFleets[o].destCoord.split(",")[0].trim()),e=parseInt(userFleets[o].destCoord.split(",")[1].trim());if(!userFleets[o].scanAutoMoveTo){let _=ConvertCoords(userFleets[o].starbaseCoord);CoordsEqual($,_)?userFleets[o].scanAutoMoveTo=[n,e]:userFleets[o].scanAutoMoveTo=[$[0],$[1]];return}userFleets[o].scanAutoMoveTo=null,t=await readScanMap();let s=globalSettings.scanBlockLength;userFleets[o].scanPatternLength&&(s=userFleets[o].scanPatternLength);let a=globalSettings.scanBlockPattern;userFleets[o].scanPattern&&(a=userFleets[o].scanPattern),s<5&&(s=5);let l=n-s,c=n+s,r=e-s,u=e+s,i=userFleets[o].scanNeighborhoodMinGood,f=parseInt(userFleets[o].scanClusterFactor),h=parseInt(userFleets[o].scanSearchDist);if(t){let d=0,p=[0,0],v=1,M=1;("auto(1,2hv)"==a||"auto(1,2hv+)"==a)&&(v=2,M=2);let g=0;for(let b=$[0]-2;b<=$[0]+2;b++)for(let m=$[1]-2;m<=$[1]+2;m++){if(b==$[0]&&m==$[1]||b<l||b>c||m<r||m>u)continue;let A=t.find(o=>o.x==b&&o.y==m);A&&100*A.c>=userFleets[o].scanMin&&g++}let y=[];if(g>=i){let T=[];for(let x=0-v;x<=0+v;x++)for(let P=0-M;P<=0+M;P++){let B=[$[0]+x,$[1]+P];if(!(a.includes("2hv")&&(Math.abs(x)>=2&&0!=P||Math.abs(P)>=2&&0!=x))&&!(B[0]<l)&&!(B[0]>c)&&!(B[1]<r)&&!(B[1]>u)){if(0!=x||0!=P){let C=t.find(o=>o.x==B[0]&&o.y==B[1]);C&&100*C.c>=userFleets[o].scanMin&&y.push([x,P]),C&&C.c>d&&(d=C.c,p=[x,P])}T.push([x,P])}}if(y.length){for(let S of(p=y[Math.floor(Math.random()*y.length)],y=[],T))if((p[0]+S[0]!=0||p[1]+S[1]!=0)&&T.some(o=>o[0]==p[0]+S[0]&&o[1]==p[1]+S[1])){let k=[$[0]+p[0]+S[0],$[1]+p[1]+S[1]],w=t.find(o=>o.x==k[0]&&o.y==k[1]);(!w||100*w.c>=userFleets[o].scanMin)&&y.push([k[0],k[1]])}}}if(g>=i&&y.length>0){let L=y[Math.floor(Math.random()*y.length)];userFleets[o].scanAutoMoveTo=L}else{let q=2.85,D=3,F=0,G=0,N=[0,0],j=0;for(;D<2*s-2&&D<=h;){for(let z=-1;z<=1;z+=.2)for(let E=-1;E<=1;E+=.2){if(10!=Math.round(10*Math.abs(z))&&10!=Math.round(10*Math.abs(E)))continue;let H=z,I=E,J=[$[0]+Math.round(H*D),$[1]+Math.round(I*D)];if(J[0]<l||J[0]>c||J[1]<r||J[1]>u)continue;let K=Math.round(q),O=0,Q=0,R=0,U=q*q;for(let V=Math.floor(0-q);V<=Math.ceil(q);V++)for(let W=Math.floor(0-q);W<=Math.ceil(q);W++)if(V*V+W*W<=U){if(J[0]+V<l||J[0]+V>c||J[1]+W<r||J[1]+W>u)continue;let X=t.find(o=>o.x==J[0]+V&&o.y==J[1]+W);X&&100*X.c>userFleets[o].scanMin&&(O++,Q+=X.c),R++}O>=2&&Q/Math.pow(O,f/100)/Math.sqrt(R)>G&&(F=O,G=Q/Math.pow(O,f/100)/Math.sqrt(R),N=[Math.round(H),Math.round(I)],j=R)}q+=.4,D+=1}if(F>0){let Y=N[0],Z=N[1];("auto(1,2hv)"==a||"auto(1,2hv+)"==a)&&(0==N[0]||0==N[1])&&(Y=2*N[0],Z=2*N[1]),p=[$[0]+Y,$[1]+Z];let oo=[],o$=t.find(o=>o.x==p[0]&&o.y==p[1]);if(o$){y=[],1>=Math.abs(Y)&&1>=Math.abs(Z)?"auto(1+)"==a&&(0==Y||0==Z)?y.push([$[0]+2*Y,$[1]+2*Z]):0==Y?(y.push([$[0]-1,$[1]+Z]),y.push([$[0]+1,$[1]+Z])):0==Z?(y.push([$[0]+Y,$[1]-1]),y.push([$[0]+Y,$[1]+1])):"auto(1,2hv+)"==a?(y.push([$[0]+2*Y,$[1]+Z]),y.push([$[0]+Y,$[1]+2*Z])):(y.push([$[0],$[1]+Z]),y.push([$[0]+Y,$[1]])):"auto(1,2hv)"==a?y.push([$[0]+N[0],$[1]+N[1]]):0==Y?(y.push([$[0]-1,$[1]+Z]),y.push([$[0]+1,$[1]+Z])):0==Z&&(y.push([$[0]+Y,$[1]-1]),y.push([$[0]+Y,$[1]+1]));let ot=1;for(let on of y){let oe=t.find(o=>o.x==on[0]&&o.y==on[1]);oe&&oe.c>=o$.c+userFleets[o].scanBypassPercent/100&&(oo.push([on[0],on[1]]),ot>oe.c&&(ot=oe.c))}if(oo.length>=2)for(let o_ of oo){let os=t.find(o=>o.x==o_[0]&&o.y==o_[1]);os&&os.c>=ot+userFleets[o].scanBypassPercent/100&&(oo=[[o_[0],o_[1]]])}}oo.length?userFleets[o].scanAutoMoveTo=oo[Math.floor(Math.random()*oo.length)]:userFleets[o].scanAutoMoveTo=p}}}if(!userFleets[o].scanAutoMoveTo){let oa=$[0],ol=$[1];oa>n-4&&oa<n+4&&ol>e-4&&ol<e+4?(.5>Math.random()?.5>Math.random()?oa++:oa--:.5>Math.random()?ol++:ol--,cLog(3,`${FleetTimeStamp(userFleets[o].label)} SAM found no best sector and no good direction, moving random to`,oa,"/",ol)):(oa<n&&oa++,oa>n&&oa--,ol<e&&ol++,ol>e&&ol--,cLog(3,`${FleetTimeStamp(userFleets[o].label)} SAM found no best sector and no good direction, moving back to start to`,oa,"/",ol)),userFleets[o].scanAutoMoveTo=[oa,ol]}}
+
 	async function operateFleet(i) {
         if (globalErrorTracker.errorCount > 9) toggleAssistant('ERROR');
 
@@ -6547,7 +6687,13 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		if(moving) cLog(2, `${FleetTimeStamp(userFleets[i].label)} Operating moving fleet`);
 		if(userFleets[i].resupplying || mining) return;
 		if(!onTarget && waitingForWarpCD) return;
-		if(scanning && onTarget && waitingForScan) return;
+		let forceNewAutoMoveTarget = false;
+		if(scanning && onTarget && waitingForScan) {
+			if(userFleets[i].scanAutoMoveTo && userFleets[i].scanCheckWhileCooldownLeft && (userFleets[i].scanEnd - Date.now())/1000 > userFleets[i].scanCooldown * (userFleets[i].scanCheckWhileCooldownLeft/100) && !await scanTargetStillValid(i,userFleets[i].scanAutoMoveTo))
+				forceNewAutoMoveTarget = true;
+			else
+				return;
+		}
 
 		try {
 				let fleetSavedData = await GM.getValue(userFleets[i].publicKey.toString(), '{}');
@@ -6580,14 +6726,25 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				}
 				else if (fleetParsedData.assignment == 'Scan' && fleetState == 'Idle') {
 					updateFleetState(userFleets[i], fleetState);
-					startupScanBlockCheck(i, fleetCoords);
-					const curentSBI = userFleets[i].scanBlockIdx;
-					await handleScan(i, fleetCoords, userFleets[i].scanBlock[curentSBI]);
+					let scanBlockPattern = globalSettings.scanBlockPattern;
+					if(userFleets[i].scanPattern) scanBlockPattern=userFleets[i].scanPattern;
+					if(!scanBlockPattern.includes('auto')) {	
+						startupScanBlockCheck(i, fleetCoords);
+						const curentSBI = userFleets[i].scanBlockIdx;
+						await handleScan(i, fleetCoords, userFleets[i].scanBlock[curentSBI]);
 
-					if(userFleets[i].stopping) return;
+						if(userFleets[i].stopping) return;
 
-					//Move instantly if a move is needed as the result of the previous scan
-					if(curentSBI !== userFleets[i].scanBlockIdx)	await handleScan(i, fleetCoords, userFleets[i].scanBlock[userFleets[i].scanBlockIdx]);
+						//Move instantly if a move is needed as the result of the previous scan
+						if(curentSBI !== userFleets[i].scanBlockIdx)	await handleScan(i, fleetCoords, userFleets[i].scanBlock[userFleets[i].scanBlockIdx]);
+					} else {
+						if(!userFleets[i].scanAutoMoveTo || forceNewAutoMoveTarget) await handleScanAutoMovement(i,fleetCoords);
+						let currentAutoMove = [userFleets[i].scanAutoMoveTo[0], userFleets[i].scanAutoMoveTo[1]];
+						await handleScan(i, fleetCoords, userFleets[i].scanAutoMoveTo);
+						if(!userFleets[i].scanAutoMoveTo) await handleScanAutoMovement(i,fleetCoords);
+						if(userFleets[i].stopping) return;
+						if(userFleets[i].scanAutoMoveTo && (currentAutoMove[0] != userFleets[i].scanAutoMoveTo[0] || currentAutoMove[1] != userFleets[i].scanAutoMoveTo[1])) await handleScan(i, fleetCoords, userFleets[i].scanAutoMoveTo);
+					}
 				}
 				else if (fleetParsedData.assignment == 'Mine') {
 					if(fleetState == 'MineAsteroid' && !userFleets[i].state.includes('Mine')) {
@@ -6616,7 +6773,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					await handleTransport(i, userFleets[i].state, fleetCoords);
 				}
 		} catch (err) {
-				cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR`, err);
+			cLog(1,`${FleetTimeStamp(userFleets[i].label)} ERROR`, err);
+			logError('Error while operating fleet: ' + (err.message ? err.message : err));
 		}
 	}
 
@@ -7099,7 +7257,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			if(fleetParsedData.assignment) updateFleetState(userFleets[i], 'Starting');
 
 			//Stagger fleet starts by 1000ms to avoid overloading the RPC
-			setTimeout(() => { startFleet(i);	}, 1000 * (i + 1));
+			setTimeout(() => { startFleet(i);	}, 1500 * (i + 1));
 		}
 
         for (let i=1; i < globalSettings.craftingJobs+1; i++) {
@@ -7513,6 +7671,12 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				let fleetScanMin3 = fleetParsedData && fleetParsedData.scanMin3 ? fleetParsedData.scanMin3 : 0;
 				let fleetScanPattern = fleetParsedData && fleetParsedData.scanPattern ? fleetParsedData.scanPattern : '';
 				let fleetScanPatternLength = fleetParsedData && fleetParsedData.scanPatternLength ? fleetParsedData.scanPatternLength : 0;
+				let fleetSearchDist = fleetParsedData && fleetParsedData.scanSearchDist ? fleetParsedData.scanSearchDist : 15;
+				let fleetClusterFactor = fleetParsedData && fleetParsedData.scanClusterFactor ? fleetParsedData.scanClusterFactor : 50;
+				let fleetScanNeighborhoodMinGood = fleetParsedData && fleetParsedData.scanNeighborhoodMinGood ? fleetParsedData.scanNeighborhoodMinGood : 3;
+				let fleetScanCheckWhileCooldownLeft = fleetParsedData && fleetParsedData.scanCheckWhileCooldownLeft ? fleetParsedData.scanCheckWhileCooldownLeft : 0;
+				let fleetScanCheckWhileCooldownLeftProb = fleetParsedData && fleetParsedData.scanCheckWhileCooldownLeftProb ? fleetParsedData.scanCheckWhileCooldownLeftProb : 0;
+				let fleetScanBypassPercent = fleetParsedData && fleetParsedData.scanBypassPercent ? fleetParsedData.scanBypassPercent : 4;
 				let fleetScanMove = fleetParsedData && fleetParsedData.scanMove == 'false' || false ? false : true;
 				let fleetMineResource = fleetParsedData && fleetParsedData.mineResource ? fleetParsedData.mineResource : '';
 				let fleetStarbase = fleetParsedData && fleetParsedData.starbase ? fleetParsedData.starbase : '';
@@ -7611,6 +7775,12 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					scanMin3: fleetScanMin3,
 					scanPattern: fleetScanPattern,
 					scanPatternLength: fleetScanPatternLength,
+					scanSearchDist: fleetSearchDist,
+					scanClusterFactor: fleetClusterFactor,
+					scanNeighborhoodMinGood: fleetScanNeighborhoodMinGood,
+					scanCheckWhileCooldownLeft: fleetScanCheckWhileCooldownLeft,					
+					scanCheckWhileCooldownLeftProb: fleetScanCheckWhileCooldownLeftProb,
+					scanBypassPercent: fleetScanBypassPercent,
 					scanMove: fleetScanMove,
 					foodCnt: currentFoodCnt ? currentFoodCnt.account.data.parsed.info.tokenAmount.uiAmount : 0,
 					sduCnt: currentSduCnt ? currentSduCnt.account.data.parsed.info.tokenAmount.uiAmount : 0,
