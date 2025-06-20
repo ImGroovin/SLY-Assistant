@@ -69,7 +69,7 @@
 
 	let globalSettings;
 	const settingsGmKey = 'globalSettings';
-	const scanningPatterns = ['square', 'ring', 'spiral', 'up', 'down', 'left', 'right', 'sly', 'auto(1)', 'auto(1+)', 'auto(1,2hv)', 'auto(1,2hv+)'];
+	const scanningPatterns = ['square', 'ring', 'spiral', 'up', 'down', 'left', 'right', 'sly', 'auto(1)', 'auto(1+)', 'auto(1,2hv)', 'auto(1,2hv+)', 'auto(1,2hv++)'];
 	await loadGlobalSettings();
 
 	let errorLog = [];
@@ -859,15 +859,21 @@
         let extra = null;
 
 	if(fleet && fleet.exitWarpSubwarpPending) {
-		fleetState = 'Idle';
 		let sector = null;
 		if(fleet.exitWarpSubwarpPending == 1) sector = sageProgram.coder.types.decode('MoveWarp', remainingData.subarray(1));
-		if(fleet.exitWarpSubwarpPending == 2) { 
-			sector = sageProgram.coder.types.decode('MoveSubwarp', remainingData.subarray(1));
-			fleet.exitSubwarpWillBurnFuel = sector.fuelExpenditure.toNumber();
+		if(fleet.exitWarpSubwarpPending == 2) sector = sageProgram.coder.types.decode('MoveSubwarp', remainingData.subarray(1));
+		if(sector.toSector) { // only continue if there is a target sector. Otherwise we will assume a RPC mismatch and reset the pending state (after waiting some time to be sure)
+			fleetState = 'Idle';
+			if(fleet.exitWarpSubwarpPending == 2) {
+				fleet.exitSubwarpWillBurnFuel = sector.fuelExpenditure.toNumber();
+			}
+			extra = [sector.toSector[0].toNumber(), sector.toSector[1].toNumber()];
+			return [fleetState, extra];
+		} else {
+			cLog(1, `${FleetTimeStamp(fleet.label)} Exit warp/subwarp was pending, but no target sector found, resetting pending state`);
+			logError('Exit warp/subwarp was pending, but no target sector found, resetting pending state', fleet.label);
+			fleet.exitWarpSubwarpPending = 0;
 		}
-		extra = [sector.toSector[0].toNumber(), sector.toSector[1].toNumber()];
-		return [fleetState, extra];
 	}
 
         switch(remainingData[0]) {
@@ -1417,7 +1423,7 @@ async function signatureStatusHandler() {
 			// If something goes wrong, we reject each request. If a promise of the queue was already resolved in the "try" block, the reject does (correctly) nothing and won't throw an error			
 			logError('Error: Rejecting all signature checks - ' + error);
 			for (const req of currentHashes) {
-				req.reject({err: error});
+				req.reject(err);
 			}
 		}
 	}
@@ -1436,13 +1442,17 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}>`,(retryCount > 0 ? 'TRYING 🌐 ' : '') + 'txHash', txHash, `/ last valid block`, lastValidBlockHeight, `/ cur block`, curBlockHeight);
 			if (!txHash) return {txHash, confirmation: {name: 'TransactionExpiredBlockheightExceededError'}};
 		}
-		const signatureStatus = await requestSignatureStatus(txHash);
-		if (signatureStatus.value && ['confirmed','finalized'].includes(signatureStatus.value.confirmationStatus)) {
-			cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> SIGNATURE FOUND ✅`);
-			return {txHash, confirmation: signatureStatus};
-		} else if (signatureStatus.err) {
-			cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> Err`,signatureStatus.err);
-			return {txHash, confirmation: signatureStatus}
+		try {
+			const signatureStatus = await requestSignatureStatus(txHash);
+			if (signatureStatus.value && ['confirmed','finalized'].includes(signatureStatus.value.confirmationStatus)) {
+				cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> SIGNATURE FOUND ✅`);
+				return {txHash, confirmation: signatureStatus};
+			} else if (signatureStatus.err) {
+				cLog(3,`${FleetTimeStamp(fleet.label)} <${opName}> Err`,signatureStatus.err);
+				return {txHash, confirmation: signatureStatus}
+			}
+		} catch(err) {
+			cLog(1,`${FleetTimeStamp(fleet.label)} <${opName}> Signature exception:`,err);
 		}
 		curBlockHeight = await localGetEpochInfo(fleet); // todo: if for some reason the request of the block height takes a very long time (e.g. 20 seconds) and the block height is near the block limit, it is possible that the loop will exit without doing a final signature check.
 		retryCount++;
@@ -3596,12 +3606,20 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			scanCheckWhileCooldownLeftProb.style.marginRight = '5px';
 			scanCheckWhileCooldownLeftProb.value = fleetParsedData && fleetParsedData.scanCheckWhileCooldownLeftProb ? fleetParsedData.scanCheckWhileCooldownLeftProb : '';
 			let scanBypassPercentLabel = document.createElement('span');
-			scanBypassPercentLabel.innerHTML = 'Bypass %:';
+			scanBypassPercentLabel.innerHTML = '<br>Bypass %:';
 			let scanBypassPercent = document.createElement('input');
 			scanBypassPercent.setAttribute('type', 'text');
 			scanBypassPercent.style.width = '25px';
 			scanBypassPercent.placeholder = '4';
+			scanBypassPercent.style.marginRight = '5px';
 			scanBypassPercent.value = fleetParsedData && fleetParsedData.scanBypassPercent ? fleetParsedData.scanBypassPercent : '';
+			let scanHomeAtPercentLabel = document.createElement('span');
+			scanHomeAtPercentLabel.innerHTML = 'Home at fuel/dist %:';
+			let scanHomeAtPercent = document.createElement('input');
+			scanHomeAtPercent.setAttribute('type', 'text');
+			scanHomeAtPercent.style.width = '30px';
+			scanHomeAtPercent.placeholder = '0';
+			scanHomeAtPercent.value = fleetParsedData && fleetParsedData.scanHomeAtPercent ? fleetParsedData.scanHomeAtPercent : '';
 			
 			let scanPatternDiv = document.createElement('div');
 			scanPatternDiv.appendChild(scanMin3Label);
@@ -3622,6 +3640,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			scanPatternDiv.appendChild(scanCheckWhileCooldownLeftProb);
 			scanPatternDiv.appendChild(scanBypassPercentLabel);
 			scanPatternDiv.appendChild(scanBypassPercent);
+			scanPatternDiv.appendChild(scanHomeAtPercentLabel);
+			scanPatternDiv.appendChild(scanHomeAtPercent);
 			let scanPatternTd = document.createElement('td');
 			scanPatternTd.setAttribute('colspan', '7');
 			scanPatternTd.appendChild(scanPatternDiv);
@@ -4017,6 +4037,10 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			fleet.moveTarget = '';
 			fleet.stopping = false;
 			fleet.scanAutoMoveTo = null;
+			fleet.scanForceResupply = false;
+			fleet.scanStartForcedResupply = false;
+			fleet.scanLastFuelAmount = undefined;
+
 			//updateFleetState(fleet, fleetState, true);
 			updateFleetState(fleet, 'Starting', true);
 			fleet.state = fleetState; // overwrite "starting" with the real state but don't display it - just like in toggleAssistant
@@ -4305,6 +4329,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			let scanCheckWhileCooldownLeft = parseInt(scanRows2[i].children[1].children[0].children[13].value) || 0;
 			let scanCheckWhileCooldownLeftProb = parseInt(scanRows2[i].children[1].children[0].children[15].value) || 0;
 			let scanBypassPercent = parseInt(scanRows2[i].children[1].children[0].children[17].value) || 4;
+			let scanHomeAtPercent = parseInt(scanRows2[i].children[1].children[0].children[19].value) || 0;
 
 			let fleetMineResource = mineRows[i].children[1].children[1].value;
 			fleetMineResource = fleetMineResource !== '' ? cargoItems.find(r => r.name == fleetMineResource).token : '';
@@ -4347,7 +4372,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 				let fleetScanEnd = fleetParsedData && fleetParsedData.scanEnd ? fleetParsedData.scanEnd : 0;
 
-				await GM.setValue(fleetPK, `{\"name\": \"${fleetName}\", \"assignment\": \"${fleetAssignment}\", \"mineResource\": \"${fleetMineResource}\", \"dest\": \"${fleetDestCoord}\", \"starbase\": \"${fleetStarbaseCoord}\", \"moveType\": \"${moveType}\", \"subwarpPref\": \"${subwarpPref}\", \"moveTarget\": \"${fleetMoveTarget}\", \"transportResource1\": \"${transportResource1}\", \"transportResource1Perc\": ${transportResource1Perc}, \"transportResource1Crew\": ${transportResource1Crew}, \"transportResource2\": \"${transportResource2}\", \"transportResource2Perc\": ${transportResource2Perc}, \"transportResource3\": \"${transportResource3}\", \"transportResource3Perc\": ${transportResource3Perc}, \"transportResource4\": \"${transportResource4}\", \"transportResource4Perc\": ${transportResource4Perc}, \"transportSBResource1\": \"${transportSBResource1}\", \"transportSBResource1Perc\": ${transportSBResource1Perc}, \"transportSBResource1Crew\": ${transportSBResource1Crew}, \"transportSBResource2\": \"${transportSBResource2}\", \"transportSBResource2Perc\": ${transportSBResource2Perc}, \"transportSBResource3\": \"${transportSBResource3}\", \"transportSBResource3Perc\": ${transportSBResource3Perc}, \"transportSBResource4\": \"${transportSBResource4}\", \"transportSBResource4Perc\": ${transportSBResource4Perc}, \"scanBlock\": ${JSON.stringify(scanBlock)}, \"scanMin\": ${scanMin}, \"scanMin2\": ${scanMin2}, \"scanMin3\": ${scanMin3}, \"scanSearchDist\": ${scanSearchDist}, \"scanClusterFactor\": ${scanClusterFactor}, \"scanNeighborhoodMinGood\": ${scanNeighborhoodMinGood}, \"scanCheckWhileCooldownLeft\": ${scanCheckWhileCooldownLeft}, \"scanCheckWhileCooldownLeftProb\": ${scanCheckWhileCooldownLeftProb}, \"scanBypassPercent\": ${scanBypassPercent}, \"scanPattern\": \"${scanPattern}\", \"scanPatternLength\": ${scanPatternLength}, \"scanMove\": \"${scanMove}\", \"scanEnd\": ${fleetScanEnd} }`);
+				await GM.setValue(fleetPK, `{\"name\": \"${fleetName}\", \"assignment\": \"${fleetAssignment}\", \"mineResource\": \"${fleetMineResource}\", \"dest\": \"${fleetDestCoord}\", \"starbase\": \"${fleetStarbaseCoord}\", \"moveType\": \"${moveType}\", \"subwarpPref\": \"${subwarpPref}\", \"moveTarget\": \"${fleetMoveTarget}\", \"transportResource1\": \"${transportResource1}\", \"transportResource1Perc\": ${transportResource1Perc}, \"transportResource1Crew\": ${transportResource1Crew}, \"transportResource2\": \"${transportResource2}\", \"transportResource2Perc\": ${transportResource2Perc}, \"transportResource3\": \"${transportResource3}\", \"transportResource3Perc\": ${transportResource3Perc}, \"transportResource4\": \"${transportResource4}\", \"transportResource4Perc\": ${transportResource4Perc}, \"transportSBResource1\": \"${transportSBResource1}\", \"transportSBResource1Perc\": ${transportSBResource1Perc}, \"transportSBResource1Crew\": ${transportSBResource1Crew}, \"transportSBResource2\": \"${transportSBResource2}\", \"transportSBResource2Perc\": ${transportSBResource2Perc}, \"transportSBResource3\": \"${transportSBResource3}\", \"transportSBResource3Perc\": ${transportSBResource3Perc}, \"transportSBResource4\": \"${transportSBResource4}\", \"transportSBResource4Perc\": ${transportSBResource4Perc}, \"scanBlock\": ${JSON.stringify(scanBlock)}, \"scanMin\": ${scanMin}, \"scanMin2\": ${scanMin2}, \"scanMin3\": ${scanMin3}, \"scanSearchDist\": ${scanSearchDist}, \"scanClusterFactor\": ${scanClusterFactor}, \"scanNeighborhoodMinGood\": ${scanNeighborhoodMinGood}, \"scanCheckWhileCooldownLeft\": ${scanCheckWhileCooldownLeft}, \"scanCheckWhileCooldownLeftProb\": ${scanCheckWhileCooldownLeftProb}, \"scanBypassPercent\": ${scanBypassPercent}, \"scanHomeAtPercent\": ${scanHomeAtPercent}, \"scanPattern\": \"${scanPattern}\", \"scanPatternLength\": ${scanPatternLength}, \"scanMove\": \"${scanMove}\", \"scanEnd\": ${fleetScanEnd} }`);
 				userFleets[userFleetIndex].mineResource = fleetMineResource;
 				userFleets[userFleetIndex].destCoord = fleetDestCoord;
 				userFleets[userFleetIndex].starbaseCoord = fleetStarbaseCoord;
@@ -4362,6 +4387,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				userFleets[userFleetIndex].scanCheckWhileCooldownLeft = scanCheckWhileCooldownLeft;
 				userFleets[userFleetIndex].scanCheckWhileCooldownLeftProb = scanCheckWhileCooldownLeftProb;
 				userFleets[userFleetIndex].scanBypassPercent = scanBypassPercent;
+				userFleets[userFleetIndex].scanHomeAtPercent = scanHomeAtPercent;
 				userFleets[userFleetIndex].scanPattern = scanPattern;
 				userFleets[userFleetIndex].scanPatternLength = scanPatternLength;
 				userFleets[userFleetIndex].scanMove = scanMove;
@@ -5010,10 +5036,12 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 					moveTime = calculateWarpTime(userFleets[i], moveDist);
 					const warpResult = await execWarp(userFleets[i], moveX, moveY, moveTime);
+					if(userFleets[i].scanLastFuelAmount) userFleets[i].scanLastFuelAmount -= moveDist*(userFleets[i].warpFuelConsumptionRate/100);
 					warpCooldownFinished = warpResult.warpCooldownFinished;
 				} else if (currentFuelCnt + currentCargoFuelCnt >= subwarpCost) {
 					moveTime = calculateSubwarpTime(userFleets[i], moveDist);
 					await execSubwarp(userFleets[i], moveX, moveY, moveTime);
+					if(userFleets[i].scanLastFuelAmount) userFleets[i].scanLastFuelAmount -= moveDist*(userFleets[i].subwarpFuelConsumptionRate/100);
 				} else {
 					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unable to move, lack of fuel`);
 					updateFleetState(userFleets[i], 'ERROR: Not enough fuel');
@@ -5109,6 +5137,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			((userFleets[i].scanCost == 0) && (userFleets[i].cargoCapacity - cargoCnt < userFleets[i].sduPerScan)) ||
 			//Food count check for regular scanning fleets
 			(currentFoodCnt < userFleets[i].scanCost)
+			|| (userFleets[i].scanForceResupply)
 		) {
 			await handleResupply(i, fleetCoords);
 			return;
@@ -5142,6 +5171,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				const currentFuel = fleetCurrentFuelTank.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.fuel.toString());
 				const currentFuelCnt = currentFuel ? currentFuel.account.data.parsed.info.tokenAmount.uiAmount : 0;
 				const fuelReadout = `Fuel: need ${Math.round(fuelNeeded)} / have ${Math.round(currentFuelCnt)}`;
+				userFleets[i].scanLastFuelAmount = currentFuelCnt;
 				if (currentFuelCnt > fuelNeeded) {
 						cLog(1, `${FleetTimeStamp(userFleets[i].label)}`, fuelReadout);
 						let moveDist = calculateMovementDistance(fleetCoords, destCoords);
@@ -5386,6 +5416,9 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			userFleets[i].lastOp = Date.now();
 
 			userFleets[i].scanAutoMoveTo = null;
+			userFleets[i].scanStartForcedResupply = false;
+			userFleets[i].scanForceResupply = false;
+			userFleets[i].scanLastFuelAmount = undefined;
 
 			//Undock
 			await execUndock(userFleets[i], userFleets[i].starbaseCoord);
@@ -6659,7 +6692,24 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		return true;
 	}
 
-	async function handleScanAutoMovement(o,$){let t=!1,n=parseInt(userFleets[o].destCoord.split(",")[0].trim()),e=parseInt(userFleets[o].destCoord.split(",")[1].trim());if(!userFleets[o].scanAutoMoveTo){let _=ConvertCoords(userFleets[o].starbaseCoord);CoordsEqual($,_)?userFleets[o].scanAutoMoveTo=[n,e]:userFleets[o].scanAutoMoveTo=[$[0],$[1]];return}userFleets[o].scanAutoMoveTo=null,t=await readScanMap();let s=globalSettings.scanBlockLength;userFleets[o].scanPatternLength&&(s=userFleets[o].scanPatternLength);let a=globalSettings.scanBlockPattern;userFleets[o].scanPattern&&(a=userFleets[o].scanPattern),s<5&&(s=5);let l=n-s,c=n+s,r=e-s,u=e+s,i=userFleets[o].scanNeighborhoodMinGood,f=parseInt(userFleets[o].scanClusterFactor),h=parseInt(userFleets[o].scanSearchDist);if(t){let d=0,p=[0,0],v=1,M=1;("auto(1,2hv)"==a||"auto(1,2hv+)"==a)&&(v=2,M=2);let g=0;for(let b=$[0]-2;b<=$[0]+2;b++)for(let m=$[1]-2;m<=$[1]+2;m++){if(b==$[0]&&m==$[1]||b<l||b>c||m<r||m>u)continue;let A=t.find(o=>o.x==b&&o.y==m);A&&100*A.c>=userFleets[o].scanMin&&g++}let y=[];if(g>=i){let T=[];for(let x=0-v;x<=0+v;x++)for(let P=0-M;P<=0+M;P++){let B=[$[0]+x,$[1]+P];if(!(a.includes("2hv")&&(Math.abs(x)>=2&&0!=P||Math.abs(P)>=2&&0!=x))&&!(B[0]<l)&&!(B[0]>c)&&!(B[1]<r)&&!(B[1]>u)){if(0!=x||0!=P){let C=t.find(o=>o.x==B[0]&&o.y==B[1]);C&&100*C.c>=userFleets[o].scanMin&&y.push([x,P]),C&&C.c>d&&(d=C.c,p=[x,P])}T.push([x,P])}}if(y.length){for(let S of(p=y[Math.floor(Math.random()*y.length)],y=[],T))if((p[0]+S[0]!=0||p[1]+S[1]!=0)&&T.some(o=>o[0]==p[0]+S[0]&&o[1]==p[1]+S[1])){let k=[$[0]+p[0]+S[0],$[1]+p[1]+S[1]],w=t.find(o=>o.x==k[0]&&o.y==k[1]);(!w||100*w.c>=userFleets[o].scanMin)&&y.push([k[0],k[1]])}}}if(g>=i&&y.length>0){let L=y[Math.floor(Math.random()*y.length)];userFleets[o].scanAutoMoveTo=L}else{let q=2.85,D=3,F=0,G=0,N=[0,0],j=0;for(;D<2*s-2&&D<=h;){for(let z=-1;z<=1;z+=.2)for(let E=-1;E<=1;E+=.2){if(10!=Math.round(10*Math.abs(z))&&10!=Math.round(10*Math.abs(E)))continue;let H=z,I=E,J=[$[0]+Math.round(H*D),$[1]+Math.round(I*D)];if(J[0]<l||J[0]>c||J[1]<r||J[1]>u)continue;let K=Math.round(q),O=0,Q=0,R=0,U=q*q;for(let V=Math.floor(0-q);V<=Math.ceil(q);V++)for(let W=Math.floor(0-q);W<=Math.ceil(q);W++)if(V*V+W*W<=U){if(J[0]+V<l||J[0]+V>c||J[1]+W<r||J[1]+W>u)continue;let X=t.find(o=>o.x==J[0]+V&&o.y==J[1]+W);X&&100*X.c>userFleets[o].scanMin&&(O++,Q+=X.c),R++}O>=2&&Q/Math.pow(O,f/100)/Math.sqrt(R)>G&&(F=O,G=Q/Math.pow(O,f/100)/Math.sqrt(R),N=[Math.round(H),Math.round(I)],j=R)}q+=.4,D+=1}if(F>0){let Y=N[0],Z=N[1];("auto(1,2hv)"==a||"auto(1,2hv+)"==a)&&(0==N[0]||0==N[1])&&(Y=2*N[0],Z=2*N[1]),p=[$[0]+Y,$[1]+Z];let oo=[],o$=t.find(o=>o.x==p[0]&&o.y==p[1]);if(o$){y=[],1>=Math.abs(Y)&&1>=Math.abs(Z)?"auto(1+)"==a&&(0==Y||0==Z)?y.push([$[0]+2*Y,$[1]+2*Z]):0==Y?(y.push([$[0]-1,$[1]+Z]),y.push([$[0]+1,$[1]+Z])):0==Z?(y.push([$[0]+Y,$[1]-1]),y.push([$[0]+Y,$[1]+1])):"auto(1,2hv+)"==a?(y.push([$[0]+2*Y,$[1]+Z]),y.push([$[0]+Y,$[1]+2*Z])):(y.push([$[0],$[1]+Z]),y.push([$[0]+Y,$[1]])):"auto(1,2hv)"==a?y.push([$[0]+N[0],$[1]+N[1]]):0==Y?(y.push([$[0]-1,$[1]+Z]),y.push([$[0]+1,$[1]+Z])):0==Z&&(y.push([$[0]+Y,$[1]-1]),y.push([$[0]+Y,$[1]+1]));let ot=1;for(let on of y){let oe=t.find(o=>o.x==on[0]&&o.y==on[1]);oe&&oe.c>=o$.c+userFleets[o].scanBypassPercent/100&&(oo.push([on[0],on[1]]),ot>oe.c&&(ot=oe.c))}if(oo.length>=2)for(let o_ of oo){let os=t.find(o=>o.x==o_[0]&&o.y==o_[1]);os&&os.c>=ot+userFleets[o].scanBypassPercent/100&&(oo=[[o_[0],o_[1]]])}}oo.length?userFleets[o].scanAutoMoveTo=oo[Math.floor(Math.random()*oo.length)]:userFleets[o].scanAutoMoveTo=p}}}if(!userFleets[o].scanAutoMoveTo){let oa=$[0],ol=$[1];oa>n-4&&oa<n+4&&ol>e-4&&ol<e+4?(.5>Math.random()?.5>Math.random()?oa++:oa--:.5>Math.random()?ol++:ol--,cLog(3,`${FleetTimeStamp(userFleets[o].label)} SAM found no best sector and no good direction, moving random to`,oa,"/",ol)):(oa<n&&oa++,oa>n&&oa--,ol<e&&ol++,ol>e&&ol--,cLog(3,`${FleetTimeStamp(userFleets[o].label)} SAM found no best sector and no good direction, moving back to start to`,oa,"/",ol)),userFleets[o].scanAutoMoveTo=[oa,ol]}}
+	async function scanAutoHasEnoughFuel(i, fleetCoords) {
+		if(!userFleets[i].scanHomeAtPercent || userFleets[i].scanHomeAtPercent <= 100) return true;
+		const starbaseCoords = ConvertCoords(userFleets[i].starbaseCoord);
+		if(userFleets[i].scanStartForcedResupply) return false;
+		let fuelNeeded = 0;
+		if (userFleets[i].moveType == 'warp' || userFleets[i].moveType == 'warp-subwarp-warp') {
+			fuelNeeded = calcWarpFuelReq(userFleets[i], fleetCoords, starbaseCoords);
+		} else {
+			const distFromTargetToStarbase = calculateMovementDistance(fleetCoords, starbaseCoords);
+			fuelNeeded = calculateSubwarpFuelBurn(userFleets[i], distFromTargetToStarbase);
+		}
+		cLog(3,`${FleetTimeStamp(userFleets[i].label)} SAM last fuel amount`,userFleets[i].scanLastFuelAmount,'fuelNeeded',fuelNeeded,'fuelNeededAlt',(fuelNeeded*(userFleets[i].scanHomeAtPercent/100)));
+		const hasEnoughFuel = (typeof userFleets[i].scanLastFuelAmount == 'undefined' || userFleets[i].scanLastFuelAmount > fuelNeeded * (userFleets[i].scanHomeAtPercent/100));
+		if(!hasEnoughFuel) userFleets[i].scanStartForcedResupply = true;
+		return hasEnoughFuel;
+	}
+
+	async function handleScanAutoMovement($,o){let _=!1,t=parseInt(userFleets[$].destCoord.split(",")[0].trim()),n=parseInt(userFleets[$].destCoord.split(",")[1].trim());if(!userFleets[$].scanAutoMoveTo){let e=ConvertCoords(userFleets[$].starbaseCoord);CoordsEqual(o,e)?userFleets[$].scanAutoMoveTo=[t,n]:userFleets[$].scanAutoMoveTo=[o[0],o[1]];return}userFleets[$].scanAutoMoveTo=null,_=await readScanMap();let s=globalSettings.scanBlockLength;userFleets[$].scanPatternLength&&(s=userFleets[$].scanPatternLength);let a=globalSettings.scanBlockPattern;userFleets[$].scanPattern&&(a=userFleets[$].scanPattern),s<5&&(s=5);let l=t-s,u=t+s,i=n-s,r=n+s,c=userFleets[$].scanNeighborhoodMinGood,h=parseInt(userFleets[$].scanClusterFactor),f=parseInt(userFleets[$].scanSearchDist);if(_){let d=0,p=[0,0],b=await scanAutoHasEnoughFuel($,o),v=1,g=1;a.includes("2hv")&&(v=2,g=2);let M=0,m=[];if(b){for(let A=o[0]-2;A<=o[0]+2;A++)for(let y=o[1]-2;y<=o[1]+2;y++){if(A==o[0]&&y==o[1]||A<l||A>u||y<i||y>r)continue;let T=_.find($=>$.x==A&&$.y==y);T&&100*T.c>=userFleets[$].scanMin&&M++}if(M>=c){let x=[];for(let S=0-v;S<=0+v;S++)for(let P=0-g;P<=0+g;P++){let B=[o[0]+S,o[1]+P];if(!(a.includes("2hv")&&(Math.abs(S)>=2&&0!=P||Math.abs(P)>=2&&0!=S))&&!(B[0]<l)&&!(B[0]>u)&&!(B[1]<i)&&!(B[1]>r)){if(0!=S||0!=P){let k=_.find($=>$.x==B[0]&&$.y==B[1]);k&&100*k.c>=userFleets[$].scanMin&&m.push([S,P]),k&&k.c>d&&(d=k.c,p=[S,P])}x.push([S,P])}}if(m.length){.5>Math.random()&&(p=m[Math.floor(Math.random()*m.length)]),m=[];let C=[];if(Math.abs(p[0])>=1&&Math.abs(p[1])>=1)C.push([o[0]+p[0],o[1]+p[1]]),C.push([o[0]+p[0],o[1]]),C.push([o[0]+p[0],o[1]+-1*p[1]]),C.push([o[0],o[1]+p[1]]),C.push([o[0]+-1*p[0],o[1]+p[1]]),a.includes("2hv")&&(C.push([o[0],o[1]+2*p[1]]),C.push([o[0]+2*p[0],o[1]]));else for(let w of x)(0!=w[0]||0!=w[1])&&(Math.abs(p[0])>=1&&(0==w[0]||Math.sign(w[0])==Math.sign(p[0]))||Math.abs(p[1])>=1&&(0==w[1]||Math.sign(w[1])==Math.sign(p[1])))&&C.push([o[0]+w[0],o[1]+w[1]]);for(let L of C){if(L[0]<l||L[0]>u||L[1]<i||L[1]>r)continue;let q=_.find($=>$.x==L[0]&&$.y==L[1]);(!q||100*q.c>=userFleets[$].scanMin)&&m.push([L[0],L[1]])}}}}if(M>=c&&m.length>0){let F=m[Math.floor(Math.random()*m.length)];userFleets[$].scanAutoMoveTo=F}else{let D=0,G=0,N=[0,0],R=0;if(b){let j=2.85,z=3;for(;z<2*s-2&&z<=f;){for(let E=-1;E<=1;E+=.2)for(let H=-1;H<=1;H+=.2){if(10!=Math.round(10*Math.abs(E))&&10!=Math.round(10*Math.abs(H)))continue;let I=E,J=H,K=[o[0]+Math.round(I*z),o[1]+Math.round(J*z)];if(K[0]<l||K[0]>u||K[1]<i||K[1]>r)continue;let O=Math.round(j),Q=0,U=0,V=0,W=j*j;for(let X=Math.floor(0-j);X<=Math.ceil(j);X++)for(let Y=Math.floor(0-j);Y<=Math.ceil(j);Y++)if(X*X+Y*Y<=W){if(K[0]+X<l||K[0]+X>u||K[1]+Y<i||K[1]+Y>r)continue;let Z=_.find($=>$.x==K[0]+X&&$.y==K[1]+Y);Z&&100*Z.c>userFleets[$].scanMin&&(Q++,U+=Z.c),V++}Q>=2&&U/Math.pow(Q,h/100)/Math.sqrt(V)>G&&(D=Q,G=U/Math.pow(Q,h/100)/Math.sqrt(V),N=[Math.round(I),Math.round(J)],R=V)}j+=.4,z+=1}}else{let $$=ConvertCoords(userFleets[$].starbaseCoord),$o=[$$[0]-o[0],$$[1]-o[1]];if(0!=$o[0]||0!=$o[1]){if(2>=Math.abs($o[0])&&2>=Math.abs($o[1])){userFleets[$].scanAutoMoveTo=$$,userFleets[$].scanForceResupply=!0,cLog(3,`${FleetTimeStamp(userFleets[$].label)} SAM heading back and near the SB, moving to SB`);return}let $_=[$o[0],$o[1]].map($=>$/Math.max(Math.abs($o[0]),Math.abs($o[1])));N=[Math.round($_[0]),Math.round($_[1])],D=1,a="auto(1,2hv++)",cLog(3,`${FleetTimeStamp(userFleets[$].label)} SAM heading back, direction`,N[0],"/",N[1])}}if(D>0){let $t=N[0],$n=N[1];("auto(1,2hv++)"==a||("auto(1,2hv)"==a||"auto(1,2hv+)"==a)&&(0==N[0]||0==N[1]))&&($t=2*N[0],$n=2*N[1]),p=[o[0]+$t,o[1]+$n];let $e=[],$s=_.find($=>$.x==p[0]&&$.y==p[1]);if($s){m=[],1>=Math.abs($t)&&1>=Math.abs($n)?"auto(1+)"==a&&(0==$t||0==$n)?m.push([o[0]+2*$t,o[1]+2*$n]):0==$t?(m.push([o[0]-1,o[1]+$n]),m.push([o[0]+1,o[1]+$n])):0==$n?(m.push([o[0]+$t,o[1]-1]),m.push([o[0]+$t,o[1]+1])):"auto(1,2hv+)"==a?(m.push([o[0]+2*$t,o[1]+$n]),m.push([o[0]+$t,o[1]+2*$n])):(m.push([o[0],o[1]+$n]),m.push([o[0]+$t,o[1]])):"auto(1,2hv++)"==a&&Math.abs($t)>=2&&Math.abs($n)>=2?(m.push([o[0]+$t,o[1]+$n/2]),m.push([o[0]+$t/2,o[1]+$n]),m.push([o[0]+$t/2,o[1]+$n/2])):"auto(1,2hv)"==a?m.push([o[0]+N[0],o[1]+N[1]]):0==$t?(m.push([o[0]-1,o[1]+$n]),m.push([o[0]+1,o[1]+$n])):0==$n&&(m.push([o[0]+$t,o[1]-1]),m.push([o[0]+$t,o[1]+1]));let $a=1;for(let $l of m){let $u=_.find($=>$.x==$l[0]&&$.y==$l[1]);$u&&$u.c>=$s.c+userFleets[$].scanBypassPercent/100&&($e.push([$l[0],$l[1]]),$a>$u.c&&($a=$u.c))}if($e.length>=2)for(let $i of $e){let $r=_.find($=>$.x==$i[0]&&$.y==$i[1]);$r&&$r.c>=$a+userFleets[$].scanBypassPercent/100&&($e=[[$i[0],$i[1]]])}}$e.length?userFleets[$].scanAutoMoveTo=$e[Math.floor(Math.random()*$e.length)]:userFleets[$].scanAutoMoveTo=p}}}if(!userFleets[$].scanAutoMoveTo){let $c=o[0],$h=o[1];$c>t-4&&$c<t+4&&$h>n-4&&$h<n+4?(.5>Math.random()?.5>Math.random()?$c++:$c--:.5>Math.random()?$h++:$h--,cLog(3,`${FleetTimeStamp(userFleets[$].label)} SAM found no best sector and no good direction, moving random to`,$c,"/",$h)):($c<t&&$c++,$c>t&&$c--,$h<n&&$h++,$h>n&&$h--,cLog(3,`${FleetTimeStamp(userFleets[$].label)} SAM found no best sector and no good direction, moving back to start to`,$c,"/",$h)),userFleets[$].scanAutoMoveTo=[$c,$h]}}
 
 	async function operateFleet(i) {
         if (globalErrorTracker.errorCount > 9) toggleAssistant('ERROR');
@@ -7677,6 +7727,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				let fleetScanCheckWhileCooldownLeft = fleetParsedData && fleetParsedData.scanCheckWhileCooldownLeft ? fleetParsedData.scanCheckWhileCooldownLeft : 0;
 				let fleetScanCheckWhileCooldownLeftProb = fleetParsedData && fleetParsedData.scanCheckWhileCooldownLeftProb ? fleetParsedData.scanCheckWhileCooldownLeftProb : 0;
 				let fleetScanBypassPercent = fleetParsedData && fleetParsedData.scanBypassPercent ? fleetParsedData.scanBypassPercent : 4;
+				let fleetScanHomeAtPercent = fleetParsedData && fleetParsedData.scanHomeAtPercent ? fleetParsedData.scanHomeAtPercent : 0;
 				let fleetScanMove = fleetParsedData && fleetParsedData.scanMove == 'false' || false ? false : true;
 				let fleetMineResource = fleetParsedData && fleetParsedData.mineResource ? fleetParsedData.mineResource : '';
 				let fleetStarbase = fleetParsedData && fleetParsedData.starbase ? fleetParsedData.starbase : '';
@@ -7781,6 +7832,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					scanCheckWhileCooldownLeft: fleetScanCheckWhileCooldownLeft,					
 					scanCheckWhileCooldownLeftProb: fleetScanCheckWhileCooldownLeftProb,
 					scanBypassPercent: fleetScanBypassPercent,
+					scanHomeAtPercent: fleetScanHomeAtPercent,
 					scanMove: fleetScanMove,
 					foodCnt: currentFoodCnt ? currentFoodCnt.account.data.parsed.info.tokenAmount.uiAmount : 0,
 					sduCnt: currentSduCnt ? currentSduCnt.account.data.parsed.info.tokenAmount.uiAmount : 0,
