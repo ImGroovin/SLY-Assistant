@@ -3567,7 +3567,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			scanPatternLength.value = fleetParsedData && fleetParsedData.scanPatternLength ? fleetParsedData.scanPatternLength : '';
 
 			let scanSearchDistLabel = document.createElement('span');
-			scanSearchDistLabel.innerHTML = '<br>[Auto] Search dist:';
+			scanSearchDistLabel.innerHTML = 'Search dist:';
 			let scanSearchDist = document.createElement('input');
 			scanSearchDist.setAttribute('type', 'text');
 			scanSearchDist.style.width = '25px';
@@ -3597,6 +3597,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			scanCheckWhileCooldownLeft.style.width = '25px';
 			scanCheckWhileCooldownLeft.placeholder = '0';
 			scanCheckWhileCooldownLeft.value = fleetParsedData && fleetParsedData.scanCheckWhileCooldownLeft ? fleetParsedData.scanCheckWhileCooldownLeft : '';
+			/*
 			let scanCheckWhileCooldownLeftProbLabel = document.createElement('span');
 			scanCheckWhileCooldownLeftProbLabel.innerHTML = 'Prob:';
 			let scanCheckWhileCooldownLeftProb = document.createElement('input');
@@ -3605,6 +3606,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			scanCheckWhileCooldownLeftProb.placeholder = '0';
 			scanCheckWhileCooldownLeftProb.style.marginRight = '5px';
 			scanCheckWhileCooldownLeftProb.value = fleetParsedData && fleetParsedData.scanCheckWhileCooldownLeftProb ? fleetParsedData.scanCheckWhileCooldownLeftProb : '';
+   			*/
 			let scanBypassPercentLabel = document.createElement('span');
 			scanBypassPercentLabel.innerHTML = '<br>Bypass %:';
 			let scanBypassPercent = document.createElement('input');
@@ -3628,23 +3630,29 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			scanPatternDiv.appendChild(scanPattern);
 			scanPatternDiv.appendChild(scanPatternLengthLabel);
 			scanPatternDiv.appendChild(scanPatternLength);
-			scanPatternDiv.appendChild(scanSearchDistLabel);
-			scanPatternDiv.appendChild(scanSearchDist);
-			scanPatternDiv.appendChild(scanClusterFactorLabel);
-			scanPatternDiv.appendChild(scanClusterFactor);
-			scanPatternDiv.appendChild(scanNeighborhoodMinGoodLabel);
-			scanPatternDiv.appendChild(scanNeighborhoodMinGood);
-			scanPatternDiv.appendChild(scanCheckWhileCooldownLeftLabel);
-			scanPatternDiv.appendChild(scanCheckWhileCooldownLeft);
-			scanPatternDiv.appendChild(scanCheckWhileCooldownLeftProbLabel);
-			scanPatternDiv.appendChild(scanCheckWhileCooldownLeftProb);
-			scanPatternDiv.appendChild(scanBypassPercentLabel);
-			scanPatternDiv.appendChild(scanBypassPercent);
-			scanPatternDiv.appendChild(scanHomeAtPercentLabel);
-			scanPatternDiv.appendChild(scanHomeAtPercent);
+		
+			let scanAutoDiv = document.createElement('div');
+			scanAutoDiv.style.display = (fleetParsedData && fleetParsedData.scanPattern && fleetParsedData.scanPattern.includes('auto')) ? 'block' : 'none';
+			scanAutoDiv.appendChild(scanSearchDistLabel);
+			scanAutoDiv.appendChild(scanSearchDist);
+			scanAutoDiv.appendChild(scanClusterFactorLabel);
+			scanAutoDiv.appendChild(scanClusterFactor);
+			scanAutoDiv.appendChild(scanNeighborhoodMinGoodLabel);
+			scanAutoDiv.appendChild(scanNeighborhoodMinGood);
+			scanAutoDiv.appendChild(scanCheckWhileCooldownLeftLabel);
+			scanAutoDiv.appendChild(scanCheckWhileCooldownLeft);
+			/*
+			scanAutoDiv.appendChild(scanCheckWhileCooldownLeftProbLabel);
+			scanAutoDiv.appendChild(scanCheckWhileCooldownLeftProb);
+   			*/
+			scanAutoDiv.appendChild(scanBypassPercentLabel);
+			scanAutoDiv.appendChild(scanBypassPercent);
+			scanAutoDiv.appendChild(scanHomeAtPercentLabel);
+			scanAutoDiv.appendChild(scanHomeAtPercent);
 			let scanPatternTd = document.createElement('td');
 			scanPatternTd.setAttribute('colspan', '7');
 			scanPatternTd.appendChild(scanPatternDiv);
+			scanPatternTd.appendChild(scanAutoDiv);
 			scanRow2.appendChild(scanPatternTd);
 			
 			targetElem.appendChild(scanRow2);
@@ -3920,6 +3928,15 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 							fleetDestCoordSelect.style.display = 'inline-block';
 					}
 			};
+
+			scanPattern.onchange = function() {
+					if (scanPattern.value.includes('auto')) {
+							scanAutoDiv.style.display = 'block';
+					} else {
+							scanAutoDiv.style.display = 'none';
+					}
+			};			
+
 	}
 
     async function addCraftingInput(craftIndex) {
@@ -4323,13 +4340,13 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			let scanPattern = scanRows2[i].children[1].children[0].children[3].value;
 			let scanPatternLength = parseInt(scanRows2[i].children[1].children[0].children[5].value) || 0;
 
-			let scanSearchDist = parseInt(scanRows2[i].children[1].children[0].children[7].value) || 15;
-			let scanClusterFactor = parseInt(scanRows2[i].children[1].children[0].children[9].value) || 50;
-			let scanNeighborhoodMinGood = parseInt(scanRows2[i].children[1].children[0].children[11].value) || 3;
-			let scanCheckWhileCooldownLeft = parseInt(scanRows2[i].children[1].children[0].children[13].value) || 0;
-			let scanCheckWhileCooldownLeftProb = parseInt(scanRows2[i].children[1].children[0].children[15].value) || 0;
-			let scanBypassPercent = parseInt(scanRows2[i].children[1].children[0].children[17].value) || 4;
-			let scanHomeAtPercent = parseInt(scanRows2[i].children[1].children[0].children[19].value) || 0;
+			let scanSearchDist = parseInt(scanRows2[i].children[1].children[1].children[1].value) || 15;
+			let scanClusterFactor = parseInt(scanRows2[i].children[1].children[1].children[3].value) || 50;
+			let scanNeighborhoodMinGood = parseInt(scanRows2[i].children[1].children[1].children[5].value) || 3;
+			let scanCheckWhileCooldownLeft = parseInt(scanRows2[i].children[1].children[1].children[7].value) || 0;
+			//let scanCheckWhileCooldownLeftProb = parseInt(scanRows2[i].children[1].children[0].children[15].value) || 0;
+			let scanBypassPercent = parseInt(scanRows2[i].children[1].children[1].children[9].value) || 4;
+			let scanHomeAtPercent = parseInt(scanRows2[i].children[1].children[1].children[11].value) || 0;
 
 			let fleetMineResource = mineRows[i].children[1].children[1].value;
 			fleetMineResource = fleetMineResource !== '' ? cargoItems.find(r => r.name == fleetMineResource).token : '';
@@ -4372,7 +4389,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 				let fleetScanEnd = fleetParsedData && fleetParsedData.scanEnd ? fleetParsedData.scanEnd : 0;
 
-				await GM.setValue(fleetPK, `{\"name\": \"${fleetName}\", \"assignment\": \"${fleetAssignment}\", \"mineResource\": \"${fleetMineResource}\", \"dest\": \"${fleetDestCoord}\", \"starbase\": \"${fleetStarbaseCoord}\", \"moveType\": \"${moveType}\", \"subwarpPref\": \"${subwarpPref}\", \"moveTarget\": \"${fleetMoveTarget}\", \"transportResource1\": \"${transportResource1}\", \"transportResource1Perc\": ${transportResource1Perc}, \"transportResource1Crew\": ${transportResource1Crew}, \"transportResource2\": \"${transportResource2}\", \"transportResource2Perc\": ${transportResource2Perc}, \"transportResource3\": \"${transportResource3}\", \"transportResource3Perc\": ${transportResource3Perc}, \"transportResource4\": \"${transportResource4}\", \"transportResource4Perc\": ${transportResource4Perc}, \"transportSBResource1\": \"${transportSBResource1}\", \"transportSBResource1Perc\": ${transportSBResource1Perc}, \"transportSBResource1Crew\": ${transportSBResource1Crew}, \"transportSBResource2\": \"${transportSBResource2}\", \"transportSBResource2Perc\": ${transportSBResource2Perc}, \"transportSBResource3\": \"${transportSBResource3}\", \"transportSBResource3Perc\": ${transportSBResource3Perc}, \"transportSBResource4\": \"${transportSBResource4}\", \"transportSBResource4Perc\": ${transportSBResource4Perc}, \"scanBlock\": ${JSON.stringify(scanBlock)}, \"scanMin\": ${scanMin}, \"scanMin2\": ${scanMin2}, \"scanMin3\": ${scanMin3}, \"scanSearchDist\": ${scanSearchDist}, \"scanClusterFactor\": ${scanClusterFactor}, \"scanNeighborhoodMinGood\": ${scanNeighborhoodMinGood}, \"scanCheckWhileCooldownLeft\": ${scanCheckWhileCooldownLeft}, \"scanCheckWhileCooldownLeftProb\": ${scanCheckWhileCooldownLeftProb}, \"scanBypassPercent\": ${scanBypassPercent}, \"scanHomeAtPercent\": ${scanHomeAtPercent}, \"scanPattern\": \"${scanPattern}\", \"scanPatternLength\": ${scanPatternLength}, \"scanMove\": \"${scanMove}\", \"scanEnd\": ${fleetScanEnd} }`);
+				await GM.setValue(fleetPK, `{\"name\": \"${fleetName}\", \"assignment\": \"${fleetAssignment}\", \"mineResource\": \"${fleetMineResource}\", \"dest\": \"${fleetDestCoord}\", \"starbase\": \"${fleetStarbaseCoord}\", \"moveType\": \"${moveType}\", \"subwarpPref\": \"${subwarpPref}\", \"moveTarget\": \"${fleetMoveTarget}\", \"transportResource1\": \"${transportResource1}\", \"transportResource1Perc\": ${transportResource1Perc}, \"transportResource1Crew\": ${transportResource1Crew}, \"transportResource2\": \"${transportResource2}\", \"transportResource2Perc\": ${transportResource2Perc}, \"transportResource3\": \"${transportResource3}\", \"transportResource3Perc\": ${transportResource3Perc}, \"transportResource4\": \"${transportResource4}\", \"transportResource4Perc\": ${transportResource4Perc}, \"transportSBResource1\": \"${transportSBResource1}\", \"transportSBResource1Perc\": ${transportSBResource1Perc}, \"transportSBResource1Crew\": ${transportSBResource1Crew}, \"transportSBResource2\": \"${transportSBResource2}\", \"transportSBResource2Perc\": ${transportSBResource2Perc}, \"transportSBResource3\": \"${transportSBResource3}\", \"transportSBResource3Perc\": ${transportSBResource3Perc}, \"transportSBResource4\": \"${transportSBResource4}\", \"transportSBResource4Perc\": ${transportSBResource4Perc}, \"scanBlock\": ${JSON.stringify(scanBlock)}, \"scanMin\": ${scanMin}, \"scanMin2\": ${scanMin2}, \"scanMin3\": ${scanMin3}, \"scanSearchDist\": ${scanSearchDist}, \"scanClusterFactor\": ${scanClusterFactor}, \"scanNeighborhoodMinGood\": ${scanNeighborhoodMinGood}, \"scanCheckWhileCooldownLeft\": ${scanCheckWhileCooldownLeft}, \"scanBypassPercent\": ${scanBypassPercent}, \"scanHomeAtPercent\": ${scanHomeAtPercent}, \"scanPattern\": \"${scanPattern}\", \"scanPatternLength\": ${scanPatternLength}, \"scanMove\": \"${scanMove}\", \"scanEnd\": ${fleetScanEnd} }`);
 				userFleets[userFleetIndex].mineResource = fleetMineResource;
 				userFleets[userFleetIndex].destCoord = fleetDestCoord;
 				userFleets[userFleetIndex].starbaseCoord = fleetStarbaseCoord;
@@ -4385,7 +4402,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				userFleets[userFleetIndex].scanClusterFactor = scanClusterFactor;
 				userFleets[userFleetIndex].scanNeighborhoodMinGood = scanNeighborhoodMinGood;
 				userFleets[userFleetIndex].scanCheckWhileCooldownLeft = scanCheckWhileCooldownLeft;
-				userFleets[userFleetIndex].scanCheckWhileCooldownLeftProb = scanCheckWhileCooldownLeftProb;
+				//userFleets[userFleetIndex].scanCheckWhileCooldownLeftProb = scanCheckWhileCooldownLeftProb;
 				userFleets[userFleetIndex].scanBypassPercent = scanBypassPercent;
 				userFleets[userFleetIndex].scanHomeAtPercent = scanHomeAtPercent;
 				userFleets[userFleetIndex].scanPattern = scanPattern;
@@ -6685,10 +6702,22 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		let scanX = fleetCoords[0];
 		let scanY = fleetCoords[1];
 		let scan = scanData.find(item => item.x == scanX && item.y == scanY);
-		if(scan && scan.c * 100 < userFleets[i].scanCheckWhileCooldownLeftProb) {
+		let cooldownLeft = (userFleets[i].scanEnd - Date.now())/1000;
+		let lowerThreshold = userFleets[i].scanCooldown * (userFleets[i].scanCheckWhileCooldownLeft/100);
+		if(userFleets[i].scanCooldown - lowerThreshold <= 0) return true; //prevent division by zero
+		
+		if(cooldownLeft < lowerThreshold) {
+			cLog(3,`${FleetTimeStamp(userFleets[i].label)} SAM scan coord`,scanX,`/`,scanY,` lower cooldown threshold reached, fleet stays here until scan.`);
+			return true;
+		}
+		
+		let currentThreshold = (cooldownLeft - lowerThreshold) / (userFleets[i].scanCooldown - lowerThreshold) * userFleets[i].scanMin2;
+		
+		if(scan && scan.c * 100 < currentThreshold) {
 			cLog(3,`${FleetTimeStamp(userFleets[i].label)} SAM scan coord`,scanX,`/`,scanY,`turned bad while waiting for the cooldown.`);
 			return false;
 		}
+		cLog(3,`${FleetTimeStamp(userFleets[i].label)} SAM scan coord`,scanX,`/`,scanY,`still valid.`);
 		return true;
 	}
 
@@ -6739,7 +6768,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		if(!onTarget && waitingForWarpCD) return;
 		let forceNewAutoMoveTarget = false;
 		if(scanning && onTarget && waitingForScan) {
-			if(userFleets[i].scanAutoMoveTo && userFleets[i].scanCheckWhileCooldownLeft && (userFleets[i].scanEnd - Date.now())/1000 > userFleets[i].scanCooldown * (userFleets[i].scanCheckWhileCooldownLeft/100) && !await scanTargetStillValid(i,userFleets[i].scanAutoMoveTo))
+			if(userFleets[i].scanAutoMoveTo && userFleets[i].scanCheckWhileCooldownLeft && !await scanTargetStillValid(i,userFleets[i].scanAutoMoveTo))
 				forceNewAutoMoveTarget = true;
 			else
 				return;
@@ -7725,7 +7754,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				let fleetClusterFactor = fleetParsedData && fleetParsedData.scanClusterFactor ? fleetParsedData.scanClusterFactor : 50;
 				let fleetScanNeighborhoodMinGood = fleetParsedData && fleetParsedData.scanNeighborhoodMinGood ? fleetParsedData.scanNeighborhoodMinGood : 3;
 				let fleetScanCheckWhileCooldownLeft = fleetParsedData && fleetParsedData.scanCheckWhileCooldownLeft ? fleetParsedData.scanCheckWhileCooldownLeft : 0;
-				let fleetScanCheckWhileCooldownLeftProb = fleetParsedData && fleetParsedData.scanCheckWhileCooldownLeftProb ? fleetParsedData.scanCheckWhileCooldownLeftProb : 0;
+				//let fleetScanCheckWhileCooldownLeftProb = fleetParsedData && fleetParsedData.scanCheckWhileCooldownLeftProb ? fleetParsedData.scanCheckWhileCooldownLeftProb : 0;
 				let fleetScanBypassPercent = fleetParsedData && fleetParsedData.scanBypassPercent ? fleetParsedData.scanBypassPercent : 4;
 				let fleetScanHomeAtPercent = fleetParsedData && fleetParsedData.scanHomeAtPercent ? fleetParsedData.scanHomeAtPercent : 0;
 				let fleetScanMove = fleetParsedData && fleetParsedData.scanMove == 'false' || false ? false : true;
@@ -7830,7 +7859,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					scanClusterFactor: fleetClusterFactor,
 					scanNeighborhoodMinGood: fleetScanNeighborhoodMinGood,
 					scanCheckWhileCooldownLeft: fleetScanCheckWhileCooldownLeft,					
-					scanCheckWhileCooldownLeftProb: fleetScanCheckWhileCooldownLeftProb,
+					//scanCheckWhileCooldownLeftProb: fleetScanCheckWhileCooldownLeftProb,
 					scanBypassPercent: fleetScanBypassPercent,
 					scanHomeAtPercent: fleetScanHomeAtPercent,
 					scanMove: fleetScanMove,
