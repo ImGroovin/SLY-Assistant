@@ -123,6 +123,11 @@
 		if(typeof value == "string")	return value;
 		return defaultValue;
 	}
+	function parseStringDefaultForced(value, defaultValue) {
+		if(typeof value == "string" && value.length)	return value;
+		return defaultValue;
+	}
+
 
 	function parseIntKMG(val) {
 		let multiplier = val.substr(-1).toLowerCase();
@@ -166,7 +171,7 @@
 
 			emailInterface: parseStringDefault(globalSettings.emailInterface,''),
 
-			scanMapURL: parseStringDefault(globalSettings.scanMapURL,'https://slya.de/sdu.json'),
+			scanMapURL: parseStringDefaultForced(globalSettings.scanMapURL,'https://slya.de/sdu.json'),
 
 			emailFleetIxErrors: parseBoolDefault(globalSettings.emailFleetIxErrors, true),
 			emailCraftIxErrors: parseBoolDefault(globalSettings.emailCraftIxErrors, true),
@@ -4591,7 +4596,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 			emailInterface: parseStringDefault(document.querySelector('#emailInterface').value,''),
 
-			scanMapURL: parseStringDefault(document.querySelector('#scanMapURL').value,'https://slya.de/sdu.json'),
+			scanMapURL: parseStringDefaultForced(document.querySelector('#scanMapURL').value,'https://slya.de/sdu.json'),
 
 			emailFleetIxErrors: document.querySelector('#emailFleetIxErrors').checked,
 			emailCraftIxErrors: document.querySelector('#emailCraftIxErrors').checked,
