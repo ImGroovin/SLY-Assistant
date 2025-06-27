@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.26
+// @version      0.7.27
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -170,6 +170,9 @@
 			queueExitWarpSubwarp: parseBoolDefault(globalSettings.queueExitWarpSubwarp, false),
 
 			emailInterface: parseStringDefault(globalSettings.emailInterface,''),
+
+			influxURL: parseStringDefault(globalSettings.influxURL,''),
+			influxAuth: parseStringDefault(globalSettings.influxAuth,''),
 
 			scanMapURL: parseStringDefaultForced(globalSettings.scanMapURL,'https://slya.de/sdu.json'),
 
@@ -601,6 +604,57 @@
         let solanaClock = await solanaReadConnection.getAccountInfo(new solanaWeb3.PublicKey('SysvarC1ock11111111111111111111111111111111'));
         let solanaTime = solanaClock.data.readBigInt64LE(8 * 4);
     }
+
+    let influxLastStarbaseCargoHoldUpdates = [];
+    async function influxStarbaseCargoHold(starbaseX,starbaseY,cargoHoldKeyOrTokens) {
+		
+	if(!globalSettings.influxURL.length) return;
+	
+	let cargoHoldTokens = null;
+	
+	let starbaseName = validTargets.find(target => (target.x + ',' + target.y) == (starbaseX + ',' + starbaseY))?.name;
+	
+	let lastUpdate = influxLastStarbaseCargoHoldUpdates.find(item => item.x == starbaseX && item.y == starbaseY);
+	let lastUpdateTimestamp = 0;
+	
+	if(!lastUpdate) {
+		lastUpdateTimestamp = 0;
+		influxLastStarbaseCargoHoldUpdates.push({ x: starbaseX, y: starbaseY, timestamp: Date.now() });
+	}
+	else
+	{
+		lastUpdateTimestamp = lastUpdate.timestamp;
+	}
+	
+	if(lastUpdateTimestamp < Date.now() - 60*15*1000) { // log new data after 15 minutes
+		
+		if(lastUpdate) lastUpdate.timestamp = Date.now();
+				
+		if(cargoHoldKeyOrTokens.constructor == solanaWeb3.PublicKey) {
+			// we got public key of the cargo hold and read the token accounts by ourselves
+			cargoHoldTokens = await solanaReadConnection.getParsedTokenAccountsByOwner(cargoHoldKeyOrTokens, {programId: tokenProgramPK});
+		} else {
+			// we got an object, so we got the full token accounts
+			cargoHoldTokens = cargoHoldKeyOrTokens;
+		}
+		
+		let influxStr = '';
+		let starbaseName = validTargets.find(target => (target.x + ',' + target.y) == starbaseX + ',' + starbaseY )?.name;
+
+		let count=0;
+		for(let curToken of cargoHoldTokens.value) {
+			let mint = curToken.account.data.parsed.info.mint;
+			let rssName = cargoItems.find(r => r.token == mint)?.name;
+			let amount = curToken.account.data.parsed.info.tokenAmount.uiAmount ? curToken.account.data.parsed.info.tokenAmount.uiAmount : 0;
+			if(rssName) {
+				influxStr += (count ? "\n" : "") + `starbase,starbase=${influxEscape(starbaseName)},sectorX=${starbaseX},sectorY=${starbaseY},rss=${influxEscape(rssName)} curAmount=${amount}`;
+				count++;
+			}
+		}
+		if(count) await sendToInflux(influxStr);
+	}
+    }
+
 /*
     async function getCargoTypeSize(cargoType) {
         let cargoTypeAcct = await solanaReadConnection.getAccountInfo(cargoType.publicKey);
@@ -2236,6 +2290,10 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					let starbasePlayerCargoHold = starbasePlayerCargoHolds.find(item => item.account.openTokenAccounts > 0);
 					starbasePlayerCargoHold = starbasePlayerCargoHold ? starbasePlayerCargoHold.publicKey : starbasePlayerCargoHolds.length > 0 ? starbasePlayerCargoHolds[0].publicKey : await execCreateCargoPod(fleet, dockCoords);
 
+					if(!fleet.state.includes('ERROR')) {
+						await influxStarbaseCargoHold(starbaseX,starbaseY,starbasePlayerCargoHold);
+					}
+
 					let [starbaseCargoToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
 							[
 									starbasePlayerCargoHold.toBuffer(),
@@ -2297,6 +2355,20 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 						txResult = await txSignAndSend(tx, fleet, 'UNLOAD', 100);
 					}
 					resolve(txResult);
+
+					if(globalSettings.influxURL.length) {
+						let starbaseName = validTargets.find(target => (target.x + ',' + target.y) == (starbaseX + ',' + starbaseY))?.name;
+						let rssName = cargoItems.find(r => r.token == tokenMint)?.name;
+						const fleetPK = fleet.publicKey.toString();
+						const fleetSavedData = await GM.getValue(fleetPK, '{}');
+						const fleetParsedData = JSON.parse(fleetSavedData);
+						const assignment = fleetParsedData.assignment;
+						let loadType = 'cargo_out';
+						if(fleetCargoPod == fleet.fuelTank) loadType = 'fuel_out';
+						if(fleetCargoPod == fleet.ammoBank) loadType = 'ammo_out';
+						await sendToInflux(`fleetrss,fleet=${influxEscape(fleet.label)},starbase=${influxEscape(starbaseName)},sectorX=${starbaseX},sectorY=${starbaseY},rss=${influxEscape(rssName)},assignment=${assignment},type=${loadType} amount=${amount}`);
+					}
+
 			});
 	}
 
@@ -2329,6 +2401,11 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
             for (let cargoHold of starbasePlayerCargoHolds) {
                 if (cargoHold.account && cargoHold.account.openTokenAccounts > 0) {
                     let cargoHoldTokens = await solanaReadConnection.getParsedTokenAccountsByOwner(cargoHold.publicKey, {programId: tokenProgramPK});
+
+                    if(!fleet.state.includes('ERROR')) {
+			await influxStarbaseCargoHold(starbaseX,starbaseY,cargoHoldTokens);
+                    }
+
                     let cargoHoldFound = cargoHoldTokens.value.find(item => item.account.data.parsed.info.mint === tokenMint && item.account.data.parsed.info.tokenAmount.uiAmount >= amount);
                     if (cargoHoldFound) {
                         starbasePlayerCargoHold = cargoHold;
@@ -2420,6 +2497,20 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			else txResult = {name: "NotEnoughResource"};
 
 			resolve(txResult);
+
+			if(globalSettings.influxURL.length && amount > 0) {
+				let starbaseName = validTargets.find(target => (target.x + ',' + target.y) == (starbaseX + ',' + starbaseY))?.name;
+				let rssName = cargoItems.find(r => r.token == tokenMint)?.name;
+				const fleetPK = fleet.publicKey.toString();
+				const fleetSavedData = await GM.getValue(fleetPK, '{}');
+				const fleetParsedData = JSON.parse(fleetSavedData);
+				const assignment = fleetParsedData.assignment;
+				let loadType = 'cargo_in';
+				if(cargoPodTo == fleet.fuelTank) loadType = 'fuel_in';
+				if(cargoPodTo == fleet.ammoBank) loadType = 'ammo_in';
+				await sendToInflux(`fleetrss,fleet=${influxEscape(fleet.label)},starbase=${influxEscape(starbaseName)},sectorX=${starbaseX},sectorY=${starbaseY},rss=${influxEscape(rssName)},assignment=${assignment},type=${loadType} amount=${amount}`);
+			}
+
 		});
 	}
 
@@ -2663,6 +2754,35 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
             updateFleetState(fleet, 'Idle');
 
             resolve(txResult);
+
+            if(!fleet.state.includes('ERROR') && txResult && txResult.meta && globalSettings.influxURL.length) {
+		let postTokenBalances = txResult.meta.postTokenBalances;
+		let preTokenBalances = txResult.meta.preTokenBalances;
+		let preFoodCnt = 0;
+		let postFoodCnt = 0;
+		let preAmmoCnt = 0;
+		let postAmmoCnt = 0;
+		let preRssCnt = 0;
+		let postRssCnt = 0;
+		for (let bal of preTokenBalances) {
+			if (bal.mint == resourceToken.toString() && bal.owner==fleet.cargoHold) { preRssCnt = bal.uiTokenAmount.uiAmount; }
+			if (bal.mint == sageGameAcct.account.mints.food.toString()) { preFoodCnt = bal.uiTokenAmount.uiAmount; }
+			if (bal.mint == sageGameAcct.account.mints.ammo.toString()) { preAmmoCnt = bal.uiTokenAmount.uiAmount; }
+		}
+		for (let bal of postTokenBalances) {
+			if (bal.mint == resourceToken.toString() && bal.owner==fleet.cargoHold) { postRssCnt = bal.uiTokenAmount.uiAmount; }
+			if (bal.mint == sageGameAcct.account.mints.food.toString()) { postFoodCnt = bal.uiTokenAmount.uiAmount; }
+			if (bal.mint == sageGameAcct.account.mints.ammo.toString()) { postAmmoCnt = bal.uiTokenAmount.uiAmount; }
+		}
+		let minedAmount = postRssCnt - preRssCnt;
+		let burnedFood = preFoodCnt - postFoodCnt;
+		let burnedAmmo = preAmmoCnt - postAmmoCnt;
+		
+		let minedRssName = cargoItems.find(r => r.token == resourceToken.toString())?.name;
+		let starbaseName = validTargets.find(target => (target.x + ',' + target.y) == targetX + ',' + targetY )?.name;
+		await sendToInflux(`mining,fleet=${influxEscape(fleet.label)},starbase=${influxEscape(starbaseName)},sectorX=${targetX},sectorY=${targetY},rss=${influxEscape(minedRssName)} burnedFuel=${fleet.planetExitFuelAmount},burnedFood=${burnedFood},burnedAmmo=${burnedAmmo},amount=${minedAmount}`);				
+            }
+
         });
     }
 
@@ -2878,17 +2998,18 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
             transactions.push(tx2);
 
             //let txResult = {craftingId: formattedRandomBytes, result: await txSignAndSend(transactions, userCraft, 'START CRAFTING', Math.min(globalSettings.craftingTxMultiplier, 500) )};
-            let txResult = {craftingId: formattedRandomBytes, result: await txSliceAndSend(transactions, userCraft, 'START CRAFTING', Math.min(globalSettings.craftingTxMultiplier, 500), 6 )};
+            let txResult = {craftingId: formattedRandomBytes, feeAtlas: 0, result: await txSliceAndSend(transactions, userCraft, 'START CRAFTING', Math.min(globalSettings.craftingTxMultiplier, 500), 6 )};
 
-            // statsadd start
-            let postTokenBalances = txResult.result.meta.postTokenBalances;
-            let feeAccount = txResult.result.transaction.message.staticAccountKeys.map((key) => key.toBase58())[3];
-            for (var b in postTokenBalances) {
-            	if (postTokenBalances[b].mint=='ATLASXmbPQxBUYbxPsV97usA3fPQYEqzQBUHgiFCUsXx' && postTokenBalances[b].owner==feeAccount && postTokenBalances[b].uiTokenAmount.uiAmount) {
-            		await alterStats('ATLAS Fees','Crafting',postTokenBalances[b].uiTokenAmount.uiAmount,'ATLAS',4);
-            	}
-            }
-	    // statsadd end
+            if (!userCraft.state.includes('ERROR')) {
+	            let postTokenBalances = txResult.result.meta.postTokenBalances;
+	            let feeAccount = txResult.result.transaction.message.staticAccountKeys.map((key) => key.toBase58())[3];
+	            for (var b in postTokenBalances) {
+	            	if (postTokenBalances[b].mint=='ATLASXmbPQxBUYbxPsV97usA3fPQYEqzQBUHgiFCUsXx' && postTokenBalances[b].owner==feeAccount && postTokenBalances[b].uiTokenAmount.uiAmount) {
+	            		await alterStats('ATLAS Fees','Crafting',postTokenBalances[b].uiTokenAmount.uiAmount,'ATLAS',4);
+				txResult.feeAtlas = postTokenBalances[b].uiTokenAmount.uiAmount;
+	            	}
+	            }
+	    }
 
             resolve(txResult);
         });
@@ -2899,6 +3020,10 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
             let transactions = [];
 
             let craftRecipe = craftRecipes.find(item => item.publicKey.toString() === craftingProcess.recipe.toString());
+
+            let influxStr = '';
+            let starbaseName = validTargets.find(target => (target.x + ',' + target.y) == (starbase.account.sector[0].toNumber() + ',' + starbase.account.sector[1].toNumber()))?.name;;
+            let outputName = cargoItems.find(r => r.token == craftRecipe.output.mint.toString())?.name;
 
             // status:
             // <2 = not ready
@@ -2931,6 +3056,9 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                     const bitValue = craftingProcess.inputsChecksum[0] + craftingProcess.inputsChecksum[1] * 256;
                     const ingredientBurned = ((bitValue >> ingredient.idx) & 1) == 0;
                     if(ingredientBurned) { cLog(1,`${FleetTimeStamp(userCraft.label)} Ingredient`, ingredient.idx, `was already burned, skipping ...`); continue; }
+
+                    let inputName = cargoItems.find(r => r.token == ingredient.mint.toString())?.name;
+                    influxStr += (influxStr.length ? "\n" : "") + `crafting,starbase=${influxEscape(starbaseName)},sectorX=${starbase.account.sector[0].toNumber()},sectorY=${starbase.account.sector[1].toNumber()},input=${influxEscape(inputName)},output=${influxEscape(outputName)},craftingID=${userCraft.craftingId},type=Input fee=${userCraft.feeAtlas ? userCraft.feeAtlas : 0},amount=${craftingProcess.quantity * ingredient.amount}`;
 
                     let tx = { instruction: await sageProgram.methods.burnCraftingConsumables({
                         ingredientIndex: ingredient.idx
@@ -3012,6 +3140,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                 //if the output checksum is 0, we haven't claimed the output yet.
                 if(!craftingProcess.outputsChecksum[0])
                 {
+                    	influxStr += (influxStr.length ? "\n" : "") + `crafting,starbase=${influxEscape(starbaseName)},sectorX=${starbase.account.sector[0].toNumber()},sectorY=${starbase.account.sector[1].toNumber()},output=${influxEscape(outputName)},craftingID=${userCraft.craftingId},type=Output fee=${userCraft.feeAtlas ? userCraft.feeAtlas : 0},amount=${craftingProcess.quantity}`;
+
 	                let tx1 = { instruction: await sageProgram.methods.claimCraftingOutputs({
 	                    ingredientIndex: craftRecipe.output.idx
 	                }).accountsStrict({
@@ -3099,6 +3229,10 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
             //let txResult = await txSignAndSend(tx2, userCraft, 'COMPLETING CRAFT TX2');
             //let txResult = await txSignAndSend(transactions, userCraft, 'COMPLETING CRAFT', Math.min(globalSettings.craftingTxMultiplier, 500) );
             let txResult = await txSliceAndSend(transactions, userCraft, 'COMPLETING CRAFT', Math.min(globalSettings.craftingTxMultiplier, 500), 6); 
+
+            if(!userCraft.state.includes('ERROR')) {
+		await sendToInflux(influxStr);
+            }
 
             // Allow RPC to catch up (to be sure the crew is available before starting the next job)
             await wait(4000);
@@ -4437,6 +4571,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
             let craftState = craftParsedData && craftParsedData.state || 'Idle';
             let craftingId = craftParsedData && craftParsedData.craftingId || 0;
             let craftingCoords = craftParsedData && craftParsedData.craftingCoords || '';
+            let craftFeeAtlas = craftParsedData && craftParsedData.feeAtlas || 0;
             let craftBelowAmount = parseIntKMG(row.children[4].firstChild.value) || '';
             let craftSpecial = row.children[5].firstChild.value;
 
@@ -4448,6 +4583,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                 amount: craftAmount,
                 belowAmount: craftBelowAmount,
 		special: craftSpecial,
+		feeAtlas: craftFeeAtlas,
                 state: craftState,
                 craftingCoords: craftingCoords,
                 craftingId: craftingId
@@ -4596,6 +4732,9 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 			emailInterface: parseStringDefault(document.querySelector('#emailInterface').value,''),
 
+			influxURL: parseStringDefault(document.querySelector('#influxURL').value,''),			
+			influxAuth: parseStringDefault(document.querySelector('#influxAuth').value,''),
+
 			scanMapURL: parseStringDefaultForced(document.querySelector('#scanMapURL').value,'https://slya.de/sdu.json'),
 
 			emailFleetIxErrors: document.querySelector('#emailFleetIxErrors').checked,
@@ -4668,6 +4807,9 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		document.querySelector('#queueExitWarpSubwarp').checked = globalSettings.queueExitWarpSubwarp;
 
 		document.querySelector('#emailInterface').value = globalSettings.emailInterface;
+
+		document.querySelector('#influxURL').value = globalSettings.influxURL;
+		document.querySelector('#influxAuth').value = globalSettings.influxAuth;
 
 		document.querySelector('#scanMapURL').value = globalSettings.scanMapURL;
 
@@ -5046,14 +5188,19 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					}
 					await wait(2000); //Extra wait to ensure accuracy
 
+					const fleetPK = userFleets[i].publicKey.toString();
+					const fleetSavedData = await GM.getValue(fleetPK, '{}');
+					const fleetParsedData = JSON.parse(fleetSavedData);
+					const assignment = fleetParsedData.assignment;
+
 					//Calculate next warp point if more than 1 is needed to arrive at final destination
 					if (moveDist > userFleets[i].maxWarpDistance / 100) {
 						[moveX, moveY] = calcNextWarpPoint(userFleets[i].maxWarpDistance, extra, [moveX, moveY]);
 
 						//Saves temporary waypoints for transports in case the page is refreshed mid-journey while using warp
-						const fleetPK = userFleets[i].publicKey.toString();
-						const fleetSavedData = await GM.getValue(fleetPK, '{}');
-						const fleetParsedData = JSON.parse(fleetSavedData);
+						//const fleetPK = userFleets[i].publicKey.toString();
+						//const fleetSavedData = await GM.getValue(fleetPK, '{}');
+						//const fleetParsedData = JSON.parse(fleetSavedData);
 						//cLog(3, `${FleetTimeStamp(userFleets[i].label)} moveTargets`, fleetParsedData.moveTarget, userFleets[i].moveTarget);
 						fleetParsedData.moveTarget = userFleets[i].moveTarget;
 						await GM.setValue(fleetPK, JSON.stringify(fleetParsedData));
@@ -5064,11 +5211,17 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 					moveTime = calculateWarpTime(userFleets[i], moveDist);
 					const warpResult = await execWarp(userFleets[i], moveX, moveY, moveTime);
+					await sendToInflux(`movement,fleet=${influxEscape(userFleets[i].label)},fromX=${extra[0]},fromY=${extra[1]},toX=${moveX},toY=${moveY},assignment=${assignment} type="warp",burnedFuel=${moveDist*(userFleets[i].warpFuelConsumptionRate/100)},moveTime=${moveTime},moveDist=${moveDist}`);
 					if(userFleets[i].scanLastFuelAmount) userFleets[i].scanLastFuelAmount -= moveDist*(userFleets[i].warpFuelConsumptionRate/100);
 					warpCooldownFinished = warpResult.warpCooldownFinished;
 				} else if (currentFuelCnt + currentCargoFuelCnt >= subwarpCost) {
 					moveTime = calculateSubwarpTime(userFleets[i], moveDist);
 					await execSubwarp(userFleets[i], moveX, moveY, moveTime);
+					const fleetPK = userFleets[i].publicKey.toString();
+					const fleetSavedData = await GM.getValue(fleetPK, '{}');
+					const fleetParsedData = JSON.parse(fleetSavedData);
+					const assignment = fleetParsedData.assignment;
+					await sendToInflux(`movement,fleet=${influxEscape(userFleets[i].label)},fromX=${extra[0]},fromY=${extra[1]},toX=${moveX},toY=${moveY},assignment=${assignment} type="subwarp",burnedFuel=${moveDist*(userFleets[i].subwarpFuelConsumptionRate/100)},moveTime=${moveTime},moveDist=${moveDist}`);
 					if(userFleets[i].scanLastFuelAmount) userFleets[i].scanLastFuelAmount -= moveDist*(userFleets[i].subwarpFuelConsumptionRate/100);
 				} else {
 					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unable to move, lack of fuel`);
@@ -5310,6 +5463,9 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			//save the scan end time, so after a reload the fleet waits accordingly
 			await saveScanEnd(i);
 
+			let burnedFood = changesFood.preBalance - changesFood.postBalance;			
+			await sendToInflux(`sdu,fleet=${influxEscape(userFleets[i].label)},sectorX=${fleetCoords[0]},sectorY=${fleetCoords[1]} amount=${sduFound},burnedFood=${burnedFood},chance=${scanCondition},cargoRoomLeft=${userFleets[i].cargoCapacity - cargoCnt - sduFound}`);
+
 		}
 		else if (!moved && Date.now() < userFleets[i].scanEnd && userFleets[i].state == 'Idle') {
 			userFleets[i].lastScanCoord = userFleets[i].destCoord;
@@ -5317,6 +5473,33 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			updateFleetState(userFleets[i], 'Waiting for scan cooldown ' + scanCDExpireTimeStr);
 			//await wait(userFleets[i].scanEnd - Date.now());
 		}
+	}
+
+	function influxEscape(val) {
+		return val.replaceAll("\\","\\\\").replaceAll(" ","\\ ").replaceAll(",","\\,").replaceAll("=","\\=");
+	}
+
+	async function sendToInflux(msg) {
+		if(!globalSettings.influxURL.length) return;
+		let message = '';
+		try {
+			cLog(2, 'Sending message to influx:', msg);
+			const response = await fetch(globalSettings.influxURL, {			
+				method: "POST",
+				body: msg,
+				headers: {
+					"Authorization": "Bearer " + globalSettings.influxAuth
+				}
+			});
+			if (!response.ok) {
+				message = 'Error while sending a request to influx: ' + response.status + ' ' + response.statusText;					
+			} else {
+				message = 'Influx: Request was successful.';
+			}
+		} catch(error) {
+			message = 'Error while sending a request to influx: ' + error.message;
+		}
+		cLog(2, message);
 	}
 
 	async function handleResupply(i, fleetCoords) {
@@ -7040,6 +7223,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         craftParsedData.state = userCraft.state;
         craftParsedData.craftingId = userCraft.craftingId;
         craftParsedData.craftingCoords = userCraft.craftingCoords;
+        craftParsedData.feeAtlas = userCraft.feeAtlas;
         await GM.setValue(userCraft.label, JSON.stringify(craftParsedData));
     }
 
@@ -7135,7 +7319,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				//...is true. But when there was ANY completed craft at this starbase (even a manual one) the block was always unnecessarily executed
 				//todo: the later loop through completedCraftingProcesses isn't needed anymore, because we should only have exactly one completed process (this job)
 	                        if (craftingProcess.account.endTime.toNumber() < craftTime.starbaseTime && [2,3].includes(craftingProcess.account.status) && userCraft.craftingId && craftingProcess.account.craftingId.toNumber() == userCraft.craftingId) {
-	                            completedCraftingProcesses.push({craftingProcess: craftingProcess.publicKey, craftingInstance: craftingInstance.publicKey, recipe: craftingProcess.account.recipe, status: craftingProcess.account.status, inputsChecksum: craftingProcess.account.inputsChecksum, outputsChecksum: craftingProcess.account.outputsChecksum, craftingId: craftingProcess.account.craftingId.toNumber()});
+	                            completedCraftingProcesses.push({craftingProcess: craftingProcess.publicKey, craftingInstance: craftingInstance.publicKey, recipe: craftingProcess.account.recipe, status: craftingProcess.account.status, inputsChecksum: craftingProcess.account.inputsChecksum, outputsChecksum: craftingProcess.account.outputsChecksum, craftingId: craftingProcess.account.craftingId.toNumber(), quantity: craftingProcess.account.quantity.toNumber() });
 	                        } else if (userCraft.craftingId && craftingProcess.account.craftingId.toNumber() == userCraft.craftingId) {
 	                            let craftRecipe = craftRecipes.find(item => item.publicKey.toString() === craftingProcess.account.recipe.toString());
 	                            let calcEndTime = Math.max(craftingProcess.account.endTime.toNumber() - craftTime.starbaseTime, 0);
@@ -7146,8 +7330,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 	                            updateFleetState(userCraft, craftTimeStr);
 	                            await updateCraft(userCraft);
 	                            //update less frequently if we have a long-running crafting task (3 minutes if remaining time >12 minutes, 2 minutes if remaining time >8 minutes), update faster if <60 seconds left
-	                            if(adjustedEndTime > 720) localTimeout = 180000;
-	                            else if(adjustedEndTime > 480) localTimeout = 120000;
+	                            if(adjustedEndTime > 900) localTimeout = 300000;
+	                            else if(adjustedEndTime > 180) localTimeout = adjustedEndTime * 1000 / 3;
 	                            else if(adjustedEndTime < 60) localTimeout = 30000;
 	                        }
 	                    } else {
@@ -7309,6 +7493,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                             updateFleetState(userCraft, activityInfo + ' [' + activityTimeStr + ']');
                             userCraft.craftingId = result.craftingId;
                             userCraft.craftingCoords = userCraft.coordinates;
+                            userCraft.feeAtlas = result.feeAtlas;
                             await updateCraft(userCraft);
                             //await GM.setValue(userCraft.label, JSON.stringify(userCraft));
 		        }
@@ -8039,6 +8224,8 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			settingsModalContentString += '<div>Auto Start Script <input id="autoStartScript" type="checkbox"></input><br><small>Should Lab Assistant automatically start after initialization is complete?</small></div>';
 			settingsModalContentString += '<div>Reload On Stuck Fleets <input id="reloadPageOnFailedFleets" type="number" min="0" max="999" placeholder="0"></input><br><small>Automatically refresh the page if this many fleets get stuck (0 = never)</small></div>';
 			settingsModalContentString += '<div>Queue exit warp/subwarp <input id="queueExitWarpSubwarp" type="checkbox"></input><br><small>EXPERIMENTAL: Queue the exit warp/subwarp instruction, so it gets bundled with the following instruction(s). Saves one transaction in most cases. Works only with miners and transporters (a scan instruction can\'t be bundled with any other instruction).</small></div>';
+			settingsModalContentString += '<div>Influx URL <input id="influxURL" type="text" size="40"></input></div>';
+			settingsModalContentString += '<div>Influx auth token <input id="influxAuth" type="text" size="40"></input><br><small>Send statistical data to an Influx DB 3 server (or compatible databases). InfluxDB offers a free cloud service (with a max time range of 6 days). If you use a local installation, go for the free Enterprise at-home version and set --query-file-limit to at least 10000 (this allows a max time range of ~2 months). If installed locally, the URL is e.g.: <i>http://127.0.0.1:8181/api/v3/write_lp?db=slya&precision=auto&no_sync=true</i></small></div>';
 			settingsModalContentString += '<div>E-Mail-Interface <input id="emailInterface" type="text" size="40"></input><br><small>Send errors via the email interface (see "slya-email-interface.php" on GitHub for instructions).</small><button id="emailInterfaceTest">Test the interface URL</button> Result: <span id="emailInterfaceTestResult"></span></div>';
 			settingsModalContentString += '<div>';
 			settingsModalContentString += 'email fleet ix errors? <input id="emailFleetIxErrors" type="checkbox"></input><br>';
