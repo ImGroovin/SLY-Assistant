@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.27
+// @version      0.7.28
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -4530,7 +4530,51 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 				let fleetScanEnd = fleetParsedData && fleetParsedData.scanEnd ? fleetParsedData.scanEnd : 0;
 
-				await GM.setValue(fleetPK, `{\"name\": \"${fleetName}\", \"assignment\": \"${fleetAssignment}\", \"mineResource\": \"${fleetMineResource}\", \"dest\": \"${fleetDestCoord}\", \"starbase\": \"${fleetStarbaseCoord}\", \"moveType\": \"${moveType}\", \"subwarpPref\": \"${subwarpPref}\", \"moveTarget\": \"${fleetMoveTarget}\", \"transportResource1\": \"${transportResource1}\", \"transportResource1Perc\": ${transportResource1Perc}, \"transportResource1Crew\": ${transportResource1Crew}, \"transportResource2\": \"${transportResource2}\", \"transportResource2Perc\": ${transportResource2Perc}, \"transportResource3\": \"${transportResource3}\", \"transportResource3Perc\": ${transportResource3Perc}, \"transportResource4\": \"${transportResource4}\", \"transportResource4Perc\": ${transportResource4Perc}, \"transportSBResource1\": \"${transportSBResource1}\", \"transportSBResource1Perc\": ${transportSBResource1Perc}, \"transportSBResource1Crew\": ${transportSBResource1Crew}, \"transportSBResource2\": \"${transportSBResource2}\", \"transportSBResource2Perc\": ${transportSBResource2Perc}, \"transportSBResource3\": \"${transportSBResource3}\", \"transportSBResource3Perc\": ${transportSBResource3Perc}, \"transportSBResource4\": \"${transportSBResource4}\", \"transportSBResource4Perc\": ${transportSBResource4Perc}, \"scanBlock\": ${JSON.stringify(scanBlock)}, \"scanMin\": ${scanMin}, \"scanMin2\": ${scanMin2}, \"scanMin3\": ${scanMin3}, \"scanSearchDist\": ${scanSearchDist}, \"scanClusterFactor\": ${scanClusterFactor}, \"scanNeighborhoodMinGood\": ${scanNeighborhoodMinGood}, \"scanCheckWhileCooldownLeft\": ${scanCheckWhileCooldownLeft}, \"scanBypassPercent\": ${scanBypassPercent}, \"scanHomeAtPercent\": ${scanHomeAtPercent}, \"scanPattern\": \"${scanPattern}\", \"scanPatternLength\": ${scanPatternLength}, \"scanMove\": \"${scanMove}\", \"scanEnd\": ${fleetScanEnd} }`);
+				//await GM.setValue(fleetPK, `{\"name\": \"${fleetName}\", \"assignment\": \"${fleetAssignment}\", \"mineResource\": \"${fleetMineResource}\", \"dest\": \"${fleetDestCoord}\", \"starbase\": \"${fleetStarbaseCoord}\", \"moveType\": \"${moveType}\", \"subwarpPref\": \"${subwarpPref}\", \"moveTarget\": \"${fleetMoveTarget}\", \"transportResource1\": \"${transportResource1}\", \"transportResource1Perc\": ${transportResource1Perc}, \"transportResource1Crew\": ${transportResource1Crew}, \"transportResource2\": \"${transportResource2}\", \"transportResource2Perc\": ${transportResource2Perc}, \"transportResource3\": \"${transportResource3}\", \"transportResource3Perc\": ${transportResource3Perc}, \"transportResource4\": \"${transportResource4}\", \"transportResource4Perc\": ${transportResource4Perc}, \"transportSBResource1\": \"${transportSBResource1}\", \"transportSBResource1Perc\": ${transportSBResource1Perc}, \"transportSBResource1Crew\": ${transportSBResource1Crew}, \"transportSBResource2\": \"${transportSBResource2}\", \"transportSBResource2Perc\": ${transportSBResource2Perc}, \"transportSBResource3\": \"${transportSBResource3}\", \"transportSBResource3Perc\": ${transportSBResource3Perc}, \"transportSBResource4\": \"${transportSBResource4}\", \"transportSBResource4Perc\": ${transportSBResource4Perc}, \"scanBlock\": ${JSON.stringify(scanBlock)}, \"scanMin\": ${scanMin}, \"scanMin2\": ${scanMin2}, \"scanMin3\": ${scanMin3}, \"scanSearchDist\": ${scanSearchDist}, \"scanClusterFactor\": ${scanClusterFactor}, \"scanNeighborhoodMinGood\": ${scanNeighborhoodMinGood}, \"scanCheckWhileCooldownLeft\": ${scanCheckWhileCooldownLeft}, \"scanBypassPercent\": ${scanBypassPercent}, \"scanHomeAtPercent\": ${scanHomeAtPercent}, \"scanPattern\": \"${scanPattern}\", \"scanPatternLength\": ${scanPatternLength}, \"scanMove\": \"${scanMove}\", \"scanEnd\": ${fleetScanEnd} }`);
+				let fleet = {
+					name: fleetName, 
+					assignment: fleetAssignment,
+					mineResource: fleetMineResource,
+					dest: fleetDestCoord,
+					starbase: fleetStarbaseCoord,
+					moveType: moveType,
+					subwarpPref: subwarpPref,
+					moveTarget: fleetMoveTarget,
+					transportResource1: transportResource1,
+					transportResource1Perc: transportResource1Perc,
+					transportResource1Crew: transportResource1Crew,
+					transportResource2: transportResource2,
+					transportResource2Perc: transportResource2Perc,
+					transportResource3: transportResource3,
+					transportResource3Perc: transportResource3Perc,
+					transportResource4: transportResource4,
+					transportResource4Perc: transportResource4Perc,
+					transportSBResource1: transportSBResource1,
+					transportSBResource1Perc: transportSBResource1Perc,
+					transportSBResource1Crew: transportSBResource1Crew,
+					transportSBResource2: transportSBResource2,
+					transportSBResource2Perc: transportSBResource2Perc,
+					transportSBResource3: transportSBResource3,
+					transportSBResource3Perc: transportSBResource3Perc,
+					transportSBResource4: transportSBResource4,
+					transportSBResource4Perc: transportSBResource4Perc,
+					scanBlock: JSON.stringify(scanBlock),
+					scanMin: scanMin,
+					scanMin2: scanMin2,
+					scanMin3: scanMin3,
+					scanSearchDist: scanSearchDist,
+					scanClusterFactor: scanClusterFactor,
+					scanNeighborhoodMinGood: scanNeighborhoodMinGood,
+					scanCheckWhileCooldownLeft: scanCheckWhileCooldownLeft,
+					scanBypassPercent: scanBypassPercent,
+					scanHomeAtPercent: scanHomeAtPercent,
+					scanPattern: scanPattern,
+					scanPatternLength: scanPatternLength,
+					scanMove: scanMove,
+					scanEnd: fleetScanEnd
+				};
+				await GM.setValue(fleetPK, JSON.stringify(fleet));
+				
 				userFleets[userFleetIndex].mineResource = fleetMineResource;
 				userFleets[userFleetIndex].destCoord = fleetDestCoord;
 				userFleets[userFleetIndex].starbaseCoord = fleetStarbaseCoord;
@@ -7224,8 +7268,20 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         craftParsedData.craftingId = userCraft.craftingId;
         craftParsedData.craftingCoords = userCraft.craftingCoords;
         craftParsedData.feeAtlas = userCraft.feeAtlas;
+	craftParsedData.errorCount = userCraft.errorCount;
         await GM.setValue(userCraft.label, JSON.stringify(craftParsedData));
     }
+
+    async function craftTimeoutAfterError(userCraft) {
+		let craftSavedData = await GM.getValue(userCraft.label, '{}');
+        let craftParsedData = JSON.parse(craftSavedData);
+		craftParsedData.errorCount = (typeof craftParsedData.errorCount == "undefined" ? 1 : craftParsedData.errorCount + 1);		
+        await GM.setValue(userCraft.label, JSON.stringify(craftParsedData));
+        const waitMinutes = Math.min(20, craftParsedData.errorCount * 2 - 1);
+        updateFleetState(userCraft, userCraft.state + " (" + waitMinutes + "m)", true);
+        return waitMinutes * 60000;
+	}
+
 
     async function startCraft(userCraft) {
         if (!enableAssistant) return;
@@ -7370,11 +7426,12 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 	                        if (!userCraft.state.includes('ERROR')) {
 	                            if (userCraft.craftingId && craftingProcess.craftingId == userCraft.craftingId) {
 	                                userCraft.craftingId = 0;
+					userCraft.errorCount = 0;
 	                                updateFleetState(userCraft, 'Idle');
 	                                await updateCraft(userCraft);
 	                            }
 	                        }
-				else { localTimeout = 120000; }
+				else { localTimeout = await craftTimeoutAfterError(userCraft); }
 	                    }
 	                }
 
@@ -7387,12 +7444,13 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 	                        if (!userCraft.state.includes('ERROR')) {
 	                            if (userCraft.craftingId && upgradeProcess.craftingId == userCraft.craftingId) {
 	                                userCraft.craftingId = 0;
+					userCraft.errorCount = 0;
 	                                updateFleetState(userCraft, 'Idle');
 	                                await updateCraft(userCraft);
 	                                //await GM.setValue(userCraft.label, JSON.stringify(userCraft));
 	                            }
 	                        }
-				else { localTimeout = 120000; }
+				else { localTimeout = await craftTimeoutAfterError(userCraft); }
 	                    }
 	                }
 		    }
@@ -7494,10 +7552,11 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                             userCraft.craftingId = result.craftingId;
                             userCraft.craftingCoords = userCraft.coordinates;
                             userCraft.feeAtlas = result.feeAtlas;
+                            userCraft.errorCount = 0;
                             await updateCraft(userCraft);
                             //await GM.setValue(userCraft.label, JSON.stringify(userCraft));
 		        }
-			else { localTimeout = 120000; }
+			else { localTimeout = await craftTimeoutAfterError(userCraft); }
                     }
                 } else if (userCraft.state === 'Idle') {
                     //updateFleetState(userCraft, 'Waiting for crew/material');
