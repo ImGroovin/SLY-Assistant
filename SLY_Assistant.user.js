@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.28
+// @version      0.7.29
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -5532,7 +5532,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				method: "POST",
 				body: msg,
 				headers: {
-					"Authorization": "Bearer " + globalSettings.influxAuth
+					"Authorization": (globalSettings.influxURL.includes('/v2/') ? "Token " : "Bearer ") + globalSettings.influxAuth
 				}
 			});
 			if (!response.ok) {
