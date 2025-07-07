@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.29
+// @version      0.7.30
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -4558,7 +4558,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					transportSBResource3Perc: transportSBResource3Perc,
 					transportSBResource4: transportSBResource4,
 					transportSBResource4Perc: transportSBResource4Perc,
-					scanBlock: JSON.stringify(scanBlock),
+					scanBlock: scanBlock,
 					scanMin: scanMin,
 					scanMin2: scanMin2,
 					scanMin3: scanMin3,
