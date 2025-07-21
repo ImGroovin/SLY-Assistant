@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.7.31
+// @version      0.7.32
 // @description  try to take over the world!
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -6759,6 +6759,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 			let currentAmmo = fleetCurrentAmmoBank.value.find(item => item.account.data.parsed.info.mint === ammoMint);
 			let currentAmmoCnt = currentAmmo ? currentAmmo.account.data.parsed.info.tokenAmount.uiAmount : 0;
 			let ammoToUnload = Math.min(currentAmmoCnt, ammoUnloadDeficit);
+			if(globalSettings.transportKeep1 && ammoToUnload > 0) { ammoToUnload -= 1; }
 			if (ammoToUnload > 0) {
 				cLog(1,`${FleetTimeStamp(fleet.label)} Unloading Ammobanks: ${ammoToUnload}`);
 				let resp = await execCargoFromFleetToStarbase(fleet, fleet.ammoBank, ammoMint, starbaseCoord, ammoToUnload, returnTx);
