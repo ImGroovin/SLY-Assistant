@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLY Assistant
 // @namespace    https://github.com/ImGroovin/SLY-Assistant
-// @version      0.7.0.35
+// @version      0.7.0.38
 // @description  Base http://tampermonkey.net/
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
@@ -1519,7 +1519,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                     updateFleetState(fleet, 'ERROR: Ix Error');
                     cLog(2,`${FleetTimeStamp(fleetName)} <${opName}> ERROR ❌ The instruction resulted in an error.`);
                     let ixError = txResult && txResult.meta && txResult.meta.logMessages ? txResult.meta.logMessages : 'Unknown';
-                    console.log(FleetTimeStamp(fleetName), ' txResult.logMessages: ', ixError);
+                    // console.log(FleetTimeStamp(fleetName), ' txResult.logMessages: ', ixError);
                     logError('ix error: ' + ixError, fleetName);
                     if(fleet.publicKey) {
                     	if(globalSettings.emailFleetIxErrors) await sendEMail(fleetName + ' ix error', ixError);
@@ -2098,85 +2098,85 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 	}
 
 	async function execCargoFromFleetToStarbase(fleet, fleetCargoPod, tokenMint, dockCoords, amount, returnTx) {
-			return new Promise(async resolve => {
-					let starbaseX = dockCoords.split(',')[0].trim();
-					let starbaseY = dockCoords.split(',')[1].trim();
-					let starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
-					let starbasePlayer = await getStarbasePlayer(userProfileAcct,starbase.publicKey);
-					let starbasePlayerCargoHolds = await cargoProgram.account.cargoPod.all([
-							{
-									memcmp: {
-											offset: 41,
-											bytes: starbasePlayer.publicKey.toBase58(),
-									},
-							},
-					]);
+		return new Promise(async resolve => {
+			let starbaseX = dockCoords.split(',')[0].trim();
+			let starbaseY = dockCoords.split(',')[1].trim();
+			let starbase = await getStarbaseFromCoords(starbaseX, starbaseY);
+			let starbasePlayer = await getStarbasePlayer(userProfileAcct,starbase.publicKey);
+			let starbasePlayerCargoHolds = await cargoProgram.account.cargoPod.all([
+				{
+					memcmp: {
+						offset: 41,
+						bytes: starbasePlayer.publicKey.toBase58(),
+					},
+				},
+			]);
 
-					let starbasePlayerCargoHold = starbasePlayerCargoHolds.find(item => item.account.openTokenAccounts > 0);
-					starbasePlayerCargoHold = starbasePlayerCargoHold ? starbasePlayerCargoHold.publicKey : starbasePlayerCargoHolds.length > 0 ? starbasePlayerCargoHolds[0].publicKey : await execCreateCargoPod(fleet, dockCoords);
+			let starbasePlayerCargoHold = starbasePlayerCargoHolds.find(item => item.account.openTokenAccounts > 0);
+			starbasePlayerCargoHold = starbasePlayerCargoHold ? starbasePlayerCargoHold.publicKey : starbasePlayerCargoHolds.length > 0 ? starbasePlayerCargoHolds[0].publicKey : await execCreateCargoPod(fleet, dockCoords);
 
-					let [starbaseCargoToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
-							[
-									starbasePlayerCargoHold.toBuffer(),
-									tokenProgramPK.toBuffer(),
-									new solanaWeb3.PublicKey(tokenMint).toBuffer()
-							],
-							programPK
-					);
-					let [fleetResourceToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
-							[
-									fleetCargoPod.toBuffer(),
-									tokenProgramPK.toBuffer(),
-									new solanaWeb3.PublicKey(tokenMint).toBuffer()
-							],
-							programPK
-					);
-					let fleetCurrentPod = await solanaReadConnection.getParsedTokenAccountsByOwner(fleetCargoPod, {programId: tokenProgramPK});
-					let currentResource = fleetCurrentPod.value.find(item => item.account.data.parsed.info.mint === tokenMint);
-					let fleetResourceAcct = currentResource ? currentResource.pubkey : fleetResourceToken;
-					let resourceCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == tokenMint);
-					await getAccountInfo(fleet.label, 'Starbase cargo token', starbaseCargoToken) || await createPDA(starbaseCargoToken, starbasePlayerCargoHold, new solanaWeb3.PublicKey(tokenMint), fleet);
-					let tx = { instruction: await sageProgram.methods.withdrawCargoFromFleet({ amount: new BrowserAnchor.anchor.BN(amount), keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx) }).accountsStrict({
-							gameAccountsFleetAndOwner: {
-									gameFleetAndOwner: {
-											fleetAndOwner: {
-													fleet: fleet.publicKey,
-													owningProfile: userProfileAcct,
-													owningProfileFaction: userProfileFactionAcct.publicKey,
-													key: userPublicKey
-											},
-											gameId: sageGameAcct.publicKey
-									},
-									gameState: sageGameAcct.account.gameState
-							},
-							starbaseAndStarbasePlayer: {
-									starbase: starbase.publicKey,
-									starbasePlayer: starbasePlayer.publicKey
-							},
-							cargoPodFrom: fleetCargoPod, // fleet.cargoHold,
-							cargoPodTo: starbasePlayerCargoHold,
-							cargoType: resourceCargoTypeAcct.publicKey,
-							cargoStatsDefinition: sageGameAcct.account.cargo.statsDefinition,
-							tokenFrom: fleetResourceAcct,
-							tokenTo: starbaseCargoToken,
-							tokenMint: tokenMint,
-							fundsTo: userPublicKey,
-							cargoProgram: cargoProgramPK,
-							tokenProgram: tokenProgAddy
-					}).remainingAccounts([{
-							pubkey: starbase.publicKey,
-							isSigner: false,
-							isWritable: false
-					}]).instruction()}
-					//let txResult = await txSignAndSend(tx, fleet, 'UNLOAD', 100);
-					let txResult;
-					if(returnTx) {
-						txResult = tx;
-					} else {
-						txResult = await txSignAndSend(tx, fleet, 'UNLOAD', 100);
-					}
-					resolve(txResult);
-			});
+			let [starbaseCargoToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+				[
+					starbasePlayerCargoHold.toBuffer(),
+					tokenProgramPK.toBuffer(),
+					new solanaWeb3.PublicKey(tokenMint).toBuffer()
+				],
+				programPK
+			);
+			let [fleetResourceToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
+				[
+					fleetCargoPod.toBuffer(),
+					tokenProgramPK.toBuffer(),
+					new solanaWeb3.PublicKey(tokenMint).toBuffer()
+				],
+				programPK
+			);
+			let fleetCurrentPod = await solanaReadConnection.getParsedTokenAccountsByOwner(fleetCargoPod, {programId: tokenProgramPK});
+			let currentResource = fleetCurrentPod.value.find(item => item.account.data.parsed.info.mint === tokenMint);
+			let fleetResourceAcct = currentResource ? currentResource.pubkey : fleetResourceToken;
+			let resourceCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == tokenMint);
+			await getAccountInfo(fleet.label, 'Starbase cargo token', starbaseCargoToken) || await createPDA(starbaseCargoToken, starbasePlayerCargoHold, new solanaWeb3.PublicKey(tokenMint), fleet);
+			let tx = { instruction: await sageProgram.methods.withdrawCargoFromFleet({ amount: new BrowserAnchor.anchor.BN(amount), keyIndex: new BrowserAnchor.anchor.BN(userProfileKeyIdx) }).accountsStrict({
+				gameAccountsFleetAndOwner: {
+					gameFleetAndOwner: {
+						fleetAndOwner: {
+							fleet: fleet.publicKey,
+							owningProfile: userProfileAcct,
+							owningProfileFaction: userProfileFactionAcct.publicKey,
+							key: userPublicKey
+						},
+						gameId: sageGameAcct.publicKey
+					},
+					gameState: sageGameAcct.account.gameState
+				},
+				starbaseAndStarbasePlayer: {
+					starbase: starbase.publicKey,
+					starbasePlayer: starbasePlayer.publicKey
+				},
+				cargoPodFrom: fleetCargoPod, // fleet.cargoHold,
+				cargoPodTo: starbasePlayerCargoHold,
+				cargoType: resourceCargoTypeAcct.publicKey,
+				cargoStatsDefinition: sageGameAcct.account.cargo.statsDefinition,
+				tokenFrom: fleetResourceAcct,
+				tokenTo: starbaseCargoToken,
+				tokenMint: tokenMint,
+				fundsTo: userPublicKey,
+				cargoProgram: cargoProgramPK,
+				tokenProgram: tokenProgAddy
+			}).remainingAccounts([{
+				pubkey: starbase.publicKey,
+				isSigner: false,
+				isWritable: false
+			}]).instruction()}
+			//let txResult = await txSignAndSend(tx, fleet, 'UNLOAD', 100);
+			let txResult;
+			if(returnTx) {
+				txResult = tx;
+			} else {
+				txResult = await txSignAndSend(tx, fleet, 'UNLOAD', 100);
+			}
+			resolve(txResult);
+		});
 	}
 
 	async function createScannerPDAs(fleet) {
@@ -4097,7 +4097,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                 craftingCoords: craftingCoords,
                 craftingId: craftingId
             }
-            console.log('craft: ', craft);
+            // console.log('craft: ', craft);
 
             await GM.setValue(craftPK, JSON.stringify(craft));
         }
@@ -4166,7 +4166,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 		//Guard against clicking the wrong button
 		if(importText.value.includes('sector_target')) {
-			console.log('switching to fleet targets import...');
+			// console.log('switching to fleet targets import...');
 			await saveTargetsImport();
 			return;
 		}
@@ -4186,7 +4186,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 		//Guard against clicking the wrong button
 		if(!importText.value.includes('sector_target')) {
-			console.log('switching to full fleet import...');
+			// console.log('switching to full fleet import...');
 			await saveConfigImport();
 			return;
 		}
@@ -4378,9 +4378,9 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
     async function calcMiningFleet() {
         // EXPERIMENTAL
-        console.log('userFleets: ', userFleets);
+        // console.log('userFleets: ', userFleets);
         for (let userFleet of userFleets) {
-            console.log('-----', userFleet.label, '-----');
+            // console.log('-----', userFleet.label, '-----');
             let fleetSavedData = await GM.getValue(userFleet.publicKey.toString(), '{}');
             let fleetParsedData = JSON.parse(fleetSavedData);
 
@@ -4393,10 +4393,10 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                 // testing
                 // ---------------------------------
                 let starbase = await getStarbaseFromCoords(destX, destY);
-                console.log('starbase: ', starbase);
+                // console.log('starbase: ', starbase);
 
                 let starbasePlayer = await getStarbasePlayer(userProfileAcct, starbase.publicKey);
-                console.log('starbasePlayer: ', starbasePlayer);
+                // console.log('starbasePlayer: ', starbasePlayer);
 
                 let ships = [];
                 let starbasePlayerAcctInfo = await solanaReadConnection.getAccountInfo(starbasePlayer.publicKey);
@@ -4409,12 +4409,12 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                     shipData = shipData.subarray(48);
                     shipIter += 1;
                 }
-                console.log('ships: ', ships);
+                // console.log('ships: ', ships);
                 for (let ship of ships) {
                     let shipDecoded = await sageProgram.account.ship.fetch(ship.publicKey);
-                    console.log('shipDecoded: ', shipDecoded);
+                    // console.log('shipDecoded: ', shipDecoded);
                     let shipName = (new TextDecoder("utf-8").decode(new Uint8Array(shipDecoded.name))).replace(/\0/g, '');
-                    console.log(shipName);
+                    // console.log(shipName);
                 }
                 // ---------------------------------
                 let [mineItem] = await sageProgram.account.mineItem.all([
@@ -4454,7 +4454,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
                     systemRichness = sageResource.account.systemRichness;
                 } else {
                     let resShort = cargoItems.find(r => r.token == userFleet.mineResource).name;
-                    console.log(`[${userFleet.label}] ERROR: ${resShort} not found at mining location`);
+                    // console.log(`[${userFleet.label}] ERROR: ${resShort} not found at mining location`);
                     //userFleet.state = `ERROR: ${resShort} not found at mining location`;
                     //updateAssistStatus(userFleet);
                     updateFleetState(userFleet, `ERROR: ${resShort} not found at mining location`);
@@ -4544,27 +4544,27 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 	async function assistProfileToggle(profiles) {
 		return new Promise(async resolve => {
-				let targetElem = document.querySelector('#profileModal');
-				if (targetElem.style.display === 'none' && profiles) {
-						targetElem.style.display = 'block';
-						let contentElem = document.querySelector('#profileDiv');
-						let transportOptStr = '';
-						profiles.forEach( function(profile) {transportOptStr += '<option value="' + profile.profile + '">' + profile.name + '  [' + profile.profile + ']</option>';});
-						let profileSelect = document.createElement('select');
-						profileSelect.size = profiles.length + 1;
-						profileSelect.style.padding = '2px 10px';
-						profileSelect.innerHTML = transportOptStr;
-						contentElem.append(profileSelect);
-						profileSelect.onchange = function() {
-								cLog(2, 'assistProfileToggle: profileSelect.value', profileSelect.value);
-								let selected = profiles.find(o => o.profile === profileSelect.value);
-								assistProfileToggle(null);
-								resolve(selected);
-						}
-				} else {
-						targetElem.style.display = 'none';
-						resolve(null);
+			let targetElem = document.querySelector('#profileModal');
+			if (targetElem.style.display === 'none' && profiles) {
+				targetElem.style.display = 'block';
+				let contentElem = document.querySelector('#profileDiv');
+				let transportOptStr = '';
+				profiles.forEach( function(profile) {transportOptStr += '<option value="' + profile.profile + '">' + profile.name + '  [' + profile.profile + ']</option>';});
+				let profileSelect = document.createElement('select');
+				profileSelect.size = profiles.length + 1;
+				profileSelect.style.padding = '2px 10px';
+				profileSelect.innerHTML = transportOptStr;
+				contentElem.append(profileSelect);
+				profileSelect.onchange = function() {
+					cLog(2, 'assistProfileToggle: profileSelect.value', profileSelect.value);
+					let selected = profiles.find(o => o.profile === profileSelect.value);
+					assistProfileToggle(null);
+					resolve(selected);
 				}
+			} else {
+				targetElem.style.display = 'none';
+				resolve(null);
+			}
 		});
 	}
 
@@ -5540,8 +5540,51 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 		//let moveDist = calculateMovementDistance([starbaseX,starbaseY], [destX,destY]);
 		if (fleetState === 'Idle') {
+
+			async function unloadOtherRes() {
+				const transportLoadUnloadSingleTx = globalSettings.transportLoadUnloadSingleTx; //we read the setting once to prevent a race condition
+				const transactions = []
+				let fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
+				//Unload all token except transport token (author: zihan)
+				// console.log('Transport fleetCurrentCargo', fleetCurrentCargo)
+				fleetCurrentCargo.value.forEach(async (item) => {
+					var itemInfo = item.account.data.parsed.info
+					if (itemInfo.tokenAmount.uiAmount <= globalSettings.minerKeep1 ? 1 : 0) {
+						return
+					}
+					// if find transport setting, return, or unload
+					for (let i = 0; i < targetCargoManifest.length; i ++) {
+						const entry = targetCargoManifest[i]
+						if (entry.amt > 0 && entry.res === itemInfo.mint) {
+							return
+						}
+					}
+					// console.log('Transport itemInfo ', itemInfo)
+					let resp = await execCargoFromFleetToStarbase(
+						userFleets[i],
+						userFleets[i].cargoHold,
+						itemInfo.mint,
+						userFleets[i].starbaseCoord,
+						itemInfo.tokenAmount.uiAmount - (globalSettings.minerKeep1 ? 1 : 0),
+						transportLoadUnloadSingleTx
+					)
+					if (transportLoadUnloadSingleTx && resp) {
+						transactions.push(resp);
+					}
+				})
+
+				if (transactions.length > 0) {
+					//when "transportUnloadsUnknownRSS is enabled, it is possible that we need to unload more than 4 rss, so we need to split the instructions
+					await txSliceAndSend(transactions, fleet, 'UNLOAD', 100, 4);
+				}
+			}
+
 			// Fleet at starbase?
 			if (fleetCoords[0] == starbaseX && fleetCoords[1] == starbaseY) {
+
+				await unloadOtherRes();
+				await wait(500);
+
 				userFleets[i].resupplying = true;
 
 				let checkCargoResult = await checkCargo(starbaseCargoManifest, targetCargoManifest, userFleets[i]);
@@ -5568,6 +5611,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 				cLog(3,`${FleetTimeStamp(userFleets[i].label)} Fuel needed`, fuelData.fuelNeeded, '/ fuel found', fuelData.amount, '/ fuel to add', fuelToAdd, '/ needToLoad', checkCargoResult.needToLoad, '/ needToUnload', checkCargoResult.needToUnload, '/ needToLoadCrew', needToLoadCrew, '/ needToUnloadCrew', needToUnloadCrew);
 
+
 				//if (checkCargoResult.needToLoad || checkCargoResult.needToUnload || fuelData.fuelNeeded > 0 || needToLoadCrew || needToUnloadCrew) {
 				if (checkCargoResult.needToLoad || checkCargoResult.needToUnload || fuelToAdd > 0 || needToLoadCrew > 0 || needToUnloadCrew > 0) {
 					await execDock(userFleets[i], userFleets[i].starbaseCoord);
@@ -5579,7 +5623,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					if(needToUnloadCrew) {
 						await handleCrewUnloading(userFleets[i], userFleets[i].starbaseCoord, needToUnloadCrew);
 					}
-					if(needToLoadCrew) {
+					if (needToLoadCrew) {
 						let crewResp = await handleCrewLoading(userFleets[i], userFleets[i].starbaseCoord, needToLoadCrew);
 						if (crewResp && crewResp.name == 'NotEnoughCrew') {
 							if(globalSettings.transportStopOnError) {
@@ -5619,7 +5663,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 					let undockResult = await execUndock(userFleets[i], userFleets[i].starbaseCoord);
 					cLog(4,`${FleetTimeStamp(userFleets[i].label)} userFleets[i]: `, undockResult);
-					let fleetState = await solanaReadConnection.getAccountInfoAndContext(userFleets[i].publicKey, {minContextSlot: undockResult.slot});
+					// let fleetState = await solanaReadConnection.getAccountInfoAndContext(userFleets[i].publicKey, {minContextSlot: undockResult.slot});
 				}
 				userFleets[i].moveTarget = userFleets[i].destCoord;
 				userFleets[i].resupplying = false;
@@ -5628,6 +5672,10 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 			// Fleet at target?
 			else if (fleetCoords[0] == destX && fleetCoords[1] == destY) {
+
+				await unloadOtherRes();
+				await wait(500);
+
 				userFleets[i].resupplying = true;
 
 				let checkCargoResult = await checkCargo(targetCargoManifest, starbaseCargoManifest, userFleets[i]);
@@ -5931,6 +5979,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
         cLog(2,`${FleetTimeStamp(userFleets[i].label)} Calculating cargoSpace ...`);
         const fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
         const cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount * cargoItems.find(r => r.token == account.data.parsed.info.mint).size, 0);
+		// console.log("cargoCnt ", cargoCnt, userFleets[i].cargoCapacity)
         let cargoSpace = userFleets[i].cargoCapacity - cargoCnt;
         const startingCargoSpace = cargoSpace;
         let expectedCnt = 0;
@@ -5940,12 +5989,12 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 		let transactions = [];
 		const transportLoadUnloadSingleTx = globalSettings.transportLoadUnloadSingleTx; //we read the setting once to prevent a race condition
 		for (const entry of transportManifest) {
-			if (entry.res && entry.amt > 0) {
-				if(cargoSpace < 1) {
-					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Cargo full - remaining loading process skipped`);
-					break;
-				}
+			if (cargoSpace < 1) {
+				cLog(1,`${FleetTimeStamp(userFleets[i].label)} Cargo full - remaining loading process skipped`);
+				break;
+			}
 
+			if (entry.res && entry.amt > 0) {
 				const [fleetResourceToken] = await BrowserAnchor.anchor.web3.PublicKey.findProgramAddressSync(
 					[
 						userFleets[i].cargoHold.toBuffer(),
@@ -5958,12 +6007,14 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 				const fleetResAcct = currentRes ? currentRes.pubkey : fleetResourceToken;
 				const resCargoTypeAcct = cargoTypes.find(item => item.account.mint.toString() == entry.res);
 				const currentResAmt = currentRes ? currentRes.account.data.parsed.info.tokenAmount.uiAmount : 0;
+				const targetItem = cargoItems.find(r => r.token == entry.res)
 
 				//Deduct ammo already loaded into ammobank if applicable
 				const isAmmo = entry.res === sageGameAcct.account.mints.ammo.toString();
 				//For ammo SLYA didn't check the ammo in the cargo room, added
-				const resMax = Math.floor(Math.min(cargoSpace / cargoItems.find(r => r.token == entry.res).size, isAmmo ? entry.amt - ammoLoadingIntoAmmoBank - currentResAmt : entry.amt - currentResAmt));
+				const resMax = Math.floor(Math.min(cargoSpace / targetItem.size, isAmmo ? entry.amt - ammoLoadingIntoAmmoBank - currentResAmt : entry.amt - currentResAmt));
 				expectedCnt += resMax;
+
 				if (resMax > 0) {
 					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Attempting to load ${resMax} ${entry.res} from ${starbaseCoords}`);
 					const resp = await execCargoFromStarbaseToFleet(
@@ -5977,10 +6028,10 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 						transportLoadUnloadSingleTx
 					);
                     cLog(1,`${FleetTimeStamp(userFleets[i].label)} Loaded ${resp.amount} ${entry.res}: `, resp);
-                    cargoSpace -= resp && resp.amount ? cargoItems.find(r => r.token == entry.res).size * resp.amount : 0;
+                    cargoSpace -= resp && resp.amount ? targetItem.size * resp.amount : 0;
 
 					if (resp && resp.name == 'NotEnoughResource') {
-						const resShort = cargoItems.find(r => r.token == entry.res).name;
+						const resShort = targetItem.name;
 						cLog(1,`${FleetTimeStamp(userFleets[i].label)} Not enough ${resShort}`);
 						notEnoughInfo += 'Not enough ' + resShort + '\n';
 					}
@@ -5997,11 +6048,11 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 		//cLog(3,`${FleetTimeStamp(userFleets[i].label)} Loading finished with ${cargoCnt} total cargo loaded`);
 
-	        if (startingCargoSpace == cargoSpace && expectedCnt > 0) {
-	            updateFleetState(userFleets[i], 'ERROR: No cargo loaded');
-	            cLog(2,`${FleetTimeStamp(userFleets[i].label)} ERROR: No cargo loaded`);
-	            if(globalSettings.emailNoCargoLoaded) await sendEMail(userFleets[i].label + ' no cargo loaded', notEnoughInfo);
-	        }
+		if (startingCargoSpace == cargoSpace && expectedCnt > 0) {
+			updateFleetState(userFleets[i], 'ERROR: No cargo loaded');
+			cLog(2,`${FleetTimeStamp(userFleets[i].label)} ERROR: No cargo loaded`);
+			if(globalSettings.emailNoCargoLoaded) await sendEMail(userFleets[i].label + ' no cargo loaded', notEnoughInfo);
+		}
 		else if(transactions.length > 0) {
 			await txSliceAndSend(transactions, userFleets[i], 'LOAD', 100, 4);
 		}
@@ -6236,11 +6287,11 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
         let limitingIngredient = starbasePlayerIngredientCargoHolds.reduce((prev, curr) => prev && prev.amountCraftable < curr.amountCraftable ? prev : curr);
 
-        console.log('DEBUG limitingIngredient: ', limitingIngredient);
-        console.log('DEBUG targetAmount: ', targetAmount);
+        // console.log('DEBUG limitingIngredient: ', limitingIngredient);
+        // console.log('DEBUG targetAmount: ', targetAmount);
         if (limitingIngredient.amountCraftable < targetAmount) {
             for (let ingredient of starbasePlayerIngredientCargoHolds) {
-                console.log('DEBUG ingredient: ', ingredient);
+                // console.log('DEBUG ingredient: ', ingredient);
                 if (ingredient.craftAmount > 0) {
                     let filterData = ['SDU'];
                     if(special.includes('f2')) filterData.push('Framework','Framework 3');
